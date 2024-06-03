@@ -267,7 +267,7 @@ def make_config(
                 'plan_moves': {
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
-                    'az_limits': [-90, 450],
+                    'az_limits': [-45, 405],
                 }
             }
         }
