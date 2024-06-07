@@ -133,6 +133,7 @@ def ufm_relock(state):
             "time.sleep(120)",
             "run.smurf.take_noise(concurrent=True, tag='oper,take_noise,res_check')",
             "run.smurf.uxm_relock(concurrent=True)",
+            "run.smurf.take_bgmap(concurrent=True)",
             "",
         ]
     else:
