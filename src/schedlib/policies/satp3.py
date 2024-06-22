@@ -62,7 +62,7 @@ def make_cal_target(
     boresight: int,
     elevation: int,
     focus: str,
-    allow_partial=False,
+    allow_partial=True,
     drift=True,
 ) -> CalTarget:
     array_focus = {
@@ -140,6 +140,10 @@ def make_blocks(master_file):
             'taua': {
                 'type' : 'source',
                 'name' : 'taua',
+            },
+            'rcw38': {
+                'type' : 'source',
+                'name' : 'rcw38',
             },
             'galcenter': {
                 'type' : 'source',

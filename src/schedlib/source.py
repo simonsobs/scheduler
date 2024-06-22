@@ -48,6 +48,25 @@ def get_site(site='lat') -> Location:
     """use lat as default following so3g convention"""
     return SITES[site]
 
+def get_source(name: str) -> Source:
+    # always get new object to avoid side effects
+    if name.lower() == 'taua':
+        obj = ephem.FixedBody()
+        obj._ra = 5.5755*np.pi/12.
+        obj._dec = 22.0167*np.pi/180.
+        return obj
+    if name.lower() == 'rcw38':
+        obj = ephem.FixedBody()
+        obj._ra = 8.98*np.pi/12.
+        obj._dec = -47.5*np.pi/180.
+        return obj
+    if name.lower() == 'galcenter':
+        obj = ephem.FixedBody()
+        obj._ra = 17.7611*np.pi/12.
+        obj._dec = -28.95*np.pi/180.
+        return obj
+    return SOURCES[name]()
+
 # source needs to be callable to avoid side effects
 SOURCES = {
     'sun': ephem.Sun,
@@ -59,23 +78,13 @@ SOURCES = {
     'saturn': ephem.Saturn,
     'uranus': ephem.Uranus,
     'neptune': ephem.Neptune,
+    'taua': get_source('taua')
+    'rcw38': get_source('rcw38')
+    'galcenter': get_source('galcenter')
 }
 
 Source = Union[ephem.Body, ephem.FixedBody]
 
-def get_source(name: str) -> Source:
-    # always get new object to avoid side effects
-    if name.lower() == 'taua':
-        obj = ephem.FixedBody()
-        obj._ra = 5.5755*np.pi/12.
-        obj._dec = 22.0167*np.pi/180.
-        return obj
-    if name.lower() == 'galcenter':
-        obj = ephem.FixedBody()
-        obj._ra = 17.7611*np.pi/12.
-        obj._dec = -28.95*np.pi/180.
-        return obj
-    return SOURCES[name]()
 
 def _source_get_az_alt(source: str, times: List[dt.datetime]) -> Tuple[np.ndarray, np.ndarray]:
     """
