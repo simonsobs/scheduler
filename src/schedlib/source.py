@@ -78,9 +78,9 @@ SOURCES = {
     'saturn': ephem.Saturn,
     'uranus': ephem.Uranus,
     'neptune': ephem.Neptune,
-    'taua': get_source('taua')
-    'rcw38': get_source('rcw38')
-    'galcenter': get_source('galcenter')
+    'taua': get_source('taua'),
+    'rcw38': get_source('rcw38'),
+    'galcenter': get_source('galcenter'),
 }
 
 Source = Union[ephem.Body, ephem.FixedBody]
