@@ -140,12 +140,12 @@ class BuildOp:
 
         # now we do lowering further into full ops
         logger.info(f"================ lowering (ops) ================")
-        ir_ops = self.lower_ops(ir, init_state)
+        ir_ops, out_state = self.lower_ops(ir, init_state)
         logger.info(u.pformat(ir_ops))
 
         logger.info(f"================ done ================")
         
-        return ir_ops
+        return ir_ops, out_state
 
     def lower(self, seq, t0, t1, state, operations):
         ir = []
@@ -370,7 +370,7 @@ class BuildOp:
         for ir in irs:
             state, op_blocks = resolve_block(state, ir)
             ir_lowered += op_blocks
-        return ir_lowered 
+        return ir_lowered, state 
 
     def _apply_ops(self, state, op_cfgs, block=None, az=None, alt=None):
         """

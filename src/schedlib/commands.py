@@ -2,6 +2,8 @@ import numpy as np
 import datetime as dt
 from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass, field, replace as dc_replace
+from dataclasses_json import dataclass_json
+
 from abc import ABC, abstractmethod
 import inspect
 
@@ -11,7 +13,7 @@ logger = u.init_logger(__name__)
 
 MIN_DURATION = 0.01
 
-
+@dataclass_json
 @dataclass(frozen=True)
 class State:
     """
@@ -49,6 +51,17 @@ class State:
     az_speed_now: Optional[float] = None
     az_accel_now: Optional[float] = None
     prev_state: Optional["State"] = field(default=None, repr=False)
+
+    def clear_history(self):
+        return dc_replace(self, **{"prev_state": None} )
+
+    def save(self, fname):
+        out = self.clear_history()
+        np.save( fname, out.to_dict() )
+    
+    @classmethod
+    def load(cls, fname):
+        return cls.from_dict( np.load(fname, allow_pickle=True).item() )
 
     def replace(self, **kwargs):
         """

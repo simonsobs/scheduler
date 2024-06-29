@@ -2,6 +2,8 @@ import numpy as np
 from dataclasses import dataclass
 import datetime as dt
 
+from typing import Optional
+
 from .. import source as src, utils as u
 from .sat import SATPolicy, State, CalTarget
 from ..commands import SchedMode
@@ -161,16 +163,19 @@ def make_blocks(master_file):
 def make_operations(
     az_speed, az_accel, disable_hwp=False, 
     apply_boresight_rot=True, hwp_cfg=None, hwp_dir=True,
-    iv_cadence=4*u.hour,
+    iv_cadence=4*u.hour, stow_at_end=False, run_relock=False
 ):
     if hwp_cfg is None:
         hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper', 'forward':hwp_dir }
     pre_session_ops = [
-        { 'name': 'sat.preamble'        , 'sched_mode': SchedMode.PreSession, 'hwp_cfg': hwp_cfg, },
+        { 'name': 'sat.preamble'        , 'sched_mode': SchedMode.PreSession},
         { 'name': 'start_time'          ,'sched_mode': SchedMode.PreSession},
-        { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, },
         { 'name': 'set_scan_params' , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
+    if run_relock:
+        pre_session_ops += [
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, }
+        ]
     cal_ops = [
         { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence },
@@ -186,10 +191,13 @@ def make_operations(
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostObs, 'indent': 4, 'divider': ['']},
     ]
-    post_session_ops = [
-        { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
-        { 'name': 'sat.wrap_up'         , 'sched_mode': SchedMode.PostSession, 'az_stow': 180, 'el_stow': 50},
-    ]
+    if stow_at_end:
+        post_session_ops = [
+            { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
+            { 'name': 'sat.wrap_up'         , 'sched_mode': SchedMode.PostSession, 'az_stow': 180, 'el_stow': 50},
+        ]
+    else:
+        post_session_ops = []
     return pre_session_ops + cal_ops + cmb_ops + post_session_ops
 
 def make_config(
@@ -197,7 +205,6 @@ def make_config(
     az_speed,
     az_accel,
     cal_targets,
-    iso_scan_speeds=None,
     boresight_override=None,
     **op_cfg
 ):
@@ -222,7 +229,6 @@ def make_config(
         'operations': operations,
         'cal_targets': cal_targets,
         'scan_tag': None,
-        'iso_scan_speeds': iso_scan_speeds,
         'boresight_override': boresight_override,
         'az_speed' : az_speed,
         'az_accel' : az_accel,
@@ -248,20 +254,36 @@ def make_config(
 
 @dataclass
 class SATP1Policy(SATPolicy):
+    state_file: Optional[str] = None
+
     @classmethod
     def from_defaults(cls, master_file, az_speed=0.8, az_accel=1.5, 
-        cal_targets=[], iso_scan_speeds=None, boresight_override=None, **op_cfg
+        cal_targets=[], boresight_override=None, 
+        state_file=None, **op_cfg
     ):
-        return cls(**make_config(
+        x = cls(**make_config(
             master_file, az_speed, az_accel, 
-            cal_targets, iso_scan_speeds, boresight_override, **op_cfg
+            cal_targets, boresight_override, **op_cfg
         ))
+        x.state_file=state_file
+        return x
 
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp1, if needed"""
+        if self.state_file is not None:
+            logger.info(f"using state from {self.state_file}")
+            state = State.load(self.state_file)
+            if state.curr_time < t0:
+                logger.info(
+                    f"Loaded state is at {state.curr_time}. Updating time to"
+                    f" {t0}"
+                )
+                state = state.replace(curr_time = t0)
+            return state
+
         return State(
             curr_time=t0,
             az_now=180,
