@@ -295,8 +295,8 @@ def parse_sequence_from_toast(ifile):
         List of ScanBlock objects parsed from the input file.
 
     """
-    #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
-    columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
+    columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
+    #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     
     # count the number of lines to skip
     with open(ifile) as f:
