@@ -641,26 +641,52 @@ class PlanMoves:
             return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
         def get_safe_gaps(block0, block1):
-            """Returns a list with 0, 1, or 2 Gap blocks.  The Gap blocks will be
-            at sunsafe positions for their duration, and be safely reachable
-            in the sequence block0 -> gaps -> block1.
+            """Returns a list with 0, 1, or 3 Gap blocks.  The Gap blocks will be
+            at sunsafe positions for their duration, and be safely
+            reachable in the sequence block0 -> gaps -> block1.
 
-            The az and alt specified for a gap will be sun safe at the
-            block0.t1 and block1.t0, with a preference for the az and
-            alt of block1.
+            The az and alt specified for each gap will be sun-safe for their duration.
 
             """
             if (block0.t1 >= block1.t0):
                 return []
             # Check the move
             t1 = get_traj_ok_time(block0.az, block1.az, block0.alt, block1.alt,
-                                  block1.t1)
+                                  block0.t1)
             if t1 >= block1.t0:
                 return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=block1.t0,
                            az=block1.az, alt=block1.alt)]
-            # Try to do it in two steps!
-            # ... exertcise for reader.
-            raise
+
+            # Do the move in two steps, parking at az=180 (most likely to be sun-safe).
+            az_parking = 180.
+            alt_parking = min(block1.alt, block0.alt)
+            t0_parking = block0.t1 + dt.timedelta(seconds=300)
+            t1_parking = block1.t0 - dt.timedelta(seconds=300)
+            if t1_parking < t0_parking:
+                # This might still help...
+                t0_parking = t1_parking \
+                    = block0.t1 + (block1.t0 - block0.t1) / 2
+            else:
+                if get_traj_ok_time(az_parking, az_parking, alt_parking, alt_parking,
+                                    t0_parking) < t1_parking:
+                    raise ValueError("Sun-safe parking spot not found.")
+
+            # Verify we can get to the parking spot, and get out of it.
+            if get_traj_ok_time(block0.az, az_parking, block0.alt, alt_parking,
+                                block0.t1) < t0_parking:
+                raise ValueError("Sun-safe parking spot not accessible from prior scan.")
+
+            if get_traj_ok_time(az_parking, block1.az, alt_parking, block1.alt,
+                                t1_parking) < block1.t0:
+                raise ValueError("Next scan not accessible from sun-safe parking spot.")
+
+            return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
+                       az=az_parking, alt=alt_parking),
+                    IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
+                       az=az_parking, alt=alt_parking),
+                    IR(name='gap', subtype=IRMode.Gap, t0=t1_parking, t1=block1.t0,
+                       az=block1.az, alt=block1.alt),
+                    ]
 
         seq_ = [seq[0]]
         for i in range(1, len(seq)):
@@ -673,7 +699,6 @@ class PlanMoves:
         last_az, last_alt = None, None
         # Combine, but skipping first and last blocks, which are init/shutdown.
         for b in seq:
-            print(b.name)
             if b.name in ['pre_session', 'post_session']:
                 # Pre/post-ambles, leave it alone.
                 seq_ += [b]
@@ -706,6 +731,7 @@ class SimplifyMoves:
         while True:
             logger.info(f"simplify_moves: {i_pass=}")
             ir_new = self.round_trip(ir)
+            #ir_new = ir
             if ir_new == ir:
                 logger.info("simplify_moves: IR converged")
                 return ir
@@ -713,19 +739,22 @@ class SimplifyMoves:
             i_pass += 1
 
     def round_trip(self, ir):
-        if len(ir) == 0: return ir
-        for b1, b2 in zip(ir[:-1], ir[1:]):
+        def without(i):
+            return ir[:i] + ir[i+1:]
+        for bi in range(len(ir)-1):
+            b1, b2 = ir[bi], ir[bi+1]
             if isinstance(b1, MoveTo) and isinstance(b2, MoveTo):
                 # repeated moves will be replaced by the last move
                 # b = MoveTo(az=b2.az, alt=b2.alt)
-                return [i for i in ir if i != b1]
+                return without(bi)
             elif isinstance(b1, WaitUntil) and isinstance(b2, WaitUntil):
                 # repeated wait untils will be replaced by the longer wait
-                b = b1 if b1.t1 <= b2.t1 else b2
-                return [i for i in ir if i != b]
+                if b1.t1 < b2.t1:
+                    return without(bi)
+                return without(bi+1)
             elif (isinstance(b1, IR) and b1.subtype == IRMode.Gap) and isinstance(b2, WaitUntil):
                 # gap followed by wait until will be replaced by the wait until
-                return [i for i in ir if i != b1]
+                return without(bi)
         return ir
         
 
