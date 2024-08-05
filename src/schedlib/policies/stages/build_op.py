@@ -625,156 +625,103 @@ class PlanMoves:
     def apply(self, seq):
         """take a list of IR from BuildOp as input to solve for optimal sun-safe moves"""
 
-        # compute sun safe az ranges for each block
-        def f(block):
-            sun_tracker = get_sun_tracker(u.dt2ct(block.t0), policy=self.sun_policy)  # TODO: allow policy updates
-            # we want to find what az ranges at this alt are safe to cover 
-            # the entire block duration + min_sun_time
-            az_full = np.arange(self.az_limits[0], self.az_limits[1]+self.az_step, self.az_step)
-            alt = az_full*0 + block.alt 
-            sun_times, _ = sun_tracker.check_trajectory(t=u.dt2ct(block.t0), az=az_full, el=alt, raw=True)
-            # we have already checked all scans for sun safety, we just need the beginning
-            # of these blocks to be sun safe for moving purpose
-            if block.subtype == IRMode.InBlock:
-                m = sun_times > self.sun_policy['min_sun_time']
-            else:
-                m = sun_times > (block.duration.total_seconds() + self.sun_policy['min_sun_time'])
-            ranges = u.mask2ranges(m)
-            ranges = u.ranges_pad(ranges, 1, len(az_full))  # 1 sample tolerance
-            az_ranges = [(az_full[r[0]], az_full[r[1]-1]) for r in ranges]
-            return az_ranges
-
         seq = core.seq_sort(seq, flatten=True)
 
-        # fill up gaps first
-        gapfill = core.NamedBlock(name='_gap', t0=seq[0].t0, t1=seq[-1].t1)
-        seq = core.seq_sort(core.seq_merge([gapfill], seq, flatten=True))
+        def get_traj_ok_time(az0, az1, alt0, alt1, t0):
+            #Returns the timestamp until which the move from
+            #(az0, alt0) to (az1, alt1) is sunsafe.
+            sun_tracker = get_sun_tracker(u.dt2ct(t0), policy=self.sun_policy)
+            az = np.linspace(az0, az1, 101)
+            el = np.linspace(alt0, alt1, 101)
+            if alt0 != alt1 or az0 != az1:
+                az1 = (az[:,None] + el[None,:]*0).ravel()
+                el1 = (az[:,None]*0 + el[None,:]).ravel()
+                az, el = az1, el1
+            sun_safety = sun_tracker.check_trajectory(t=u.dt2ct(t0), az=az, el=el)
+            return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
-        # replace _gap with proper IR and give it proper pointing
-        seq_ = []
-        for i in range(len(seq)):
-            block = seq[i]
-            if block.name == '_gap' and i == 0:
-                raise ValueError("first block cannot be a gap")
-            # use previous block's az for gap by default
-            if block.name == '_gap':
-                block = IR(name='gap', subtype=IRMode.Gap, t0=block.t0, t1=block.t1, 
-                           az=seq[i-1].az, alt=seq[i-1].alt)
-            seq_ += [block]
+        def get_safe_gaps(block0, block1):
+            """Returns a list with 0, 1, or 3 Gap blocks.  The Gap blocks will be
+            at sunsafe positions for their duration, and be safely
+            reachable in the sequence block0 -> gaps -> block1.
 
-        seq_body = seq_[1:-1]  # skip pre/post session blocks for now
-        sun_intervals = core.seq_map(f, seq_body) 
+            The az and alt specified for each gap will be sun-safe for their duration.
 
-        def get_az_options(ir: IR, sints: List[Tuple[float, float]]) -> List[float]:
-            """As our goal is to find az movement plan that minimally deviates 
-            from original plan, this resembles a linear programming problem, so
-            the optimal solution will lie in one of the vertices of the feasible 
-            region.
             """
-            if ir.subtype == IRMode.InBlock:
-                block = ir.block
-                az_options = find_unwrap(block.az, self.az_limits)
-                az_options = [az for az in az_options if az+block.throw < self.az_limits[1]]
+            if (block0.t1 >= block1.t0):
+                return []
+            # Check the move
+            t1 = get_traj_ok_time(block0.az, block1.az, block0.alt, block1.alt,
+                                  block0.t1)
+            if t1 >= block1.t0:
+                return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=block1.t0,
+                           az=block1.az, alt=block1.alt)]
+
+            # Do the move in two steps, parking at az=180 (most likely to be sun-safe).
+            az_parking = 180.
+            alt_parking = min(block1.alt, block0.alt)
+            t0_parking = block0.t1 + dt.timedelta(seconds=300)
+            t1_parking = block1.t0 - dt.timedelta(seconds=300)
+            if t1_parking < t0_parking:
+                # This might still help...
+                t0_parking = t1_parking \
+                    = block0.t1 + (block1.t0 - block0.t1) / 2
             else:
-                az_options = []
-                if az_ranges_contain(sints, ir.az):
-                    az_options += find_unwrap(ir.az, self.az_limits)
-                az_options += [y for x in sints for y in x]
-            return az_options
+                if get_traj_ok_time(az_parking, az_parking, alt_parking, alt_parking,
+                                    t0_parking) < t1_parking:
+                    raise ValueError("Sun-safe parking spot not found.")
 
-        # pairs: List[((b_prev, b_next), (sints_prev, sints_next))]
-        pairs = list(zip(zip(seq_body[:-1], seq_body[1:]), zip(sun_intervals[:-1], sun_intervals[1:])))
+            # Verify we can get to the parking spot, and get out of it.
+            if get_traj_ok_time(block0.az, az_parking, block0.alt, alt_parking,
+                                block0.t1) < t0_parking:
+                raise ValueError("Sun-safe parking spot not accessible from prior scan.")
 
-        def recur(pairs: List[Any]) -> List[Tuple[float, List[float]]]:
-            """
-            Reduce shortest path problem to a series of subproblems:
-            min(sum(az_diff)) = min(az_diff_prev + min(sum(az_diff_subsequent))).
-            As no branching is needed, we can use a simple recursion
-            """
-            car, cdr = pairs[0], pairs[1:]
-            (b_prev, b_next), (sints_prev, sints_next) = car
+            if get_traj_ok_time(az_parking, block1.az, alt_parking, block1.alt,
+                                t1_parking) < block1.t0:
+                raise ValueError("Next scan not accessible from sun-safe parking spot.")
 
-            # we want to stay in az ranges valid for both blocks
-            sints_both = az_ranges_intersect(sints_prev, sints_next, 
-                                             az_limits=self.az_limits, az_step=self.az_step)
-            if len(sints_both) == 0:
-                logger.error(f"no sun safe az ranges found between: {b_prev.t0} -> {b_next.t1}")
-                logger.error(f"prev: {b_prev}")
-                logger.error(f"next: {b_next}")
-                raise ValueError(f"no sun safe az ranges found between: {b_prev.t0} -> {b_next.t1}, "
-                                 f"consider making a schedule that ends by {b_prev.t0}.")
+            return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
+                       az=az_parking, alt=alt_parking),
+                    IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
+                       az=az_parking, alt=alt_parking),
+                    IR(name='gap', subtype=IRMode.Gap, t0=t1_parking, t1=block1.t0,
+                       az=block1.az, alt=block1.alt),
+                    ]
 
-            # get az options for b_prev
-            # our convention is that move happens inside next block,
-            # not the current block. The difference is subtle: when 
-            # adding in next block, we need to park our telescope 
-            # at a safe az for both blocks (i.e. sint_both: safe 
-            # intervals for both)
-            az_options = get_az_options(b_prev, sints_both)
-
-            # get az options for b_next
-            if len(cdr) == 0:  
-                # when we are at the end of our sequence
-                az_options_next = get_az_options(b_next, sints_next)
-                moves_rest = []
-                for az_next in az_options_next:
-                    # r = az_distance(az_next, b_next.az)
-                    r = 0  # minimize total az travel
-                    moves_rest += [(r, [az_next])]
-            else:
-                moves_rest = recur(cdr)
-
-            # find possible moves 
-            moves = []
-            for az_prev in az_options:
-                allowed = []
-                for m in moves_rest:
-                    r, [az_next, *az_rest] = m
-                    track = (az_prev, az_next) if az_prev < az_next else (az_next, az_prev)
-                    if az_ranges_cover(sints_next, track):
-                        # how much are we deviating from original plan?
-                        # r += az_distance(az_prev, b_prev.az)
-                        r += az_distance(az_prev, az_next)
-                        allowed += [(r, [az_prev, az_next, *az_rest])]
-                if len(allowed) > 0:
-                    moves += [min(allowed)]
-            if len(moves) == 0:
-                raise ValueError(f"no moves found between {b_prev} and {b_next}, very unusual!")
-            return sorted(moves)  # sort by overall az difference
+        seq_ = [seq[0]]
+        for i in range(1, len(seq)):
+            gaps = get_safe_gaps(seq[i-1], seq[i])
+            seq_.extend(gaps)
+            seq_.append(seq[i])
         
-        # moves: List[(dist, [az_seq...]]
-        moves = recur(pairs)
-        assert len(moves) > 0, "unexpected exception, an exception should have been raised earlier"
-        best_move = moves[0]
-        logger.info(f"found a best move that deviates from original plan by {best_move[0]:.3f} degrees overall in az")
-
-        # apply moves to the sequence
-        # -> change az of each block in the sequence
-        # -> inject MoveTo blocks in between blocks
-        az_seq = best_move[-1]
-        updated = []
-        for i, b in enumerate(seq_body):
-            b = b.replace(az=az_seq[i])
-            # no need to worry about gap
-            if b.name == 'gap': 
-                updated += [b]
+        # Replace gaps with Wait, Move, Wait.
+        seq_, seq = [], seq_
+        last_az, last_alt = None, None
+        # Combine, but skipping first and last blocks, which are init/shutdown.
+        for b in seq:
+            if b.name in ['pre_session', 'post_session']:
+                # Pre/post-ambles, leave it alone.
+                seq_ += [b]
+            elif b.name == 'gap':
+                # For a gap, always seek to the stated gap position.
+                # But not until the gap is supposed to start.  Since
+                # gaps may be used to manage Sun Avoidance, it's
+                # important to be in that place for that time period.
+                seq_ += [
+                    WaitUntil(t1=b.t0, az=b.az, alt=b.alt),
+                    MoveTo(az=b.az, alt=b.alt),
+                    WaitUntil(t1=b.t1, az=b.az, alt=b.alt)]
+                last_az, last_alt = b.az, b.alt
             else:
-                if i == 0:
-                    updated += [WaitUntil(t1=b.t0, az=seq[0].az, alt=seq[0].alt), MoveTo(az=az_seq[0], alt=b.alt), b]
-                else:
-                    if ~np.isclose(az_seq[i], az_seq[i-1]):
-                        updated += [WaitUntil(t1=b.t0, az=az_seq[i-1], alt=seq_body[i-1].alt), MoveTo(az=az_seq[i], alt=b.alt), b]
-                    else:
-                        updated += [b]
+                if (last_az is None
+                    or np.round(b.az - last_az, 3) != 0
+                    or np.round(b.alt - last_alt, 3) != 0):
+                    seq_ += [MoveTo(az=b.az, alt=b.alt)]
+                    last_az, last_alt = b.az, b.alt
+                seq_ += [b]
 
-        # for every scan block, we add a move_to after it to make az deterministic
-        # otherwise if we start late, we don't know the phase of az at the end of
-        # the block so sun safety calculation can be wrong if the scan is wide enough.
-        updated = core.seq_flatten(
-            core.seq_map(lambda b: [b, MoveTo(az=b.az, alt=b.alt)] if b.subtype == IRMode.PostBlock else [b], updated)
-        )
-        updated = [seq[0]] + updated + [seq[-1]]
-        return updated 
+        return seq_
+
 
 @dataclass(frozen=True)
 class SimplifyMoves:
@@ -784,6 +731,7 @@ class SimplifyMoves:
         while True:
             logger.info(f"simplify_moves: {i_pass=}")
             ir_new = self.round_trip(ir)
+            #ir_new = ir
             if ir_new == ir:
                 logger.info("simplify_moves: IR converged")
                 return ir
@@ -791,19 +739,22 @@ class SimplifyMoves:
             i_pass += 1
 
     def round_trip(self, ir):
-        if len(ir) == 0: return ir
-        for b1, b2 in zip(ir[:-1], ir[1:]):
+        def without(i):
+            return ir[:i] + ir[i+1:]
+        for bi in range(len(ir)-1):
+            b1, b2 = ir[bi], ir[bi+1]
             if isinstance(b1, MoveTo) and isinstance(b2, MoveTo):
                 # repeated moves will be replaced by the last move
                 # b = MoveTo(az=b2.az, alt=b2.alt)
-                return [i for i in ir if i != b1]
+                return without(bi)
             elif isinstance(b1, WaitUntil) and isinstance(b2, WaitUntil):
                 # repeated wait untils will be replaced by the longer wait
-                b = b1 if b1.t1 <= b2.t1 else b2
-                return [i for i in ir if i != b]
+                if b1.t1 < b2.t1:
+                    return without(bi)
+                return without(bi+1)
             elif (isinstance(b1, IR) and b1.subtype == IRMode.Gap) and isinstance(b2, WaitUntil):
                 # gap followed by wait until will be replaced by the wait until
-                return [i for i in ir if i != b1]
+                return without(bi)
         return ir
         
 

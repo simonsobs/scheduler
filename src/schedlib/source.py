@@ -534,7 +534,8 @@ def _find_az_bore(el_bore, az_src, el_src, q_point, atol: float = 0.01) -> float
 def make_source_ces(
     block, array_info,
     el_bore=50, allow_partial=False,
-    v_az=None, boresight_rot=None
+    v_az=None, boresight_rot=None,
+    az_branch=None,
 ):
     """make a ces scan of a source
 
@@ -552,6 +553,9 @@ def make_source_ces(
         az drift speed in az in deg/s, if None, will try to find optimal drift speed
     boresight_rot: Optional[float]
         rotation of the boresight in deg
+    az_branch: Optional[flat]
+        az value at the center of the preferred observation branch (e.g. 180 if you
+        prefer scans in the (0, 360) range).
 
     Returns
     -------
@@ -632,6 +636,11 @@ def make_source_ces(
         throw = az1 - az0
         return az0, throw
 
+    def _set_branch(az0):
+        if az_branch is None:
+            return az0
+        return (az0 - (az_branch - 180)) % 360 + (az_branch - 180)
+
     # only solve if no az_drift are specified
     if v_az is None:
         try:
@@ -652,6 +661,7 @@ def make_source_ces(
             v_az = np.median(np.diff(az_src) / np.diff(t))
     try:
         az0, throw = _find_approx_az_throw(v_az, az_src, el_src)
+        az0 = _set_branch(az0)
         return inst.ScanBlock(
             name=block.name,
             az=az0,

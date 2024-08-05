@@ -66,6 +66,7 @@ def make_cal_target(
     focus: str, 
     allow_partial=False,
     drift=True,
+    az_branch=None,
 ) -> CalTarget:
     array_focus = {
         0 : {
@@ -106,6 +107,9 @@ def make_cal_target(
 
     assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
 
+    if az_branch is None:
+        az_branch = 180.
+
     return CalTarget(
         source=source, 
         array_query=focus_str, 
@@ -113,7 +117,8 @@ def make_cal_target(
         boresight_rot=boresight, 
         tag=focus_str,
         allow_partial=allow_partial,
-        drift=drift
+        drift=drift,
+        az_branch=az_branch,
     )
 
 def make_blocks(master_file):

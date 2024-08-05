@@ -80,10 +80,24 @@ class SunAvoidance(core.MappableRule):
     @apply_block.register(src.SourceBlock)
     def _(self, block):
         sun = get_sun_tracker(u.dt2ct(block.t0), policy=self.to_dict())
-        t, az, alt = block.get_az_alt(time_step=self.time_step)
-        j, i = sun._azel_pix(az, alt, dt=t-sun.base_time)
-        sun_time = sun.sun_times[j, i]
-        ok = sun_time > self.min_sun_time
+        if hasattr(block ,'get_az_alt_extent'):
+            # At each minute, assess sun-safety
+            t, az_left, az_right, alt_min, alt_max = \
+                block.get_az_alt_extent(time_step=self.time_step * 60)
+            # Confirm alt is constant...
+            alt = alt_min[0]
+            assert np.all(alt == np.array([alt_max, alt_min]))
+            ok = np.zeros(len(t), bool)
+            for _i in range(len(t)):
+                az = np.linspace(az_left[_i], az_right[_i], 101)
+                j, i = sun._azel_pix(az, alt, dt=t[_i]-sun.base_time)
+                sun_time = sun.sun_times[j, i]
+                ok[_i] = (sun_time > self.min_sun_time).all()
+        else:
+            t, az, alt = block.get_az_alt(time_step=self.time_step)
+            j, i = sun._azel_pix(az, alt, dt=t-sun.base_time)
+            sun_time = sun.sun_times[j, i]
+            ok = sun_time > self.min_sun_time
 
         # find safe intervals
         n_buffer = self.cut_buffer // self.time_step

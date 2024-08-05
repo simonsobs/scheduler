@@ -62,6 +62,7 @@ class CalTarget:
     boresight_rot: float = 0
     allow_partial: bool = False
     drift: bool = True
+    az_branch: float = None
 
 # ----------------------------------------------------
 #                  Register operations
@@ -558,6 +559,7 @@ class SATPolicy:
                 drift=True,
                 boresight_rot=target.boresight_rot,
                 allow_partial=target.allow_partial,
+                az_branch=target.az_branch,
             )
             source_scans = rule(blocks['calibration'][target.source])
             source_scans = core.seq_flatten(source_scans)

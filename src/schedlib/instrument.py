@@ -99,6 +99,8 @@ class ScanBlock(core.NamedBlock):
 
         """
         t0, t1 = u.dt2ct(self.t0), u.dt2ct(self.t1)
+        # Additional buffer distance for turn-arounds (like ACU Agent)
+        turn = self.az_speed**2 / self.az_accel
 
         # allow passing in a list of ctimes
         if ctimes is not None:
@@ -108,8 +110,8 @@ class ScanBlock(core.NamedBlock):
 
         # find left and right az limits, accounting for drift
         drift = self.az_drift * (t-t0)
-        left = self.az + drift
-        right = self.az + self.throw + drift
+        left = self.az + drift - turn
+        right = self.az + self.throw + drift + turn
 
         # calculate the phase of the scan, assuming it
         # moves at a constant speed from az to az+throw
@@ -117,6 +119,50 @@ class ScanBlock(core.NamedBlock):
         phase[m] = 2 - phase[(m:=(phase>1))]
         az = left*(1-phase) + right*phase
         return t, az, az*0 + self.alt
+
+    def get_az_alt_extent(self, time_step=60, ctimes=None):
+        """Calculate the azimuth and altitude extent for a scan block.
+
+        Parameters
+        ----------
+        time_step : float, optional
+            The time step between each calculated azimuth and altitude.
+            Default is 1.
+        ctimes : iterable, optional
+            A list of times to calculate the azimuth and altitude for.
+            Default is None, in which case the times are calculated
+            automatically. Otherwise time_step is ignored.
+
+        Returns
+        -------
+        t : numpy.ndarray
+            A 1D array of times.
+        az_min : numpy.ndarray
+            A 1D array of min azimuth that might be hit at time t.
+        az_max : numpy.ndarray
+            A 1D array of max azimuth that might be hit at time t.
+        alt_min : numpy.ndarray
+            A 1D array of min altitude that might be hit at time t.
+        alt_max : numpy.ndarray
+            A 1D array of max altitude that might be hit at time t.
+
+        """
+        t0, t1 = u.dt2ct(self.t0), u.dt2ct(self.t1)
+        # Additional buffer distance for turn-arounds (like ACU Agent)
+        turn = self.az_speed**2 / self.az_accel
+
+        # allow passing in a list of ctimes
+        if ctimes is not None:
+            t = ctimes
+        else:
+            t = np.arange(t0, t1+time_step, time_step)  # inclusive
+
+        # find left and right az limits, accounting for drift
+        drift = self.az_drift * (t-t0)
+        left = self.az + drift - turn
+        right = self.az + self.throw + drift + turn
+        alt = self.alt + 0*t
+        return t, left, right, alt, alt
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name}, {self.t0.strftime('%y-%m-%d %H:%M:%S')} -> {self.t1.strftime('%y-%m-%d %H:%M:%S')}, az={self.az:.2f}, el={self.alt:.2f}, throw={self.throw:.2f}, drift={self.az_drift:.5f}))"
@@ -249,8 +295,9 @@ def parse_sequence_from_toast(ifile):
         List of ScanBlock objects parsed from the input file.
 
     """
-    columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
-
+    #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
+    columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
+    
     # count the number of lines to skip
     with open(ifile) as f:
         for i, l in enumerate(f):
