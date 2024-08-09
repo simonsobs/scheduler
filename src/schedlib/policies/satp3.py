@@ -207,6 +207,57 @@ def cmb_scan(state, block):
     ]
     return state, (block.t1 - state.curr_time).total_seconds(), commands
 
+@cmd.operation(name='satp3.source_scan', return_duration=True)
+def source_scan(state, block):
+    block = block.trim_left_to(state.curr_time)
+    if block is None:
+        return state, 0, ["# too late, don't scan"]
+    if (
+        block.az_speed != state.az_speed_now or 
+        block.az_accel != state.az_accel_now
+    ):
+        commands = [
+            f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
+        ]
+        state = state.replace(
+            az_speed_now=block.az_speed, 
+            az_accel_now=block.az_accel
+        )
+    else:
+        commands = []
+    
+    state = state.replace(az_now=block.az, el_now=block.alt)
+    commands.extend([
+        "now = datetime.datetime.now(tz=UTC)",
+        "run.acu.set_scan_params(0.8, 0.25)",
+        f"scan_start = {repr(block.t0)}",
+        f"scan_stop = {repr(block.t1)}",
+        f"if now > scan_start:",
+        "    # adjust scan parameters",
+        f"    az = {round(block.az,3)} + {round(block.az_drift,5)}*(now-scan_start).total_seconds()",
+        f"else: ",
+        f"    az = {round(block.az,3)}",
+        f"if now > scan_stop:",
+        "    # too late, don't scan",
+        "    pass",
+        "else:",
+        f"    run.acu.move_to(az, {round(block.alt,3)})",
+        "",
+        f"    print('Waiting until {block.t0} to start scan')",
+        f"    run.wait_until('{block.t0.isoformat()}')",
+        "",
+        "    run.seq.scan(",
+        f"        description='{block.name}', ",
+        f"        stop_time='{block.t1.isoformat()}', ",
+        f"        width={round(block.throw,3)}, ",
+        f"        az_drift={round(block.az_drift,5)}, ",
+        f"        subtype='{block.subtype}',",
+        f"        tag='{block.tag}',",
+        "    )",
+        "run.acu.set_scan_params(0.5, 0.25)",
+    ])
+    return state, block.duration.total_seconds(), commands
+
 @cmd.operation(name='sat.blank', return_duration=True)
 def bias_step(state, min_interval=10*u.minute):
         return state, 0, []
@@ -226,7 +277,7 @@ def make_operations(
     cal_ops = [
         { 'name': 'satp3.det_setup'     , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp, 'forward':hwp_dir},
-        { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
+        { 'name': 'satp3.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal,},
     ]
     cmb_ops = [
