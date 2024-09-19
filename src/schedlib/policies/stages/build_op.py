@@ -1116,10 +1116,12 @@ class PlanMoves:
             # Verify we can get to the parking spot, and get out of it.
             if get_traj_ok_time(block0.az, az_parking, block0.alt, alt_parking,
                                 block0.t1) < t0_parking:
+                logger.error(f"No sun-safe spot is accessible from {block0.name} at {block0.t0.strftime('%Y-%m-%d %H:%M:%S')}. Consider removing this block and try reruning the scheduler.")
                 raise ValueError("Sun-safe parking spot not accessible from prior scan.")
 
             if get_traj_ok_time(az_parking, block1.az, alt_parking, block1.alt,
                                 t1_parking) < block1.t0:
+                logger.error(f"No sun-safe path from parking when moving between {block0.name} at {block0.t0.strftime('%Y-%m-%d %H:%M:%S')} to {block1.name} at {block1.t0.strftime('%Y-%m-%d %H:%M:%S')}. Consider removing one of the two blocks and try reruning the scheduler.")
                 raise ValueError("Next scan not accessible from sun-safe parking spot.")
 
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
