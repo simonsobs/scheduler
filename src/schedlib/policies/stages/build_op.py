@@ -11,7 +11,7 @@ import numpy as np
 import datetime as dt
 from typing import Dict, Any, Tuple, List, Optional
 from dataclasses import dataclass, field, replace as dc_replace
-from schedlib import core, commands as cmd, utils as u, rules as ru
+from schedlib import core, commands as cmd, utils as u, rules as ru, instrument as inst
 from schedlib.thirdparty.avoidance import get_sun_tracker
 from schedlib.commands import SchedMode
 
@@ -639,6 +639,8 @@ class BuildOpSimple:
         cmb_pre = [op for op in operations if op['sched_mode'] == SchedMode.PreObs]
         cmb_in = [op for op in operations if op['sched_mode'] == SchedMode.InObs]
         cmb_post = [op for op in operations if op['sched_mode'] == SchedMode.PostObs]
+        pre_sess = [op for op in operations if op['sched_mode'] == SchedMode.PreSession]
+        pos_sess = [op for op in operations if op['sched_mode'] == SchedMode.PostSession]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -663,6 +665,26 @@ class BuildOpSimple:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
+        start_block = {
+            'name': 'pre-session',
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=0.1)),
+            'pre': [],
+            'in': [],
+            'post': pre_sess,  # scheduled after t0
+            'priority': 3,
+            'pinned': True  # remain unchanged during multi-pass
+        }
+        end_block = {
+            'name': 'post-session',
+            'block': inst.StareBlock(name="post-session", az=180, alt=50, t0=t1-dt.timedelta(seconds=0.1), t1=t1),
+            'pre': pos_sess, # scheduled before t1
+            'in': [],
+            'post': [],
+            'priority': 3,
+            'pinned': True # remain unchanged during multi-pass
+        }
+        seq = [start_block] + seq + [end_block]
+
         # end of temporary solution
         # ==================================================================
 
@@ -779,6 +801,9 @@ class BuildOpSimple:
         # but needs more work
         seq_out = []
         for b in seq:
+            if b.get('pinned', False):
+                seq_out += [b]
+                continue
             matched = [x for x in trimmed_blocks if core.block_overlap(x, b['block'])]
             assert len(matched) <= 1, f"unexpected match: {matched=}"
             if len(matched) == 1:
@@ -899,7 +924,7 @@ class BuildOpSimple:
             return state, []
 
         # fast forward to within the constrained time block
-        state = state.replace(curr_time=max(constraint.t0, state.curr_time))
+        state = state.replace(curr_time=min(constraint.t0, block.t0))
         initial_state = state
 
         logger.debug(f"--> with constraint: planning {block.name} from {state.curr_time} to {block.t1}")
