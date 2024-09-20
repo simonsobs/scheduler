@@ -741,6 +741,8 @@ class BuildOpSimple:
 
             # update constraint to avoid overlapping with previously planned blocks
             seq_ir = [b for b in seq if isinstance(b, IR)]
+            # if nestedness is used, we can use this
+            # seq_ir = core.seq_sort(core.seq_filter(lambda b: isinstance(b, IR), seq), flatten=True)
             if len(seq_ir) > 0:
                 constraints = core.seq_remove_overlap(core.Block(t0=t0, t1=t1), seq_ir)
             else:
@@ -748,7 +750,12 @@ class BuildOpSimple:
 
             seq_out = []
             for b in seq:
-                # if it's already an IR, just execute it, otherwise plan it
+                # if it's already an planned, just execute it, otherwise plan it
+                # if isinstance(b, list) and all(isinstance(x, IR) for x in b):
+                #     for x in b:
+                #         state, _, _ = self._apply_ops(state, x.operations, block=x.block)
+                #     seq_out += [b]
+                #     continue
                 if isinstance(b, IR):
                     state, _, _ = self._apply_ops(state, b.operations, block=b.block)
                     seq_out += [b]
@@ -1192,15 +1199,17 @@ class PlanMoves:
             gaps = get_safe_gaps(seq[i-1], seq[i])
             seq_.extend(gaps)
             seq_.append(seq[i])
-        
+
         # Replace gaps with Wait, Move, Wait.
         seq_, seq = [], seq_
         last_az, last_alt = None, None
+
         # Combine, but skipping first and last blocks, which are init/shutdown.
-        for i, b in enumerate(seq):
-            if b.name in ['pre_session', 'post_session']:
-                # Pre/post-ambles, leave it alone.
+        for bi, b in enumerate(seq):
+            if bi == 0:
+                # skip init block
                 seq_ += [b]
+                continue
             elif b.name == 'gap':
                 # For a gap, always seek to the stated gap position.
                 # But not until the gap is supposed to start.  Since
@@ -1218,10 +1227,9 @@ class PlanMoves:
                     seq_ += [MoveTo(az=b.az, alt=b.alt)]
                     last_az, last_alt = b.az, b.alt
                 else:
-                    if (b.block != seq[i-1].block) & (i>0):
+                    if (b.block != seq[bi-1].block) & (bi>0):
                         seq_ += [MoveTo(az=b.az, alt=b.alt)]
                 seq_ += [b]
-
         return seq_
 
 
@@ -1247,7 +1255,6 @@ class SimplifyMoves:
             b1, b2 = ir[bi], ir[bi+1]
             if isinstance(b1, MoveTo) and isinstance(b2, MoveTo):
                 # repeated moves will be replaced by the last move
-                # b = MoveTo(az=b2.az, alt=b2.alt)
                 return without(bi)
             elif isinstance(b1, WaitUntil) and isinstance(b2, WaitUntil):
                 # repeated wait untils will be replaced by the longer wait
