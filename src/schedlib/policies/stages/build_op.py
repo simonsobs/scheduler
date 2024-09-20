@@ -620,6 +620,7 @@ class BuildOp:
 class BuildOpSimple:
     """try to simplify the block -> op process logic"""
     max_pass: int = 3
+    min_duration: float = 1 * u.minute
     plan_moves: Dict[str, Any] = field(default_factory=dict)
     simplify_moves: Dict[str, Any] = field(default_factory=dict)
 
@@ -667,7 +668,7 @@ class BuildOpSimple:
         seq = [map_block(b) for b in seq]
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=0.1)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=5)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
@@ -676,7 +677,7 @@ class BuildOpSimple:
         }
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=180, alt=50, t0=t1-dt.timedelta(seconds=0.1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=180, alt=50, t0=t1-dt.timedelta(seconds=5), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
@@ -766,9 +767,11 @@ class BuildOpSimple:
                 # now plan the operations for the given block within our specified constraint
                 state, ir = self._plan_block_operations(
                     state, block=b['block'], constraint=constraint,
-                    pre_ops=b['pre'], post_ops=b['post'], in_ops=b['in']
+                    pre_ops=b['pre'], post_ops=b['post'], in_ops=b['in'],
+                    causal=not(b['priority'] == priority)
                 )
                 if len(ir) == 0:
+                    logger.info(f"--> block {b['block']} has nothing that can be planned, skipping...")
                     continue
 
                 # higher priority group is planned first, and the constraint is updated
@@ -790,6 +793,7 @@ class BuildOpSimple:
         """lower the sequence and lift it back to original data structure"""
         # 1. lower the sequence into IRs
         ir = self.lower(seq, t0, t1, state)
+
         # 2. lift the IRs back to the original data structure
         trimmed_blocks = core.seq_sort(
             core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir), 
@@ -800,6 +804,7 @@ class BuildOpSimple:
         # this assumes no splitting is done in lowering process, which can be supported
         # but needs more work
         seq_out = []
+        min_dur_filter = ru.MinDuration(self.min_duration)
         for b in seq:
             if b.get('pinned', False):
                 seq_out += [b]
@@ -807,8 +812,13 @@ class BuildOpSimple:
             matched = [x for x in trimmed_blocks if core.block_overlap(x, b['block'])]
             assert len(matched) <= 1, f"unexpected match: {matched=}"
             if len(matched) == 1:
-                b = b | {'block': matched[0]}
-                seq_out += [b]
+                # does it meet our minimum duration requirement? drop if it doesn't
+                # if min_dur_filter(matched[0]) == matched[0]:
+                if min_dur_filter(matched[0]) == matched[0]:
+                    b = b | {'block': matched[0]}
+                    seq_out += [b]
+                else:
+                    logger.info(f"--> dropping {b['name']} due to min duration requirement")
         return seq_out
 
     def _apply_ops(self, state, op_cfgs, block=None, az=None, alt=None):
@@ -888,7 +898,8 @@ class BuildOpSimple:
 
         return state, duration, op_blocks
 
-    def _plan_block_operations(self, state, block, constraint, pre_ops, in_ops, post_ops):
+    def _plan_block_operations(self, state, block, constraint,
+                               pre_ops, in_ops, post_ops, causal=True):
         """
         Plan block operations based on the current state, block information, constraint, and operational sequences.
 
@@ -924,7 +935,14 @@ class BuildOpSimple:
             return state, []
 
         # fast forward to within the constrained time block
-        state = state.replace(curr_time=min(constraint.t0, block.t0))
+        # state = state.replace(curr_time=min(constraint.t0, block.t0))
+        # - during causal planning: fast forward state is allowed
+        # - during non-causal planning (e.g. during prioritized planning):
+        #   time backtracking is allowed
+        if causal:
+            state = state.replace(curr_time=max(constraint.t0, state.curr_time))
+        else:
+            state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
         initial_state = state
 
         logger.debug(f"--> with constraint: planning {block.name} from {state.curr_time} to {block.t1}")
