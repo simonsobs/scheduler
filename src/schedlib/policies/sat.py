@@ -375,12 +375,12 @@ def bias_step(state, block, min_interval=15*u.minute):
     else:
         return state, 0, []
 
-@cmd.operation(name='sat.wrap_up', duration=0)
+@cmd.operation(name='sat.wrap_up', duration=1)
 def wrap_up(state, az_stow, el_stow):
     state = state.replace(az_now=az_stow, el_now=el_stow)
     return state, [
-        "# go home",
-        f"run.acu.move_to(az={az_stow}, el={el_stow})",
+        # "# go home",
+        # f"run.acu.move_to(az={az_stow}, el={el_stow})",
         "time.sleep(1)"
     ]
 
