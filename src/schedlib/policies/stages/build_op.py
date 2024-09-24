@@ -718,7 +718,7 @@ class BuildOpSimple:
                 logger.info(f"rejecting block: {reject_block}")
                 seq_after_reject = [b for b in seq_ if b['block'] != reject_block]
                 # find the block in seq_ right after the reject_block
-                assert len(seq_after_reject) == len(seq) - 1, "reject block failed, need investigation..."
+                assert len(seq_after_reject) == len(seq_) - 1, "reject block failed, need investigation..."
                 seq_ = seq_after_reject
             else:
                 seq_ = seq
