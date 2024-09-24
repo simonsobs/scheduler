@@ -83,6 +83,21 @@ class IRMode:
     Gap = 'gap'
     Aux = 'aux'
 
+# custom exceptions
+class SunSafeError(Exception):
+    def __init__(self, message, block0=None, block1=None):
+        super().__init__(message)
+        self.block0 = block0
+        self.block1 = block1
+
+    def __str__(self):
+        base_message = super().__str__()
+        if self.block0 and self.block1:
+            return f"{base_message} (Block: {self.block} -> {self.block1})"
+        elif self.block0:
+            return f"{base_message} (Block: {self.block0})"
+        else:
+            return base_message
 
 @dataclass(frozen=True)
 class BuildOp:
@@ -620,6 +635,7 @@ class BuildOp:
 class BuildOpSimple:
     """try to simplify the block -> op process logic"""
     max_pass: int = 3
+    max_reject: int = 3
     min_duration: float = 1 * u.minute
     plan_moves: Dict[str, Any] = field(default_factory=dict)
     simplify_moves: Dict[str, Any] = field(default_factory=dict)
@@ -668,7 +684,7 @@ class BuildOpSimple:
         seq = [map_block(b) for b in seq]
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=5)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
@@ -677,7 +693,7 @@ class BuildOpSimple:
         }
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=180, alt=50, t0=t1-dt.timedelta(seconds=5), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=180, alt=50, t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
@@ -690,26 +706,65 @@ class BuildOpSimple:
         # ==================================================================
 
         init_state = state
-        seq_ = seq
 
-        for i in range(self.max_pass):
-            logger.info(f"================ pass {i+1} ================")
-            seq_new = self.round_trip(seq_, t0, t1, init_state)
-            if seq_new == seq_:
-                logger.info(f"round_trip: converged in pass {i+1}, lowering...")
+        # when something fails to plan, we reject the block and try again
+        # `max_reject` determines how many times we could do this before
+        # giving up
+        n_reject = 0
+        reject_list = []
+        while True:
+            if len(reject_list) > 0:
+                reject_block = reject_list.pop(0)
+                logger.info(f"rejecting block: {reject_block}")
+                seq_after_reject = [b for b in seq_ if b['block'] != reject_block]
+                # find the block in seq_ right after the reject_block
+                assert len(seq_after_reject) == len(seq) - 1, "reject block failed, need investigation..."
+                seq_ = seq_after_reject
+            else:
+                seq_ = seq
+
+            for i in range(self.max_pass):
+                logger.info(f"================ pass {i+1} ================")
+                seq_new = self.round_trip(seq_, t0, t1, init_state)
+                if seq_new == seq_:
+                    logger.info(f"round_trip: converged in pass {i+1}, lowering...")
+                    break
+                seq_ = seq_new
+            else:
+                logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes, proceeding anyway")
+
+            logger.info(f"================ lowering ================")
+
+            ir = self.lower(seq_, t0, t1, init_state)
+            assert ir[-1].t1 <= t1, "Going beyond our schedule limit, something is wrong!"
+
+            logger.info(f"================ solve moves ================")
+            logger.info("step 1: solve sun-safe moves")
+            try:
+                ir = PlanMoves(**self.plan_moves).apply(ir)
+            except SunSafeError as e:
+                logger.exception(f"unable to plan sun-safe moves: {e}")
+
+                # append to reject list
+                # (latter block will be rejected first)
+                if e.block1 is not None:
+                    assert isinstance(e.block1, IR), f"unexpected block type: {e.block1}"
+                    to_reject = e.block1.block  # dereference to original block
+                    if to_reject not in reject_list:
+                        reject_list.append(to_reject)
+                if e.block0 is not None:
+                    assert isinstance(e.block0, IR), f"unexpected block type: {e.block0}"
+                    to_reject = e.block0.block  # dereference to original block
+                    if to_reject not in reject_list:
+                        reject_list.append(to_reject)
+
+                n_reject += 1
+                if n_reject >= self.max_reject:
+                    logger.error(f"max reject reached, giving up")
+                    raise e
+            else:
+                logger.info("sun-safe moves found, continuing...")
                 break
-            seq_ = seq_new
-        else:
-            logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes")
-
-        logger.info(f"================ lowering ================")
-
-        ir = self.lower(seq_, t0, t1, init_state)
-        assert ir[-1].t1 <= t1, "Going beyond our schedule limit, something is wrong!"
-
-        logger.info(f"================ solve moves ================")
-        logger.info("step 1: solve sun-safe moves")
-        ir = PlanMoves(**self.plan_moves).apply(ir)
 
         logger.info("step 2: simplify moves")
         ir = SimplifyMoves(**self.simplify_moves).apply(ir)
@@ -1132,7 +1187,7 @@ class PlanMoves:
             sun_safety = sun_tracker.check_trajectory(t=u.dt2ct(t0), az=az, el=el)
             return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
-        def get_safe_gaps(block0, block1):
+        def get_safe_gaps(block0, block1, is_end=False):
             """Returns a list with 0, 1, or 3 Gap blocks.  The Gap blocks will be
             at sunsafe positions for their duration, and be safely
             reachable in the sequence block0 -> gaps -> block1.
@@ -1161,18 +1216,24 @@ class PlanMoves:
             else:
                 if get_traj_ok_time(az_parking, az_parking, alt_parking, alt_parking,
                                     t0_parking) < t1_parking:
-                    raise ValueError("Sun-safe parking spot not found.")
+                    if is_end:  # never reject the last block
+                        raise SunSafeError(f"Sun-safe parking spot not accessible from prior scan", block0)
+                    else:
+                        raise SunSafeError(f"Sun-safe parking spot not found", block0, block1)
 
             # Verify we can get to the parking spot, and get out of it.
             if get_traj_ok_time(block0.az, az_parking, block0.alt, alt_parking,
                                 block0.t1) < t0_parking:
                 logger.error(f"No sun-safe spot is accessible from {block0.name} at {block0.t0.strftime('%Y-%m-%d %H:%M:%S')}. Consider removing this block and try reruning the scheduler.")
-                raise ValueError("Sun-safe parking spot not accessible from prior scan.")
+                raise SunSafeError(f"Sun-safe parking spot not accessible from prior scan", block0)
 
             if get_traj_ok_time(az_parking, block1.az, alt_parking, block1.alt,
                                 t1_parking) < block1.t0:
                 logger.error(f"No sun-safe path from parking when moving between {block0.name} at {block0.t0.strftime('%Y-%m-%d %H:%M:%S')} to {block1.name} at {block1.t0.strftime('%Y-%m-%d %H:%M:%S')}. Consider removing one of the two blocks and try reruning the scheduler.")
-                raise ValueError("Next scan not accessible from sun-safe parking spot.")
+                if is_end:  # never reject the last block
+                    raise SunSafeError("Next scan not accessible from sun-safe parking spot.", block0)
+                else:
+                    raise SunSafeError("Next scan not accessible from sun-safe parking spot.", block1)
 
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
                        az=az_parking, alt=alt_parking),
@@ -1183,6 +1244,7 @@ class PlanMoves:
                     ]
 
         # go through the sequence and wrap az if falls outside limits
+        logger.info(f"checking if az falls outside limits")
         seq_ = []
         for b in seq:
             if b.az < self.az_limits[0] or b.az > self.az_limits[1]:
@@ -1194,9 +1256,10 @@ class PlanMoves:
                 seq_ += [b]
         seq = seq_
 
+        logger.info(f"planning moves...")
         seq_ = [seq[0]]
         for i in range(1, len(seq)):
-            gaps = get_safe_gaps(seq[i-1], seq[i])
+            gaps = get_safe_gaps(seq[i-1], seq[i], is_end=(i==(len(seq)-1)))
             seq_.extend(gaps)
             seq_.append(seq[i])
 
