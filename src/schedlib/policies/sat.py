@@ -420,6 +420,7 @@ class SATPolicy:
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
     allow_az_maneuver: bool = True
+    min_el: float = 48.  # deg
     wafer_sets: Dict[str, Any] = field(default_factory=dict)
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
@@ -657,7 +658,28 @@ class SATPolicy:
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # check for blocks below minimum elevation
+        self._check_min_elevation(blocks)
+
         return blocks
+
+    def _check_min_elevation(self, blocks):
+        """
+        Check if any block is below the minimum elevation and raise an error if so.
+
+        Parameters
+        ----------
+        blocks : core.BlocksTree
+            The blocks to check.
+
+        Raises
+        ------
+        ValueError
+            If any block is below the minimum elevation.
+        """
+        for block in core.seq_flatten(blocks):
+            if hasattr(block, 'alt') and block.alt < self.min_el:
+                raise ValueError(f"Block {block} has elevation {block.alt:.2f}°, which is below the minimum allowed elevation of {self.min_el:.2f}°")
 
     def init_state(self, t0: dt.datetime) -> State:
         """
