@@ -375,12 +375,12 @@ def bias_step(state, block, min_interval=15*u.minute):
     else:
         return state, 0, []
 
-@cmd.operation(name='sat.wrap_up', duration=0)
+@cmd.operation(name='sat.wrap_up', duration=1)
 def wrap_up(state, az_stow, el_stow):
     state = state.replace(az_now=az_stow, el_now=el_stow)
     return state, [
-        "# go home",
-        f"run.acu.move_to(az={az_stow}, el={el_stow})",
+        # "# go home",
+        # f"run.acu.move_to(az={az_stow}, el={el_stow})",
         "time.sleep(1)"
     ]
 
@@ -420,6 +420,7 @@ class SATPolicy:
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
     allow_az_maneuver: bool = True
+    # smart_end_tolerance: float = 0.5 # in hours
     wafer_sets: Dict[str, Any] = field(default_factory=dict)
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
@@ -463,6 +464,9 @@ class SATPolicy:
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
+        # if self.smart_end_tolerance > 0:
+        #     t1 = t1 + dt.timedelta(hours=self.smart_schedule_end_tolerance)
+
         def construct_seq(loader_cfg):
             if loader_cfg['type'] == 'source':
                 return src.source_gen_seq(loader_cfg['name'], t0, t1)
@@ -497,6 +501,13 @@ class SATPolicy:
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
+
+        # if a block ends within smart_end_tolerance of t1, don't start new block
+        # (remember we have already done t1 <- t1 + smart_end_tolerance)
+        # if (t1 - blocks[-1].t0).total_seconds() < 2 * self.smart_end_tolerance * 3600:
+        #     blocks = blocks[:-1]
+        # else:
+        #     blocks = core.seq_trim(blocks, t0, t1 - dt.timedelta(hours=self.smart_end_tolerance))
 
         # ok to drop Nones
         blocks = tu.tree_map(
@@ -721,7 +732,7 @@ class SATPolicy:
             state = self.init_state(t0)
 
         # load building stage
-        build_op = get_build_stage('build_op', **self.stages.get('build_op', {}))
+        build_op = get_build_stage('build_op', {'policy_config': self, **self.stages.get('build_op', {})})
         ops, state = build_op.apply(seq, t0, t1, state, self.operations)
         if return_state:
             return ops, state
