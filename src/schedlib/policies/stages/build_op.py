@@ -107,6 +107,8 @@ class BuildOp:
 
     Attributes
     ----------
+    policy_config : Dict[str, Any]
+        Full configuration of the SATPolicy.
     min_duration : float
         parameter for min-duration rule: minimum duration of a block to schedule.
     max_pass : int
@@ -117,6 +119,7 @@ class BuildOp:
         Config dict for SimplifyMoves pass
 
     """
+    policy_config: Dict[str, Any]
     min_duration: float = 1 * u.minute
     max_pass: int = 3
     plan_moves: Dict[str, Any] = field(default_factory=dict)
@@ -135,6 +138,9 @@ class BuildOp:
             seq_prev_ = seq_ 
         else:
             logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes")
+
+        # You can now access policy configuration like this:
+        logger.info(f"Using policy configuration: {self.policy_config}")
 
         logger.info(f"================ lowering ================")
 

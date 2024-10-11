@@ -732,7 +732,7 @@ class SATPolicy:
             state = self.init_state(t0)
 
         # load building stage
-        build_op = get_build_stage('build_op', **self.stages.get('build_op', {}))
+        build_op = get_build_stage('build_op', {'policy_config': self, **self.stages.get('build_op', {})})
         ops, state = build_op.apply(seq, t0, t1, state, self.operations)
         if return_state:
             return ops, state
