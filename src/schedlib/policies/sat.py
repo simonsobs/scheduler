@@ -216,6 +216,8 @@ def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=
             commands = [
                 "",
                 "################### Detector Setup######################",
+                "with disable_trace():",
+                "    run.initialize()",
                 "run.smurf.take_bgmap(concurrent=True)",
                 "run.smurf.take_noise(concurrent=True, tag='res_check')",
                 "run.smurf.iv_curve(concurrent=True, ",
