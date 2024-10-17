@@ -110,7 +110,6 @@ def preamble():
     return [
     "from nextline import disable_trace",
     "import time",
-    "import datetime",
     "",
     "with disable_trace():",
     "    import numpy as np",
@@ -118,7 +117,6 @@ def preamble():
     "    from ocs.ocs_client import OCSClient",
     "    run.initialize()",
     "",
-    "UTC = datetime.timezone.utc",
     "acu = run.CLIENTS['acu']",
     "pysmurfs = run.CLIENTS['smurf']",
     "sup = OCSClient('hwp-supervisor')",
