@@ -257,14 +257,13 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        f"scan_stop = {repr(block.t1)}",
-        f"if datetime.datetime.now(tz=UTC) < scan_stop - datetime.timedelta(minutes=10):",
-        "    run.seq.scan(",
-        f"        description='{block.name}',",
-        f"        stop_time='{block.t1.isoformat()}',",
-        f"        width={round(block.throw,3)}, az_drift=0,",
-        f"        subtype='cmb', tag='{block.tag}',",
-        "    )",
+        "run.seq.scan(",
+        f"    description='{block.name}',",
+        f"    stop_time='{block.t1.isoformat()}',",
+        f"    width={round(block.throw,3)}, az_drift=0,",
+        f"    subtype='cmb', tag='{block.tag}',",
+        f"    min_duration=600,",
+        ")",
     ])
     return state, (block.t1 - state.curr_time).total_seconds(), commands
 
