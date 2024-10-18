@@ -110,7 +110,6 @@ def preamble():
     return [
     "from nextline import disable_trace",
     "import time",
-    "import datetime",
     "",
     "with disable_trace():",
     "    import numpy as np",
@@ -118,7 +117,6 @@ def preamble():
     "    from ocs.ocs_client import OCSClient",
     "    run.initialize()",
     "",
-    "UTC = datetime.timezone.utc",
     "acu = run.CLIENTS['acu']",
     "pysmurfs = run.CLIENTS['smurf']",
     "sup = OCSClient('hwp-supervisor')",
@@ -259,14 +257,13 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        f"scan_stop = {repr(block.t1)}",
-        f"if datetime.datetime.now(tz=UTC) < scan_stop - datetime.timedelta(minutes=10):",
-        "    run.seq.scan(",
-        f"        description='{block.name}',",
-        f"        stop_time='{block.t1.isoformat()}',",
-        f"        width={round(block.throw,3)}, az_drift=0,",
-        f"        subtype='cmb', tag='{block.tag}',",
-        "    )",
+        "run.seq.scan(",
+        f"    description='{block.name}',",
+        f"    stop_time='{block.t1.isoformat()}',",
+        f"    width={round(block.throw,3)}, az_drift=0,",
+        f"    subtype='cmb', tag='{block.tag}',",
+        f"    min_duration=600,",
+        ")",
     ])
     return state, (block.t1 - state.curr_time).total_seconds(), commands
 
@@ -291,31 +288,22 @@ def source_scan(state, block):
     
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
-        "now = datetime.datetime.now(tz=UTC)",
-        f"scan_start = {repr(block.t0)}",
-        f"scan_stop = {repr(block.t1)}",
-        f"if now > scan_start:",
-        "    # adjust scan parameters",
-        f"    az = {round(block.az,3)} + {round(block.az_drift,5)}*(now-scan_start).total_seconds()",
-        f"else: ",
-        f"    az = {round(block.az,3)}",
-        f"if now > scan_stop:",
-        "    # too late, don't scan",
-        "    pass",
-        "else:",
-        f"    run.acu.move_to(az, {round(block.alt,3)})",
+        f"run.acu.move_to_target({round(block.az,3)}, {round(block.alt,3)},",
+        f"    start_time='{block.t0.isoformat()}',",
+        f"    stop_time='{block.t1.isoformat()}',",
+        f"    drift={round(block.az_drift,5)})",
         "",
-        f"    print('Waiting until {block.t0} to start scan')",
-        f"    run.wait_until('{block.t0.isoformat()}')",
+        f"print('Waiting until {block.t0} to start scan')",
+        f"run.wait_until('{block.t0.isoformat()}')",
         "",
-        "    run.seq.scan(",
-        f"        description='{block.name}', ",
-        f"        stop_time='{block.t1.isoformat()}', ",
-        f"        width={round(block.throw,3)}, ",
-        f"        az_drift={round(block.az_drift,5)}, ",
-        f"        subtype='{block.subtype}',",
-        f"        tag='{block.tag}',",
-        "    )",
+        "run.seq.scan(",
+        f"    description='{block.name}', ",
+        f"    stop_time='{block.t1.isoformat()}', ",
+        f"    width={round(block.throw,3)}, ",
+        f"    az_drift={round(block.az_drift,5)}, ",
+        f"    subtype='{block.subtype}',",
+        f"    tag='{block.tag}',",
+        ")",
     ])
     return state, block.duration.total_seconds(), commands
 
