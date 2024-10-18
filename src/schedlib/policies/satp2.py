@@ -5,8 +5,7 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget
-from ..commands import SchedMode
+from .sat import SATPolicy, State, CalTarget, SchedMode
 
 logger = u.init_logger(__name__)
 

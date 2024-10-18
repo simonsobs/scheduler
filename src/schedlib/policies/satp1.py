@@ -5,8 +5,7 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget
-from ..commands import SchedMode
+from .sat import SATPolicy, State, CalTarget, SchedMode, WiregridTarget
 
 logger = u.init_logger(__name__)
 
@@ -59,71 +58,6 @@ def make_geometry():
         },
     }
 
-def make_cal_target(
-    source: str, 
-    boresight: float, 
-    elevation: float, 
-    focus: str, 
-    allow_partial=False,
-    drift=True,
-    az_branch=None,
-    az_speed=None,
-    az_accel=None,
-) -> CalTarget:
-    array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-    }
-
-    boresight = float(boresight)
-    elevation = float(elevation)
-    focus = focus.lower()
-
-    focus_str = None
-    if int(boresight) not in array_focus:
-        logger.warning(
-            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
-        )
-        focus_str = focus ##
-    else:
-        focus_str = array_focus[int(boresight)].get(focus, focus)
-
-    assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
-
-    if az_branch is None:
-        az_branch = 180.
-
-    return CalTarget(
-        source=source, 
-        array_query=focus_str, 
-        el_bore=elevation, 
-        boresight_rot=boresight, 
-        tag=focus_str,
-        allow_partial=allow_partial,
-        drift=drift,
-        az_branch=az_branch,
-        az_speed=az_speed,
-        az_accel=az_accel,
-    )
 
 def make_blocks(master_file):
     return {
@@ -206,7 +140,11 @@ def make_operations(
         ]
     else:
         post_session_ops = []
-    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
+
+    wiregrid_ops = [
+        { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
+    ]
+    return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 
 def make_config(
     master_file,
@@ -279,9 +217,6 @@ class SATP1Policy(SATPolicy):
         ))
         x.state_file=state_file
         return x
-
-    def add_cal_target(self, *args, **kwargs):
-        self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp1, if needed"""
