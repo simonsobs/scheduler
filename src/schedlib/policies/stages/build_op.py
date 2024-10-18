@@ -657,34 +657,55 @@ class PlanMoves:
                 return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=block1.t0,
                            az=block1.az, alt=block1.alt)]
 
-            # Do the move in two steps, parking at az=180 (most likely to be sun-safe).
+            # Do the move in two steps, parking at az=180 (most likely
+            # to be sun-safe).  Identify a spot that is safe for the
+            # duration of block0.t1 to block1.t0.
             az_parking = 180.
-            alt_parking = min(block1.alt, block0.alt)
-            t0_parking = block0.t1 + dt.timedelta(seconds=300)
-            t1_parking = block1.t0 - dt.timedelta(seconds=300)
-            if t1_parking < t0_parking:
-                # This might still help...
-                t0_parking = t1_parking \
-                    = block0.t1 + (block1.t0 - block0.t1) / 2
-            else:
+            alt_range = min(block1.alt, block0.alt), self.sun_policy['min_el']
+            n_alts = max(2, int(round(abs(alt_range[1] - alt_range[0]) / 4. + 1)))
+            for alt_parking in np.linspace(alt_range[0], alt_range[1], n_alts):
                 safet = get_traj_ok_time(az_parking, az_parking, alt_parking, alt_parking,
-                                         t0_parking)
-                if safet< t1_parking:
-                    alt_parking = self.sun_policy['min_el']
-                    safet = get_traj_ok_time(az_parking, az_parking, alt_parking, alt_parking,
-                                             t0_parking)
-                    if safet< t1_parking:
-                        raise ValueError(f"Sun-safe parking spot not found. az {az_parking} "
-                                         f"el {alt_parking} is safe only until {safet}")
+                                         block0.t1)
+                if safet >= block1.t0:
+                    break
+            else:
+                raise ValueError(f"Sun-safe parking spot not found. az {az_parking} "
+                                 f"el {alt_parking} is safe only until {safet}")
 
-            # Verify we can get to the parking spot, and get out of it.
-            if get_traj_ok_time(block0.az, az_parking, block0.alt, alt_parking,
-                                block0.t1) < t0_parking:
-                raise ValueError("Sun-safe parking spot not accessible from prior scan.")
+            # Now bracket the moves, hopefully with ~5 minutes on each end.
+            buffer_t = min(300, int((block1.t0 - block0.t1).total_seconds() / 2))
+            t0_parking = block0.t1 + dt.timedelta(seconds=buffer_t)
+            t1_parking = block1.t0 - dt.timedelta(seconds=buffer_t)
 
-            if get_traj_ok_time(az_parking, block1.az, alt_parking, block1.alt,
-                                t1_parking) < block1.t0:
+            def check_parking(t0_parking, t1_parking, alt_parking):
+                if get_traj_ok_time(az_parking, az_parking, alt_parking, alt_parking,
+                                    t0_parking) < t1_parking:
+                    raise ValueError("Sun-safe parking spot not found.")
+
+            # You might need to rush away from final position...
+            move_away_by = get_traj_ok_time(
+                block0.az, az_parking, block0.alt, alt_parking, block0.t1)
+            if move_away_by < t0_parking:
+                if move_away_by < block0.t1:
+                    raise ValueError("Sun-safe parking spot not accessible from prior scan.")
+                else:
+                    t0_parking = move_away_by + (move_away_by + block0.t1) / 2
+
+            # You might need to wait until the last second before going to new pos
+            max_delay = 300
+            shift = 10.
+            while t1_parking < block1.t0 + dt.timedelta(seconds=max_delay):
+                ok_until = get_traj_ok_time(
+                    az_parking, block1.az, alt_parking, block1.alt, t1_parking)
+                if ok_until >= block1.t0:
+                    break
+                t1_parking = t1_parking + dt.timedelta(seconds=shift)
+            else:
                 raise ValueError("Next scan not accessible from sun-safe parking spot.")
+
+            if t1_parking > block1.t0:
+                logger.warning("sun-safe parking delays move to next field by "
+                               f"{(t1_parking - block1.t0).total_seconds()} seconds")
 
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
                        az=az_parking, alt=alt_parking),
