@@ -11,9 +11,8 @@ import numpy as np
 import datetime as dt
 from typing import Dict, Any, Tuple, List, Optional
 from dataclasses import dataclass, field, replace as dc_replace
-from schedlib import core, commands as cmd, utils as u, rules as ru
+from schedlib import core, commands as cmd, utils as u, rules as ru, instrument as inst
 from schedlib.thirdparty.avoidance import get_sun_tracker
-from schedlib.commands import SchedMode
 
 logger = u.init_logger(__name__)
 
@@ -83,52 +82,93 @@ class IRMode:
     Gap = 'gap'
     Aux = 'aux'
 
+# custom exceptions
+class SunSafeError(Exception):
+    def __init__(self, message, block0=None, block1=None):
+        super().__init__(message)
+        self.block0 = block0
+        self.block1 = block1
+
+    def __str__(self):
+        base_message = super().__str__()
+        if self.block0 and self.block1:
+            return f"{base_message} (Block: {self.block} -> {self.block1})"
+        elif self.block0:
+            return f"{base_message} (Block: {self.block0})"
+        else:
+            return base_message
 
 @dataclass(frozen=True)
 class BuildOp:
-    """
-    BuildOp represents the stage that converts ScanBlock into a schedule of
-    Operations (called intermediate representation, or `IR`, in this script).
-
-    Attributes
-    ----------
-    min_duration : float
-        parameter for min-duration rule: minimum duration of a block to schedule.
-    max_pass : int
-        Maximum number of attempts
-    plan_moves : Dict[str, Any]
-        Config dict for PlanMoves pass
-    simplify_moves : Dict[str, Any]
-        Config dict for SimplifyMoves pass
-
-    """
-    min_duration: float = 1 * u.minute
+    """try to simplify the block -> op process logic"""
+    policy_config: Dict[str, Any]
     max_pass: int = 3
+    max_reject: int = 3
+    min_duration: float = 1 * u.minute
     plan_moves: Dict[str, Any] = field(default_factory=dict)
     simplify_moves: Dict[str, Any] = field(default_factory=dict)
 
-    def apply(self, seq, t0, t1, state, operations):
+    def apply(self, seq, t0, t1, state):
         init_state = state
-        seq_prev_ = None
-        seq_ = seq
-        for i in range(self.max_pass):
-            logger.info(f"================ pass {i+1} ================")
-            seq_ = self.round_trip(seq_, t0, t1, init_state, operations)
-            if seq_ == seq_prev_:
-                logger.info(f"round_trip: converged in pass {i+1}, lowering...")
+
+        # when something fails to plan, we reject the block and try again
+        # `max_reject` determines how many times we could do this before
+        # giving up
+        n_reject = 0
+        reject_list = []
+        while True:
+            if len(reject_list) > 0:
+                reject_block = reject_list.pop(0)
+                logger.info(f"rejecting block: {reject_block}")
+                seq_after_reject = [b for b in seq_ if b['block'] != reject_block]
+                # find the block in seq_ right after the reject_block
+                assert len(seq_after_reject) == len(seq_) - 1, "reject block failed, need investigation..."
+                seq_ = seq_after_reject
+            else:
+                seq_ = seq
+
+            for i in range(self.max_pass):
+                logger.info(f"================ pass {i+1} ================")
+                seq_new = self.round_trip(seq_, t0, t1, init_state)
+                if seq_new == seq_:
+                    logger.info(f"round_trip: converged in pass {i+1}, lowering...")
+                    break
+                seq_ = seq_new
+            else:
+                logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes, proceeding anyway")
+
+            logger.info(f"================ lowering ================")
+
+            ir = self.lower(seq_, t0, t1, init_state)
+            assert ir[-1].t1 <= t1, "Going beyond our schedule limit, something is wrong!"
+
+            logger.info(f"================ solve moves ================")
+            logger.info("step 1: solve sun-safe moves")
+            try:
+                ir = PlanMoves(**self.plan_moves).apply(ir)
+            except SunSafeError as e:
+                logger.exception(f"unable to plan sun-safe moves: {e}")
+
+                # append to reject list
+                # (latter block will be rejected first)
+                if e.block1 is not None:
+                    assert isinstance(e.block1, IR), f"unexpected block type: {e.block1}"
+                    to_reject = e.block1.block  # dereference to original block
+                    if to_reject not in reject_list:
+                        reject_list.append(to_reject)
+                if e.block0 is not None:
+                    assert isinstance(e.block0, IR), f"unexpected block type: {e.block0}"
+                    to_reject = e.block0.block  # dereference to original block
+                    if to_reject not in reject_list:
+                        reject_list.append(to_reject)
+
+                n_reject += 1
+                if n_reject >= self.max_reject:
+                    logger.error(f"max reject reached, giving up")
+                    raise e
+            else:
+                logger.info("sun-safe moves found, continuing...")
                 break
-            seq_prev_ = seq_ 
-        else:
-            logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes")
-
-        logger.info(f"================ lowering ================")
-
-        ir = self.lower(seq_, t0, t1, init_state, operations)
-        assert ir[-1].t1 <= t1, "Going beyond our schedule limit, something is wrong!"
-
-        logger.info(f"================ solve moves ================")
-        logger.info("step 1: solve sun-safe moves")
-        ir = PlanMoves(**self.plan_moves).apply(ir)
 
         logger.info("step 2: simplify moves")
         ir = SimplifyMoves(**self.simplify_moves).apply(ir)
@@ -144,233 +184,108 @@ class BuildOp:
         logger.info(u.pformat(ir_ops))
 
         logger.info(f"================ done ================")
-        
+
         return ir_ops, out_state
 
-    def lower(self, seq, t0, t1, state, operations):
-        ir = []
+    def lower(self, seq, t0, t1, state):
+        # group operations by priority
+        priorities = sorted(list(set(b['priority'] for b in seq)), reverse=True)
 
-        # -----------------------------------------------------------------
-        # 1. pre-session operations
-        # -----------------------------------------------------------------
-        logger.info("step 1: planning pre-session ops")
+        # process each priority group
+        init_state = state
 
-        ops = [op for op in operations if op['sched_mode'] == SchedMode.PreSession]
-        state, _, _ = self._apply_ops(state, ops)
+        for priority in priorities:
+            logger.info(f"processing priority group: {priority}")
+            state = init_state
 
-        # assume pre-session doesn't change az_now and el_now of init state
-        # i.e., assume pre-session doesn't involve any movement, if needed,
-        # movement can be performed outside schedule and propogate through
-        # policy.init_state()
-        ir += [ 
-            IR(name='pre_session', subtype=IRMode.PreSession,
-               t0=t0, t1=state.curr_time, operations=ops,
-               az=state.az_now, alt=state.el_now)
-        ]
-
-        post_init_state = state
-        post_init_ir = ir.copy()
-
-        logger.debug(f"post-init ir: {u.pformat(ir)}")
-        logger.debug(f"post-init state: {state}")
-
-        # -----------------------------------------------------------------
-        # 2. calibration scans
-        #
-        #    Note: in full generality we shouldn't take calibration scans out of
-        #    the context, because other non-cal operations might have altered
-        #    the state of the observatory in between. Therefore, the fact that
-        #    we are planning calibration scans separately is based on the assumption
-        #    that other operations we will try to preserve the relevant state for
-        #    calibration. For example, if hwp is spinning, other operations should
-        #    try to get hwp back to spinning when the operations are done.
-        #
-        # -----------------------------------------------------------------
-        logger.info("step 2: planning calibration scans")
-
-        # compile the blocks to plan
-        cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
-        cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
-
-        # compile calibration operations
-        pre_ops  = [op for op in operations if op['sched_mode'] == SchedMode.PreCal]
-        in_ops   = [op for op in operations if op['sched_mode'] == SchedMode.InCal]
-        post_ops = [op for op in operations if op['sched_mode'] == SchedMode.PostCal]
-        cal_ops = { 'pre_ops': pre_ops, 'in_ops': in_ops, 'post_ops': post_ops }
-
-        # compile cmb operations (also needed for state propagation)
-        pre_ops  = [op for op in operations if op['sched_mode'] == SchedMode.PreObs]
-        in_ops   = [op for op in operations if op['sched_mode'] == SchedMode.InObs]
-        post_ops = [op for op in operations if op['sched_mode'] == SchedMode.PostObs]
-        cmb_ops = { 'pre_ops': pre_ops, 'in_ops': in_ops, 'post_ops': post_ops }
-
-        logger.debug(f"cal_ops to plan: {cal_ops}")
-        logger.debug(f"pre-cal state: {state}")
-
-        cal_ref_state = state
-
-        cal_irs = []
-        # need to loop over all blocks to get the state right
-        for block in seq:
-            # cmb scans are just used to get the state right, no operations
-            # are actually added to our list
-            if block.subtype == 'cmb':
-                constraint = core.Block(t0=state.curr_time, t1=block.t1)
-                state, _ = self._plan_block_operations(state, block, constraint, **cmb_ops)
-            elif block.subtype == 'cal':
-                logger.info(f"-> planning cal block: {block}")
-                logger.debug(f"--> pre-cal state: {state}")
-                # what's our constraint? cal takes higher priority so we ignore causal constraint
-                # from cmb scans, but we don't extend into previous cal block as they have equal
-                # priority, hence our constraint start from when last cal finishes and till the 
-                # end of schedule
-                constraint = core.Block(t0=cal_ref_state.curr_time, t1=block.t1)
-
-                # start at the beginning of our constraint
-                state = state.replace(curr_time=constraint.t0)
-                state, block_ops = self._plan_block_operations(state, block, constraint, **cal_ops)
-
-                logger.debug(f"--> post-block ops: {u.pformat(block_ops)}")
-                logger.debug(f"--> post-block state: {u.pformat(state)}")
-
-                # update our reference state
-                cal_ref_state = state
-                if len(block_ops) > 0:
-                    cal_irs += [block_ops]
+            # update constraint to avoid overlapping with previously planned blocks
+            seq_ir = [b for b in seq if isinstance(b, IR)]
+            # if nestedness is used, we can use this
+            # seq_ir = core.seq_sort(core.seq_filter(lambda b: isinstance(b, IR), seq), flatten=True)
+            if len(seq_ir) > 0:
+                constraints = core.seq_remove_overlap(core.Block(t0=t0, t1=t1), seq_ir)
             else:
-                raise ValueError(f"unexpected block subtype: {block.subtype}")
+                constraints = [core.Block(t0=t0, t1=t1)]
 
-        logger.debug(f"final state after cal planning: {u.pformat(state)}")
+            seq_out = []
+            for b in seq:
+                # if it's already an planned, just execute it, otherwise plan it
+                # if isinstance(b, list) and all(isinstance(x, IR) for x in b):
+                #     for x in b:
+                #         state, _, _ = self._apply_ops(state, x.operations, block=x.block)
+                #     seq_out += [b]
+                #     continue
+                if isinstance(b, IR):
+                    state, _, _ = self._apply_ops(state, b.operations, block=b.block)
+                    seq_out += [b]
+                    continue
 
-        # -----------------------------------------------------------------
-        # 3. cmb scans
-        #
-        # Note: for cmb scans, we will avoid overlapping with calibrations;
-        # this means we will tend to overwrite into cmb blocks more often
-        # -----------------------------------------------------------------
-        logger.info("step 3: planning cmb ops")
+                # what's our constraint? find the one that (partially) covers the block
+                constraints_ = [x for x in constraints if core.block_overlap(x, b['block'])]
+                if len(constraints_) == 0:
+                    logger.info(f"--> block {b['block']} doesn't fit within constraint, skipping...")
+                    continue
 
-        # restart from post-init
-        state = post_init_state
+                # we always fit the operations within the largest window that covers the block in the constraint
+                # i.e. find the window with largest overlap with the block
+                constraint = sorted(constraints_, key=lambda x: core.block_intersect(x, b['block']).duration.total_seconds())[-1]
 
-        # calibration operations take precedence: now we know how long these cal
-        # operations will take, we can remove overlapping regions from our cmb scans
+                # now plan the operations for the given block within our specified constraint
+                state, ir = self._plan_block_operations(
+                    state, block=b['block'], constraint=constraint,
+                    pre_ops=b['pre'], post_ops=b['post'], in_ops=b['in'],
+                    causal=not(b['priority'] == priority)
+                )
+                if len(ir) == 0:
+                    logger.info(f"--> block {b['block']} has nothing that can be planned, skipping...")
+                    continue
 
-        # avoid cmb operations from colliding with calibration operations,
-        # so we identify non-overlapping intervals here. This will be used as constraint.
-        ir_blocks = [] 
-        for cal_ir in cal_irs:
-            ir_blocks += [core.Block(t0=cal_ir[0].t0, t1=cal_ir[-1].t1)]
-        full_interval = core.Block(t0=t0, t1=t1)
-        non_overlaps = core.seq_remove_overlap(full_interval, ir_blocks)  # as constraint
+                # higher priority group is planned first, and the constraint is updated
+                # to the end of the previously planned block
+                if b['priority'] == priority:
+                    logger.info(f"-> {b['name'][:5]:<5} ({b['block'].subtype:<3}): {b['block'].t0.strftime('%d-%m-%y %H:%M:%S')} -> {b['block'].t1.strftime('%d-%m-%y %H:%M:%S')}")
+                    seq_out += ir
+                    constraints = core.seq_flatten(core.seq_trim(constraints, t0=state.curr_time, t1=t1))
+                elif b['priority'] < priority:
+                    # lower priority item will pass through to be planned in the next round
+                    seq_out += [b]
+                else:
+                    raise ValueError(f"unexpected priority: {b['priority']}")
+            seq = seq_out
 
-        cmb_blocks = core.seq_remove_overlap(cmb_blocks, ir_blocks)
-
-        # re-merge all blocks
-        all_blocks = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
-        all_blocks = core.seq_flatten(ru.MinDuration(self.min_duration)(all_blocks))
-
-        # done with previously planned operation seqs
-        # re-plan from the end of initialization.
-        state = post_init_state
-        ir = post_init_ir
-
-        for block in all_blocks:
-            if state.curr_time >= block.t1:
-                logger.info(f"--> skipping block {block.name} because it's already past")
-                continue
-
-            logger.debug(f"-> planning block ({block.subtype}): {block.name}: {block.t0} - {block.t1}")
-            logger.debug(f"--> pre-block state: {u.pformat(state)}")
-
-            constraint = core.Block(t0=state.curr_time, t1=block.t1)
-            logger.debug(f"--> causal constraint: {constraint.t0} to {constraint.t1}")
-
-            if block.subtype == 'cmb':
-                # this should always be possible
-                non_overlap = [b for b in non_overlaps if b.t0 <= block.t0 and block.t1 <= b.t1]
-                assert len(non_overlap) == 1, f"unexpected non-overlapping intervals: {non_overlap=}"
-                # cmb blocks are subject to additional constraint to not overlap with
-                # calibrations
-                non_overlap = non_overlap[0]
-                logger.debug(f"--> operational constraint: {non_overlap.t0} to {non_overlap.t1}")
-                constraint = core.block_intersect(constraint, non_overlap)
-                ops_ = cmb_ops
-            elif block.subtype == 'cal':
-                ops_ = cal_ops
-            else:
-                raise ValueError(f"unexpected block subtype: {block.subtype}")
-            logger.debug(f"--> final constraint: {constraint.t0} to {constraint.t1}")
-
-            state, block_ops = self._plan_block_operations(state, block, constraint, **ops_)
-            logger.debug(f"--> post-block state: {state}")
-
-            ir += [block_ops]
-
-        logger.debug(f"post-planning state: {state}")
-
-        # -----------------------------------------------------------------
-        # 4. post-session operations
-        # -----------------------------------------------------------------
-        logger.info("step 4: planning post-session ops")
-
-        ops = [op for op in operations if op['sched_mode'] == SchedMode.PostSession]
-        state, post_dur, _ = self._apply_ops(state, ops)
-        ir += [ 
-            IR(name='post_session', subtype=IRMode.PostSession,
-               t0=state.curr_time-dt.timedelta(seconds=post_dur), 
-               t1=state.curr_time, operations=ops,
-               az=state.az_now, alt=state.el_now)
-        ]
-        logger.debug(f"post-session state: {state}")
-
-        return ir
-    
-    def round_trip(self, seq, t0, t1, state, operations):
-        ir = self.lower(seq, t0, t1, state, operations)
-        seq = self.lift(ir)
-
-        # opportunity to do some correction:
-        # if our post session is running longer than our constraint, trim the sequence
-        if len(list(filter(lambda o: o['sched_mode'] == SchedMode.PostSession, operations))) > 0:
-            # if we have post session, it will guarentee to be the last
-            session_end = ir[-1].t1
-            if session_end > t1:
-                # if we are running late, truncate our blocks to make up the time
-                logger.info("not enough time for post-session operations, trimming...")
-                seq_t1 = seq[-1].t1
-                seq = core.seq_flatten(core.seq_trim(seq, t0, seq_t1-(session_end-t1)))
         return seq
 
-    def lift(self, ir):
-        return core.seq_sort(core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir), flatten=True)
+    def round_trip(self, seq, t0, t1, state):
+        """lower the sequence and lift it back to original data structure"""
+        # 1. lower the sequence into IRs
+        ir = self.lower(seq, t0, t1, state)
 
-    def lower_ops(self, irs, state):
-        # `lower` generates a basic plan, here we work with ir to resolve 
-        # all operations within each blocks
-        def resolve_block(state, ir):
-            if isinstance(ir, WaitUntil):
-                op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t1}]
-                state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
-            elif isinstance(ir, MoveTo):
-                op_cfgs = [{'name': 'move_to', 'sched_mode': IRMode.Aux, 'az': ir.az, 'el': ir.alt, 'force': True}]  # aux move_to should be enforced
-                state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
-            elif ir.subtype in [IRMode.PreSession, IRMode.PostSession]:
-                state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt)
-            elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
-                state, _, op_blocks = self._apply_ops(state, ir.operations, block=ir.block)
-            elif ir.subtype == IRMode.Gap:
-                op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Gap, 't1': ir.t1}]
-                state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
-            else:
-                raise ValueError(f"unexpected block type: {ir}")
-            return state, op_blocks
-
-        ir_lowered = []
-        for ir in irs:
-            state, op_blocks = resolve_block(state, ir)
-            ir_lowered += op_blocks
-        return ir_lowered, state 
+        # 2. lift the IRs back to the original data structure
+        trimmed_blocks = core.seq_sort(
+            core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir), 
+            flatten=True
+        )
+        # match input blocks with trimmed blocks: since we are trimming the blocks
+        # each block in ir should match one or none of the trimmed blocks.
+        # this assumes no splitting is done in lowering process, which can be supported
+        # but needs more work
+        seq_out = []
+        min_dur_filter = ru.MinDuration(self.min_duration)
+        for b in seq:
+            if b.get('pinned', False):
+                seq_out += [b]
+                continue
+            matched = [x for x in trimmed_blocks if core.block_overlap(x, b['block'])]
+            assert len(matched) <= 1, f"unexpected match: {matched=}"
+            if len(matched) == 1:
+                # does it meet our minimum duration requirement? drop if it doesn't
+                # if min_dur_filter(matched[0]) == matched[0]:
+                if min_dur_filter(matched[0]) == matched[0]:
+                    b = b | {'block': matched[0]}
+                    seq_out += [b]
+                else:
+                    logger.info(f"--> dropping {b['name']} due to min duration requirement")
+        return seq_out
 
     def _apply_ops(self, state, op_cfgs, block=None, az=None, alt=None):
         """
@@ -449,41 +364,53 @@ class BuildOp:
 
         return state, duration, op_blocks
 
-    def _plan_block_operations(self, state, block, constraint, pre_ops, in_ops, post_ops):
+    def _plan_block_operations(self, state, block, constraint,
+                               pre_ops, in_ops, post_ops, causal=True):
         """
         Plan block operations based on the current state, block information, constraint, and operational sequences.
+
+        The function takes in sequences of operations to be planned before, within, and after the block, and returns the
+        updated state and the planned sequence of operations.
 
         Parameters
         ----------
         state : State
-            Current state of the system.
-        block : Block
+            The current state of the system.
+        block : Block or list of Block
             Block information containing start and end times.
-        constraint : Constraint
+        constraint : Block
             Constraint information containing start and end times.
         pre_ops : list
-            List of pre-block operations.
+            List of operations to be planned immediately before block.t0.
         in_ops : list
-            List of in-block operations.
+            List of operations to be planned within the block, i.e., from block.t0 to block.t1.
         post_ops : list
-            List of post-block operations.
+            List of operations to be planned immediately after block.t1.
 
         Returns
         -------
-        State
-            Updated state after planning the block operations.
-        List[IR]
-            Sequence of operations planned for the block.
+        state : State
+            The updated state after planning the block operations.
+        planned_sequence : list of IR
+            The sequence of operations planned for the block.
 
         """
         # if we already pass the block or our constraint, nothing to do
         if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
-            logger.debug(f"--> skipping block {block.name} because it's already past")
+            logger.info(f"--> skipping block {block.name} because it's already past")
             return state, []
 
         # fast forward to within the constrained time block
-        state = state.replace(curr_time=max(constraint.t0, state.curr_time))
+        # state = state.replace(curr_time=min(constraint.t0, block.t0))
+        # - during causal planning: fast forward state is allowed
+        # - during non-causal planning (e.g. during prioritized planning):
+        #   time backtracking is allowed
+        if causal:
+            state = state.replace(curr_time=max(constraint.t0, state.curr_time))
+        else:
+            state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
         initial_state = state
+
         logger.debug(f"--> with constraint: planning {block.name} from {state.curr_time} to {block.t1}")
 
         op_seq = []
@@ -491,13 +418,8 @@ class BuildOp:
         # +++++++++++++++++++++
         # pre-block operations
         # +++++++++++++++++++++
-        logger.debug(f"--> planning pre-block operations")
 
-        # did we already pass the block?
-        t_start = state.curr_time
-        if t_start >= block.t1:
-            logger.debug(f"---> skipping block {block.name} because it's already past")
-            return initial_state, []
+        logger.debug(f"--> planning pre-block operations")
 
         state, pre_dur, _ = self._apply_ops(state, pre_ops, block=block)
 
@@ -515,15 +437,16 @@ class BuildOp:
             # did we extend past entire block?
             if state.curr_time < block.t1:
                 logger.debug(f"---> curr_time did not extend past block {block.name}")
+                delta_t = (state.curr_time - block.t0).total_seconds()
                 block = block.trim_left_to(state.curr_time)
                 logger.debug(f"---> trimmed block: {block}")
                 pre_block_name = "pre_block (into)"
+                logger.info(f"--> trimming left by {delta_t} seconds to fit pre-block operations")
             else:
+                logger.info(f"--> not enough time for pre-block operations for {block.name}, skipping...")
                 return initial_state, []
         else:
             logger.debug(f"---> gap is large enough for pre-block operations")
-            # if there is more time than we need, let's wait to start later: 
-            # state = initial_state.replace(curr_time=block.t0-dt.timedelta(seconds=duration))
             state = state.replace(curr_time=block.t0)
             pre_block_name = "pre_block"
 
@@ -542,7 +465,7 @@ class BuildOp:
         logger.debug(f"---> in-block ops duration: {in_dur} seconds")
         logger.debug(f"---> in-block curr state: {u.pformat(state)}")
 
-        # sanity check: if fail, it means post-cal operations are 
+        # sanity check: if fail, it means post-cal operations are
         # mixed into in-cal operations
         assert state.curr_time <= block.t1, \
             "in-block operations are probably mixed with post-cal operations"
@@ -555,7 +478,6 @@ class BuildOp:
         # +++++++++++++++++++++
         # post-block operations
         # +++++++++++++++++++++
-        t_start = state.curr_time
 
         state, post_dur, _ = self._apply_ops(state, post_ops, block=block)
 
@@ -568,11 +490,14 @@ class BuildOp:
             logger.debug(f"---> post-block ops extended past constraint")
             # shrink our block to make space for post-block operation and
             # revert to an old state before retrying
+            delta_t = (state.curr_time - constraint.t1).total_seconds()
             block = block.shrink_right(state.curr_time - constraint.t1)
-            # if we passed the block, there is not enough time to do anything
+
+            # if we extends passed the block.t0, there is not enough time to do anything
             # -> revert to initial state
+            logger.info(f"--> trimming right by {delta_t} seconds to fit post-block operations")
             if block is None:
-                logger.info(f"--> skipping {block=} because post-block op couldn't fit inside constraint")
+                logger.info(f"--> skipping because post-block op couldn't fit inside constraint")
                 return initial_state, []
             post_block_name = "post_block (into)"
             state = state.replace(curr_time=constraint.t1)
@@ -600,7 +525,6 @@ class BuildOp:
                 block=block,
                 operations=in_ops),
             ]
-
         if len(post_ops) > 0:
             op_seq += [
                 IR(name=post_block_name,
@@ -610,10 +534,37 @@ class BuildOp:
                 az=block.az,
                 alt=block.alt,
                 block=block,
-                operations=post_ops) 
+                operations=post_ops)
             ]
 
         return state, op_seq
+
+    def lower_ops(self, irs, state):
+        # `lower` generates a basic plan, here we work with ir to resolve
+        # all operations within each blocks
+        def resolve_block(state, ir):
+            if isinstance(ir, WaitUntil):
+                op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t1}]
+                state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
+            elif isinstance(ir, MoveTo):
+                op_cfgs = [{'name': 'move_to', 'sched_mode': IRMode.Aux, 'az': ir.az, 'el': ir.alt, 'force': True}]  # aux move_to should be enforced
+                state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
+            elif ir.subtype in [IRMode.PreSession, IRMode.PostSession]:
+                state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt)
+            elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
+                state, _, op_blocks = self._apply_ops(state, ir.operations, block=ir.block)
+            elif ir.subtype == IRMode.Gap:
+                op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Gap, 't1': ir.t1}]
+                state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
+            else:
+                raise ValueError(f"unexpected block type: {ir}")
+            return state, op_blocks
+
+        ir_lowered = []
+        for ir in irs:
+            state, op_blocks = resolve_block(state, ir)
+            ir_lowered += op_blocks
+        return ir_lowered, state
 
 @dataclass(frozen=True)
 class PlanMoves:
@@ -640,7 +591,7 @@ class PlanMoves:
             sun_safety = sun_tracker.check_trajectory(t=u.dt2ct(t0), az=az, el=el)
             return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
-        def get_safe_gaps(block0, block1):
+        def get_safe_gaps(block0, block1, is_end=False):
             """Returns a list with 0, 1, or 3 Gap blocks.  The Gap blocks will be
             at sunsafe positions for their duration, and be safely
             reachable in the sequence block0 -> gaps -> block1.
@@ -680,11 +631,16 @@ class PlanMoves:
             # Verify we can get to the parking spot, and get out of it.
             if get_traj_ok_time(block0.az, az_parking, block0.alt, alt_parking,
                                 block0.t1) < t0_parking:
-                raise ValueError("Sun-safe parking spot not accessible from prior scan.")
+                logger.error(f"No sun-safe spot is accessible from {block0.name} at {block0.t0.strftime('%Y-%m-%d %H:%M:%S')}. Consider removing this block and try reruning the scheduler.")
+                raise SunSafeError(f"Sun-safe parking spot not accessible from prior scan", block0)
 
             if get_traj_ok_time(az_parking, block1.az, alt_parking, block1.alt,
                                 t1_parking) < block1.t0:
-                raise ValueError("Next scan not accessible from sun-safe parking spot.")
+                logger.error(f"No sun-safe path from parking when moving between {block0.name} at {block0.t0.strftime('%Y-%m-%d %H:%M:%S')} to {block1.name} at {block1.t0.strftime('%Y-%m-%d %H:%M:%S')}. Consider removing one of the two blocks and try reruning the scheduler.")
+                if is_end:  # never reject the last block
+                    raise SunSafeError("Next scan not accessible from sun-safe parking spot.", block0)
+                else:
+                    raise SunSafeError("Next scan not accessible from sun-safe parking spot.", block1)
 
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
                        az=az_parking, alt=alt_parking),
@@ -695,6 +651,7 @@ class PlanMoves:
                     ]
 
         # go through the sequence and wrap az if falls outside limits
+        logger.info(f"checking if az falls outside limits")
         seq_ = []
         for b in seq:
             if b.az < self.az_limits[0] or b.az > self.az_limits[1]:
@@ -706,20 +663,23 @@ class PlanMoves:
                 seq_ += [b]
         seq = seq_
 
+        logger.info(f"planning moves...")
         seq_ = [seq[0]]
         for i in range(1, len(seq)):
-            gaps = get_safe_gaps(seq[i-1], seq[i])
+            gaps = get_safe_gaps(seq[i-1], seq[i], is_end=(i==(len(seq)-1)))
             seq_.extend(gaps)
             seq_.append(seq[i])
-        
+
         # Replace gaps with Wait, Move, Wait.
         seq_, seq = [], seq_
         last_az, last_alt = None, None
+
         # Combine, but skipping first and last blocks, which are init/shutdown.
-        for i, b in enumerate(seq):
-            if b.name in ['pre_session', 'post_session']:
-                # Pre/post-ambles, leave it alone.
+        for bi, b in enumerate(seq):
+            if bi == 0:
+                # skip init block
                 seq_ += [b]
+                continue
             elif b.name == 'gap':
                 # For a gap, always seek to the stated gap position.
                 # But not until the gap is supposed to start.  Since
@@ -737,10 +697,9 @@ class PlanMoves:
                     seq_ += [MoveTo(az=b.az, alt=b.alt)]
                     last_az, last_alt = b.az, b.alt
                 else:
-                    if (b.block != seq[i-1].block) & (i>0):
+                    if (b.block != seq[bi-1].block) & (bi>0):
                         seq_ += [MoveTo(az=b.az, alt=b.alt)]
                 seq_ += [b]
-
         return seq_
 
 
@@ -766,7 +725,6 @@ class SimplifyMoves:
             b1, b2 = ir[bi], ir[bi+1]
             if isinstance(b1, MoveTo) and isinstance(b2, MoveTo):
                 # repeated moves will be replaced by the last move
-                # b = MoveTo(az=b2.az, alt=b2.alt)
                 return without(bi)
             elif isinstance(b1, WaitUntil) and isinstance(b2, WaitUntil):
                 # repeated wait untils will be replaced by the longer wait
