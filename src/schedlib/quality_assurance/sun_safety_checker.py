@@ -4,8 +4,7 @@ import numpy as np
 import argparse
 import datetime
 
-## going to require the actual agent code here
-import socs.agents.acu.avoidance as avoidance
+from ..thirdparty import avoidance
 
 import schedlib.utils as u
 logger = u.init_logger(__name__)
