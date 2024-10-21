@@ -137,12 +137,12 @@ def ufm_relock(state, commands=None):
     if doit:
         if commands is None:
             commands = [
-                "############# Daily Relock",
+                "######### Relock",
                 "run.smurf.zero_biases()",
-                "",
                 "time.sleep(120)",
                 "run.smurf.take_noise(concurrent=True, tag='res_check')",
                 "run.smurf.uxm_relock(concurrent=True)",
+                "######### ",
                 "",
             ]
         state = state.replace(

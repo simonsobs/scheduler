@@ -172,7 +172,8 @@ def make_blocks(master_file):
 def make_operations(
     az_speed, az_accel, disable_hwp=False, 
     apply_boresight_rot=True, hwp_cfg=None, hwp_dir=True,
-    iv_cadence=4*u.hour, home_at_end=False, run_relock=False
+    iv_cadence=4*u.hour, home_at_end=False, run_relock=False,
+    bad_smurf_slots=None,
 ):
     if hwp_cfg is None:
         hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper', 'forward':hwp_dir }

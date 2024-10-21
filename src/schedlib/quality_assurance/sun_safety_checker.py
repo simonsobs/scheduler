@@ -118,6 +118,7 @@ class SunCrawler:
         
         d1 = self.sungod.check_trajectory(init_az_range, [self.cur_el, self.cur_el], t=self.cur_time)
         d2 = self.sungod.check_trajectory(end_az_range, [self.cur_el, self.cur_el], t=stop)
+        
         assert((d1['sun_dist_min'] > self.policy['exclusion_radius']) and (d2['sun_dist_min'] > self.policy['exclusion_radius']))
         assert((d1['sun_time'] > self.policy['min_sun_time']) and (d2['sun_time'] > self.policy['min_sun_time']))
 
@@ -240,25 +241,22 @@ class SunCrawler:
                 d = self.sungod.check_trajectory(az_range, el_range, t=self.cur_time)
 
                 logger.info(f"Min slew distance to sun {d['sun_dist_min']}")
-                assert(d['sun_dist_min'] > self.policy['exclusion_radius'])
+                try:
+                    assert(d['sun_dist_min'] > self.policy['exclusion_radius'])
+                except AssertionError as e:
+                    self.raise_failure(e, l)
                 logger.info(f"Min sun clear time {d['sun_time']}")
-                assert(d['sun_time'] > self.policy['min_sun_time'])
+                try:
+                    assert(d['sun_time'] > self.policy['min_sun_time'])
+                except AssertionError as e:
+                    self.raise_failure(e, l)
 
                 moves = self.sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=self.cur_time)
                 move, decisions = self.sungod.select_move(moves)
                 try:
                     assert(move is not None)
                 except AssertionError as e:
-                    out = self.sungod.get_sun_pos(t=self.cur_time)
-                    logger.info(f'Sun position at failure time {out}')
-                    logger.error('Sun-safe motions not solved!')
-                    t = datetime.datetime.utcfromtimestamp(self.cur_time)
-                    logger.error(
-                        f"Error on Line \'{l}\' at time {t.isoformat()}"
-                    )
-                    logger.error('Move info (min sun dist, min sun time, min el, max el):')
-                    logger.error('\n'.join([', '.join(map(str, [m['sun_dist_min'], m['sun_time'], min(m['moves'].get_traj(res=1.0)[1]), max(m['moves'].get_traj(res=1.0)[1])])) for m in moves]))
-                    raise(e)
+                    self.raise_failure(e, l, moves)
 
             if 'az = ' in l:
                 az = float(l.split('az = ')[1].split('+')[0])
@@ -274,7 +272,10 @@ class SunCrawler:
 
             if l.strip() == ')':
                 scan_flag = False
-                self._scan_parse(cur_block)
+                try:
+                    self._scan_parse(cur_block)
+                except AssertionError as e:
+                    self.raise_failure(e, l)
                 cur_block = []
 
             if scan_flag:
@@ -282,7 +283,22 @@ class SunCrawler:
 
             if l == '':
                 break
-                
+
+    def raise_failure(self, e, line, moves=None):
+        out = self.sungod.get_sun_pos(t=self.cur_time)
+        logger.info(f'Sun position at failure time {out}')
+        logger.error('Sun-safe motions not solved!')
+        t = datetime.datetime.utcfromtimestamp(self.cur_time)
+        l = line.strip('\n')
+        logger.error(
+            f"Error on Line \'{l}\' at time {t.isoformat()}"
+        )
+        if moves is not None:
+            logger.error(
+                'Move info (min sun dist, min sun time, min el, max el):'
+            )
+            logger.error('\n'.join([', '.join(map(str, [m['sun_dist_min'], m['sun_time'], min(m['moves'].get_traj(res=1.0)[1]), max(m['moves'].get_traj(res=1.0)[1])])) for m in moves]))
+        raise(e)            
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
