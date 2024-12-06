@@ -253,13 +253,13 @@ def cmb_scan(state, block):
         )
     else:
         commands = []
-
+    
     commands.extend([
         "run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat()}',",
         f"    width={round(block.throw,3)}, az_drift=0,",
-        f"    subtype='cmb', tag='{block.tag}',",
+        f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
         ")",
     ])

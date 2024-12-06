@@ -64,9 +64,12 @@ class IR(core.Block):
         trimming effect on drift scans. It is not necessary here as we are 
         merely solving for different unwraps for drift scan.
 
+        We allow the option of changing the block or block.subtype here because 
+        sometimes we need to run a master schedule but mark things as
+        calibration. Most important example: drone calibration campaigns 
         """
-        if self.block is not None:
-            block_kwargs = {k: v for k, v in kwargs.items() if k in ['t0', 't1', 'az', 'alt']}
+        if self.block is not None and 'block' not in kwargs:
+            block_kwargs = {k: v for k, v in kwargs.items() if k in ['t0', 't1', 'az', 'alt', 'subtype']}
             new_block = dc_replace(self.block, **block_kwargs)
             kwargs['block'] = new_block
         return dc_replace(self, **kwargs)
