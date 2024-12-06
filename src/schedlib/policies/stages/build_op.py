@@ -58,10 +58,10 @@ class IR(core.Block):
         return f"{self.name[:15]:<15} ({self.subtype[:8]:<8}) az = {az}: {self.t0.strftime('%y-%m-%d %H:%M:%S')} -> {self.t1.strftime('%y-%m-%d %H:%M:%S')}"
 
     def replace(self, **kwargs):
-        """link `replace` in the wrapper block with the block it contains. 
-        Note that when IR is produced, we assume no trimming needs to happen, 
-        so we use `dc_replace` instead of `super().replace` which accounts for 
-        trimming effect on drift scans. It is not necessary here as we are 
+        """link `replace` in the wrapper block with the block it contains.
+        Note that when IR is produced, we assume no trimming needs to happen,
+        so we use `dc_replace` instead of `super().replace` which accounts for
+        trimming effect on drift scans. It is not necessary here as we are
         merely solving for different unwraps for drift scan.
 
         """
@@ -387,16 +387,17 @@ class BuildOp:
 
         ops = [op for op in operations if op['sched_mode'] == SchedMode.PostSession]
         state, post_dur, _ = self._apply_ops(state, ops)
-        ir += [ 
+        ir += [
             IR(name='post_session', subtype=IRMode.PostSession,
-               t0=state.curr_time-dt.timedelta(seconds=post_dur), 
+               t0=state.curr_time-dt.timedelta(seconds=post_dur),
                t1=state.curr_time, operations=ops,
-               az=state.az_now, alt=state.el_now)
+               az=self.plan_moves['stow_position']['az_stow'],
+               alt=self.plan_moves['stow_position']['el_stow'])
         ]
         logger.debug(f"post-session state: {state}")
 
         return ir
-    
+
     def round_trip(self, seq, t0, t1, state, operations):
         ir = self.lower(seq, t0, t1, state, operations)
         seq = self.lift(ir)
@@ -442,7 +443,7 @@ class BuildOp:
         for ir in irs:
             state, op_blocks = resolve_block(state, ir)
             ir_lowered += op_blocks
-        return ir_lowered, state 
+        return ir_lowered, state
 
     def _apply_ops(self, state, op_cfgs, block=None, az=None, alt=None):
         """
@@ -682,7 +683,7 @@ class BuildOp:
                 az=block.az,
                 alt=block.alt,
                 block=block,
-                operations=post_ops) 
+                operations=post_ops)
             ]
 
         return state, op_seq
@@ -691,6 +692,7 @@ class BuildOp:
 class PlanMoves:
     """solve moves to make seq possible"""
     sun_policy: Dict[str, Any]
+    stow_position: Dict[str, Any]
     az_step: float = 1
     az_limits: Tuple[float, float] = (-90, 450)
 
@@ -804,13 +806,13 @@ class PlanMoves:
             gaps = get_safe_gaps(seq[i-1], seq[i])
             seq_.extend(gaps)
             seq_.append(seq[i])
-        
+
         # Replace gaps with Wait, Move, Wait.
         seq_, seq = [], seq_
         last_az, last_alt = None, None
         # Combine, but skipping first and last blocks, which are init/shutdown.
         for i, b in enumerate(seq):
-            if b.name in ['pre_session', 'post_session']:
+            if b.name in ['pre_session']:
                 # Pre/post-ambles, leave it alone.
                 seq_ += [b]
             elif b.name == 'gap':
@@ -830,7 +832,7 @@ class PlanMoves:
                     seq_ += [MoveTo(az=b.az, alt=b.alt)]
                     last_az, last_alt = b.az, b.alt
                 else:
-                    if (b.block != seq[i-1].block) & (i>0):
+                    if i > 0:
                         seq_ += [MoveTo(az=b.az, alt=b.alt)]
                 seq_ += [b]
 
@@ -870,7 +872,7 @@ class SimplifyMoves:
                 # gap followed by wait until will be replaced by the wait until
                 return without(bi)
         return ir
-        
+
 
 def find_unwrap(az, az_limits=[-90, 450]) -> List[float]:
     az = (az - az_limits[0]) % 360 + az_limits[0]  # min az becomes az_limits[0]
@@ -878,10 +880,10 @@ def find_unwrap(az, az_limits=[-90, 450]) -> List[float]:
     return az_unwraps
 
 def az_ranges_intersect(
-    r1: List[Tuple[float, float]], 
-    r2: List[Tuple[float, float]], 
-    *, 
-    az_limits: Tuple[float, float], 
+    r1: List[Tuple[float, float]],
+    r2: List[Tuple[float, float]],
+    *,
+    az_limits: Tuple[float, float],
     az_step: float
 ) -> List[Tuple[float, float]]:
     az_full = np.arange(az_limits[0], az_limits[1]+az_step, az_step)

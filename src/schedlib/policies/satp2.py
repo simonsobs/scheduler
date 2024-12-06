@@ -203,7 +203,7 @@ def make_operations(
     if home_at_end:
         post_session_ops = [
             { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
-            { 'name': 'sat.wrap_up'         , 'sched_mode': SchedMode.PostSession, 'az_stow': 180, 'el_stow': 40},
+            { 'name': 'sat.wrap_up'         , 'sched_mode': SchedMode.PostSession},
         ]
     else:
         post_session_ops = []
@@ -236,6 +236,11 @@ def make_config(
         'min_el': 40,
     }
 
+    stow_position = {
+        'az_stow': 180,
+        'el_stow': 40,
+    }
+
     config = {
         'blocks': blocks,
         'geometries': geometries,
@@ -258,6 +263,7 @@ def make_config(
         'stages': {
             'build_op': {
                 'plan_moves': {
+                    'stow_position': stow_position,
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
                     'az_limits': [-45, 405],
@@ -287,7 +293,7 @@ class SATP2Policy(SATPolicy):
         state_file=None, **op_cfg
     ):
         x = cls(**make_config(
-            master_file, az_speed, az_accel, 
+            master_file, az_speed, az_accel,
             iv_cadence, bias_step_cadence, min_hwp_el,
             max_cmb_scan_duration, cal_targets,
             boresight_override, **op_cfg

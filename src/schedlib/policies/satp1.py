@@ -202,7 +202,7 @@ def make_operations(
     if home_at_end:
         post_session_ops = [
             { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
-            { 'name': 'sat.wrap_up'         , 'sched_mode': SchedMode.PostSession, 'az_stow': 180, 'el_stow': 48},
+            { 'name': 'sat.wrap_up'         , 'sched_mode': SchedMode.PostSession},
         ]
     else:
         post_session_ops = []
@@ -235,6 +235,11 @@ def make_config(
         'min_el': 48,
     }
 
+    stow_position = {
+        'az_stow': 180,
+        'el_stow': 48,
+    }
+
     config = {
         'blocks': blocks,
         'geometries': geometries,
@@ -248,15 +253,16 @@ def make_config(
         'cal_targets': cal_targets,
         'scan_tag': None,
         'boresight_override': boresight_override,
-        'az_speed' : az_speed,
-        'az_accel' : az_accel,
-        'iv_cadence' : iv_cadence,
-        'bias_step_cadence' : bias_step_cadence,
-        'min_hwp_el' : min_hwp_el,
-        'max_cmb_scan_duration' : max_cmb_scan_duration,
+        'az_speed': az_speed,
+        'az_accel': az_accel,
+        'iv_cadence': iv_cadence,
+        'bias_step_cadence': bias_step_cadence,
+        'min_hwp_el': min_hwp_el,
+        'max_cmb_scan_duration': max_cmb_scan_duration,
         'stages': {
             'build_op': {
                 'plan_moves': {
+                    'stow_position': stow_position,
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
                     'az_limits': [-45, 405],

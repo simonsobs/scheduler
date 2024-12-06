@@ -166,6 +166,7 @@ def hwp_spin_up(state, disable_hwp=False, forward=True):
             f"run.hwp.set_freq(freq={freq})",
         ]
 
+
 @cmd.operation(name='sat.hwp_spin_down', return_duration=True)
 def hwp_spin_down(state, disable_hwp=False):
     if disable_hwp:
@@ -365,11 +366,8 @@ def bias_step(state, block, bias_step_cadence=None):
         return state, 0, []
 
 @cmd.operation(name='sat.wrap_up', duration=0)
-def wrap_up(state, az_stow, el_stow):
-    state = state.replace(az_now=az_stow, el_now=el_stow)
+def wrap_up(state):
     return state, [
-        "# go home",
-        f"run.acu.move_to(az={az_stow}, el={el_stow})",
         "time.sleep(1)"
     ]
 

@@ -59,7 +59,7 @@ class State:
     def save(self, fname):
         out = self.clear_history()
         np.save( fname, out.to_dict() )
-    
+
     @classmethod
     def load(cls, fname):
         return cls.from_dict( np.load(fname, allow_pickle=True).item() )
@@ -195,7 +195,7 @@ class Operation(ABC):
     An operation is a callable object that produces a set of commands to be executed by the observatory.
 
     This block takes an observatory state (dict) as input and returns a tuple containing a new state object
-    as the effect of the command, and a list of commands for the telescope. Each command in the list is a 
+    as the effect of the command, and a list of commands for the telescope. Each command in the list is a
     string-like object.
 
     Parameters
@@ -386,21 +386,17 @@ def move_to(state, az, el, min_el=48, force=False):
     duration = 0
     cmd = []
 
-    if el == state.el_now:
-        cmd += [f"run.acu.move_to(az={round(az, 3)}, el={(round(el, 3))})"]
-    else:
-        if state.hwp_spinning and el < min_el:
-            state = state.replace(hwp_spinning=False)
-            duration += HWP_SPIN_DOWN
-            cmd += [
-                "run.hwp.stop(active=True)",
-                "sup.disable_driver_board()",
-            ]
-
+    if state.hwp_spinning and el < min_el:
+        state = state.replace(hwp_spinning=False)
+        duration += HWP_SPIN_DOWN
         cmd += [
-            f"run.acu.move_to(az={round(az, 3)}, el={round(state.el_now, 3)})",
-            f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+            "run.hwp.stop(active=True)",
+            "sup.disable_driver_board()",
         ]
+
+    cmd += [
+        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+    ]
     state = state.replace(az_now=az, el_now=el)
 
     return state, duration, cmd
