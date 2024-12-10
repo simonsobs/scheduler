@@ -42,9 +42,17 @@ class AzRange(core.MappableRule):
             return block
 
         def is_good(az, throw):
-            return (az >= self.az_range[0]) and (az + throw <= self.az_range[1])
+            if (az < self.az_range[0]) or (az > self.az_range[1]):
+                return False
+            elif (az + throw < self.az_range[0]) or (az + throw > self.az_range[1]):
+                return False
+            return True
+
         def get_coverage(az, throw):
-            return min(self.az_range[1], az + throw) - max(self.az_range[0], az)
+            if throw > 0:
+                return min(self.az_range[1], az + throw) - max(self.az_range[0], az)
+            else:
+                return min(self.az_range[1], az) - max(self.az_range[0], az + throw)
 
         # get az limits
         dt = utils.dt2ct(block.t1) - utils.dt2ct(block.t0)
@@ -64,13 +72,13 @@ class AzRange(core.MappableRule):
 
             # when we get here, it means we didn't find a full coverage,
             # abort if we don't want to trim
-            if not self.trim: 
+            if not self.trim:
                 return None
 
             # if we are allowed to trim, use the best coverage
             return block.replace(az=max(az_best, self.az_range[0]), throw=get_coverage(az_best, throw))
-                     
-        elif az + throw > self.az_range[1]:
+
+        elif az > self.az_range[1]:
             # see if wrapping around helps
             az_best = az
             for az_ in np.arange(az, self.az_range[0], -360):
@@ -79,14 +87,50 @@ class AzRange(core.MappableRule):
                     return block.replace(az=az_)
                 if get_coverage(az_, throw) > get_coverage(az, throw):
                     az_best = az_
-                    
+
             # when we get here, it means we didn't find a full coverage,
             # abort if we don't want to trim
             if not self.trim:
                 return None
-                
+
+            # if we are allowed to trim, use the best coverage
+            return block.replace(az=min(az_best, self.az_range[1]), throw=get_coverage(az_best, throw))
+
+        elif (az + throw) > self.az_range[1]:
+            # see if wrapping around helps
+            az_best = az
+            for az_ in np.arange(az, self.az_range[0], -360):
+                # ideal case: find full coverage after 2pi wrapping
+                if is_good(az_, throw):
+                    return block.replace(az=az_)
+                if get_coverage(az_, throw) > get_coverage(az, throw):
+                    az_best = az_
+
+            # when we get here, it means we didn't find a full coverage,
+            # abort if we don't want to trim
+            if not self.trim:
+                return None
+
             # if we are allowed to trim, use the best coverage
             return block.replace(az=max(az_best, self.az_range[0]), throw=get_coverage(az_best, throw))
+
+        elif (az + throw) < self.az_range[0]:
+            # see if wrapping around helps
+            az_best = az
+            for az_ in np.arange(az, self.az_range[1], 360):
+                # ideal case: find full coverage after 2pi wrapping
+                if is_good(az_, throw):
+                    return block.replace(az=az_)
+                if get_coverage(az_, throw) > get_coverage(az, throw):
+                    az_best = az_
+
+            # when we get here, it means we didn't find a full coverage,
+            # abort if we don't want to trim
+            if not self.trim:
+                return None
+
+            # if we are allowed to trim, use the best coverage
+            return block.replace(az=min(az_best, self.az_range[1]), throw=get_coverage(az_best, throw))
 
         else:
             raise RuntimeError("This should not happen")

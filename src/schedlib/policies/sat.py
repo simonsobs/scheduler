@@ -625,6 +625,12 @@ class SATPolicy:
             rule = ru.make_rule('min-duration', **self.rules['min-duration'])
             blocks['baseline'] = rule(blocks['baseline'])
 
+        # az range rule
+        if 'az-range' in self.rules:
+            logger.info(f"applying az range rule: {self.rules['az-range']}")
+            az_range = ru.AzRange(**self.rules['az-range'])
+            blocks['calibration'] = az_range(blocks['calibration'])
+
         # -----------------------------------------------------------------
         # step 4: tags
         # -----------------------------------------------------------------

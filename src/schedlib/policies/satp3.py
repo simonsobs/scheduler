@@ -256,6 +256,11 @@ def make_config(
         'min_el': 40,
     }
 
+    az_range = {
+        'trim': False,
+        'az_range': [-45, 405]
+    }
+
     config = {
         'blocks': blocks,
         'geometries': geometries,
@@ -264,6 +269,7 @@ def make_config(
                 'min_duration': 600
             },
             'sun-avoidance': sun_policy,
+            'az-range': az_range,
         },
         'operations': operations,
         'cal_targets': cal_targets,
@@ -279,7 +285,7 @@ def make_config(
                 'plan_moves': {
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
-                    'az_limits': [-45, 405],
+                    'az_limits': az_range['az_range'],
                 }
             }
         }
