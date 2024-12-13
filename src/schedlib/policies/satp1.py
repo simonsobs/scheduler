@@ -5,8 +5,7 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget
-from ..commands import SchedMode
+from .sat import SATPolicy, State, CalTarget, SchedMode, WiregridTarget
 
 logger = u.init_logger(__name__)
 
@@ -207,7 +206,10 @@ def make_operations(
     else:
         post_session_ops = []
 
-    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
+    wiregrid_ops = [
+        { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
+    ]
+    return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 
 def make_config(
     master_file,
