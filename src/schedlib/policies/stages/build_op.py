@@ -218,7 +218,7 @@ class BuildOp:
 
         # now we do lowering further into full ops
         logger.info(f"================ lowering (ops) ================")
-        ir_ops, out_state = self.lower_ops(ir, init_state)
+        ir_ops, out_state = self.lower_ops(ir, init_state, t0, t1)
         logger.info(u.pformat(ir_ops))
 
         logger.info(f"================ done ================")
@@ -439,7 +439,7 @@ class BuildOp:
     def lift(self, ir):
         return core.seq_sort(core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir), flatten=True)
 
-    def lower_ops(self, irs, state):
+    def lower_ops(self, irs, state, t0, t1):
         # `lower` generates a basic plan, here we work with ir to resolve 
         # all operations within each blocks
         def resolve_block(state, ir):
@@ -452,6 +452,10 @@ class BuildOp:
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif ir.subtype in [IRMode.PreSession, IRMode.PostSession]:
                 state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt)
+                if ir.subtype == IRMode.PostSession:
+                    op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': t1}]
+                    state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
+                    op_blocks = op_blocks + op_blocks_wait
             elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
                 op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t0}]
                 state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
