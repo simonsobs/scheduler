@@ -13,6 +13,7 @@ logger = u.init_logger(__name__)
 
 MIN_DURATION = 0.01
 HWP_SPIN_DOWN = 10*u.minute
+HWP_SPIN_UP = 20*u.minute
 
 @dataclass_json
 @dataclass(frozen=True)

@@ -33,6 +33,8 @@ class State(cmd.State):
         The current boresight rotation state.
     hwp_spinning : bool
         Whether the high-precision measurement wheel is spinning or not.
+    hwp_dir : bool
+        Current direction of HWP.  True is forward, False is backwards.
     last_ufm_relock : Optional[datetime.datetime]
         The last time the UFM was relocked, or None if it has not been relocked.
     last_bias_step : Optional[datetime.datetime]
@@ -42,6 +44,7 @@ class State(cmd.State):
     """
     boresight_rot_now: float = 0
     hwp_spinning: bool = False
+    hwp_dir: bool = None
     last_ufm_relock: Optional[dt.datetime] = None
     last_bias_step: Optional[dt.datetime] = None
     last_bias_step_boresight: Optional[float] = None
@@ -150,22 +153,33 @@ def ufm_relock(state, commands=None):
         return state, 0, ["# no ufm relock needed at this time"]
 
 @cmd.operation(name='sat.hwp_spin_up', return_duration=True)
-def hwp_spin_up(state, disable_hwp=False, forward=True):
+def hwp_spin_up(state, block, disable_hwp=False):
+    cmds = []
+    duration = 0
+
     if disable_hwp:
         return state, 0, ["# hwp disabled"]
-    elif state.hwp_spinning:
-        return state, 0, ["# hwp already spinning"]
-    else:
-        state = state.replace(hwp_spinning=True)
-        if forward:
-            freq = 2
-        else:
-            freq = -2
-        return state, 20*u.minute, [
-            "sup.enable_driver_board()",
-            f"run.hwp.set_freq(freq={freq})",
-        ]
 
+    elif state.hwp_spinning:
+        # if spinning in opposite direction, spin down first
+        if block.hwp_dir is not None and state.hwp_dir != block.hwp_dir:
+            duration += cmd.HWP_SPIN_DOWN
+            cmds += [
+            "run.hwp.stop(active=True)",
+            "sup.disable_driver_board()",
+            ]
+        else:
+            return state, 0, [f"# hwp already spinning with forward={state.hwp_dir}"]
+
+    hwp_dir = block.hwp_dir if block.hwp_dir is not None else state.hwp_dir
+    state = state.replace(hwp_dir=hwp_dir)
+    state = state.replace(hwp_spinning=True)
+
+    freq = 2 if hwp_dir else -2
+    return state, duration + cmd.HWP_SPIN_UP, cmds + [
+        "sup.enable_driver_board()",
+        f"run.hwp.set_freq(freq={freq})",
+    ]
 
 @cmd.operation(name='sat.hwp_spin_down', return_duration=True)
 def hwp_spin_down(state, disable_hwp=False):
@@ -480,13 +494,6 @@ class SATPolicy:
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
 
-        # update az speed in scan blocks
-        blocks = core.seq_map_when(
-            lambda b: isinstance(b, inst.ScanBlock),
-            lambda b: b.replace(az_speed=self.az_speed,az_accel=self.az_accel),
-            blocks
-        )
-
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
 
@@ -642,7 +649,7 @@ class SATPolicy:
         blocks['baseline']['cmb'] = core.seq_map(
             lambda block: block.replace(
                 subtype="cmb",
-                tag=f"{block.az:.0f}-{block.az+block.throw:.0f}"
+                tag=f"{block.tag},{block.az:.0f}-{block.az+block.throw:.0f}"
             ),
             blocks['baseline']['cmb']
         )
