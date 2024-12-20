@@ -236,6 +236,8 @@ def make_config(
     min_hwp_el,
     max_cmb_scan_duration,
     cal_targets,
+    az_stow=None,
+    el_stow=None,
     boresight_override=None,
     **op_cfg
 ):
@@ -256,10 +258,13 @@ def make_config(
         'min_el': 40,
     }
 
-    stow_position = {
-        'az_stow': 180,
-        'el_stow': 40,
-    }
+    if az_stow is None or el_stow is None:
+        stow_position = {}
+    else:
+        stow_position = {
+            'az_stow': az_stow,
+            'el_stow': el_stow,
+        }
 
     az_range = {
         'trim': False,
@@ -312,13 +317,14 @@ class SATP3Policy(SATPolicy):
     def from_defaults(cls, master_file, az_speed=0.5, az_accel=0.25,
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
         min_hwp_el=48, max_cmb_scan_duration=1*u.hour,
-        cal_targets=[], state_file=None, **op_cfg
+        cal_targets=[], az_stow=None, el_stow=None,
+        state_file=None, **op_cfg
     ):
         x = cls(**make_config(
             master_file, az_speed, az_accel,
             iv_cadence, bias_step_cadence, min_hwp_el,
             max_cmb_scan_duration,
-            cal_targets, **op_cfg)
+            cal_targets, az_stow, el_stow, **op_cfg)
         )
         x.state_file = state_file
         return x
