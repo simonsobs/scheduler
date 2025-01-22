@@ -28,8 +28,8 @@ logger = u.init_logger(__name__)
 #                  Register operations
 # ----------------------------------------------------
 # Note: to avoid naming collisions. Use appropriate prefixes
-# whenver necessary. For example, all satp1 specific
-# operations should start with `satp1`.
+# whenver necessary. For example, all lat specific
+# operations should start with `lat`.
 #
 # Registered operations can be three kinds of functions:
 #
@@ -341,9 +341,15 @@ def make_config(
 
 @dataclass
 class LATPolicy(tel.TelPolicy):
-    """a more realistic LAT policy."""
+    """a more realistic LAT policy.
+
+    Parameters
+    ----------
+    state_file : string
+        optional path to the state file.
 
     state_file: Optional[str] = None
+    """
 
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
@@ -434,7 +440,7 @@ class LATPolicy(tel.TelPolicy):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
-        """customize typical initial state for satp1, if needed"""
+        """customize typical initial state for lat, if needed"""
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
