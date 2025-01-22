@@ -150,7 +150,6 @@ class BuildOp:
     policy_config: Dict[str, Any]
     min_duration: float = 1 * u.minute
     min_cmb_duration: float = 10 * u.minute
-    disable_hwp: bool = False
     max_pass: int = 3
     plan_moves: Dict[str, Any] = field(default_factory=dict)
     simplify_moves: Dict[str, Any] = field(default_factory=dict)
@@ -486,8 +485,11 @@ class BuildOp:
                 op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t1}]
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif isinstance(ir, MoveTo):
-                op_cfgs = [{'name': 'move_to', 'sched_mode': IRMode.Aux, 'az': ir.az, 'el': ir.alt,
-                'min_el': self.policy_config.min_hwp_el, 'force': True}]  # aux move_to should be enforced
+                # aux move_to should be enforced
+                op_cfgs = [{'name': 'move_to', 'sched_mode': IRMode.Aux, 'az': ir.az, 'el': ir.alt, 'force': True}]
+                # add min hwp elevation if present
+                if hasattr(self.policy_config, 'min_hwp_el'):
+                    op_cfgs[0]['min_el'] = self.policy_config.min_hwp_el
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif ir.subtype in [IRMode.PreSession, IRMode.PostSession]:
                 state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt)

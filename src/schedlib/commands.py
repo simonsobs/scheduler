@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 import inspect
 
 from . import core, utils as u
+
 logger = u.init_logger(__name__)
 
 
@@ -378,29 +379,6 @@ def start_time(state):
     return state, [
         f"run.wait_until('{state.curr_time.isoformat()}', tolerance=3600)"
     ]
-
-@operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, force=False):
-    if not force and (state.az_now == az and state.el_now == el):
-        return state, 0, []
-
-    duration = 0
-    cmd = []
-
-    if state.hwp_spinning and el < min_el:
-        state = state.replace(hwp_spinning=False)
-        duration += HWP_SPIN_DOWN
-        cmd += [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-        ]
-
-    cmd += [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
-    ]
-    state = state.replace(az_now=az, el_now=el)
-
-    return state, duration, cmd
 
 @operation(name='set_scan_params', duration=0)
 def set_scan_params(state, az_speed, az_accel):
