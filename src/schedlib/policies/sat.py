@@ -252,10 +252,12 @@ class SATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
+        columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
+                   "el", "speed", "accel", "pass", "sub", "uid", "patch"]
 
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1),
+            partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )

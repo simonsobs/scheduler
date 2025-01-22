@@ -308,11 +308,11 @@ class TelPolicy:
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
 
-    def construct_seq(self, loader_cfg, t0, t1):
+    def construct_seq(self, loader_cfg, t0, t1, columns):
         if loader_cfg['type'] == 'source':
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
         elif loader_cfg['type'] == 'toast':
-            blocks = inst.parse_sequence_from_toast(loader_cfg['file'])
+            blocks = inst.parse_sequence_from_toast(loader_cfg['file'], columns)
             if self.boresight_override is not None:
                 blocks = core.seq_map(
                     lambda b: b.replace(

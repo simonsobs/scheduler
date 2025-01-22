@@ -286,7 +286,7 @@ def array_info_from_query(geometries, query):
     arrays = [make_circular_cover(*g['center'], g['radius']) for g in matched]
     return array_info_merge(arrays)
 
-def parse_sequence_from_toast(ifile):
+def parse_sequence_from_toast(ifile, columns):
     """
     Parameters
     ----------
@@ -299,11 +299,8 @@ def parse_sequence_from_toast(ifile):
         List of ScanBlock objects parsed from the input file.
 
     """
-    #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
-    #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
-    #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
-    columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-               "el", "speed", "accel", "pass", "sub", "uid", "patch"]
+    #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
+    #           "el", "speed", "accel", "pass", "sub", "uid", "patch"]
 
     # count the number of lines to skip
     with open(ifile) as f:
@@ -315,6 +312,10 @@ def parse_sequence_from_toast(ifile):
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
+        kwargs = {}
+        if 'hwp_dir' in row:
+            kwargs['hwp_dir'] = (row['hwp_dir'] == 1)
+
         block = ScanBlock(
             name=row['patch'].strip(),
             t0=u.str2datetime(row['start_utc']),
@@ -326,7 +327,7 @@ def parse_sequence_from_toast(ifile):
             throw=np.abs(row['az_max'] - row['az_min']),
             boresight_angle=row['rotation'],
             tag=row['uid'].strip(),
-            hwp_dir=(row['hwp_dir'] == 1)
+            **kwargs
         )
         blocks.append(block)
     return blocks
