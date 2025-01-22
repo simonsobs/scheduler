@@ -31,8 +31,6 @@ class State(tel.State):
 
     Parameters
     ----------
-    boresight_rot_now : int
-        The current boresight rotation state.
     hwp_spinning : bool
         Whether the high-precision measurement wheel is spinning or not.
     hwp_dir : bool
@@ -44,7 +42,6 @@ class State(tel.State):
     is_det_setup : bool
         Whether the detectors have been set up or not.
     """
-    boresight_rot_now: float = 0
     hwp_spinning: bool = False
     hwp_dir: bool = None
 
@@ -102,7 +99,26 @@ def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=
 
 @cmd.operation(name='sat.setup_boresight', return_duration=True)
 def setup_boresight(state, block, apply_boresight_rot=True):
-    return tel.setup_boresight(state, block, apply_boresight_rot)
+    commands = []
+    duration = 0
+
+    if apply_boresight_rot and (
+            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+        ):
+        if state.hwp_spinning:
+            state = state.replace(hwp_spinning=False)
+            duration += cmd.HWP_SPIN_DOWN
+            commands += [
+                "run.hwp.stop(active=True)",
+                "sup.disable_driver_board()",
+            ]
+
+        assert not state.hwp_spinning
+        commands += [f"run.acu.set_boresight({block.boresight_angle})"]
+        state = state.replace(boresight_rot_now=block.boresight_angle)
+        duration += 1*u.minute
+
+    return state, duration, commands
 
 @cmd.operation(name='sat.bias_step', return_duration=True)
 def bias_step(state, block, bias_step_cadence=None):
@@ -191,8 +207,11 @@ class SATPolicy(tel.TelPolicy):
     hwp_override : bool
         a bool to override the hwp direction from the master schedules.  True is forward, False is
         reverse.
+    min_hwp_el : float
+        the minimum elevation a move command to go to without stopping the hwp first
     """
     hwp_override: Optional[bool] = None
+    min_hwp_el : float = 48 # deg
 
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):

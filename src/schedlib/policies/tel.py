@@ -180,7 +180,7 @@ def cmb_scan(state, block):
         )
     else:
         commands = []
-    
+
     commands.extend([
         "run.seq.scan(",
         f"    description='{block.name}',",
@@ -230,30 +230,6 @@ def source_scan(state, block):
         ")",
     ])
     return state, block.duration.total_seconds(), commands
-
-
-def setup_boresight(state, block, apply_boresight_rot=True):
-    commands = []
-    duration = 0
-
-    if apply_boresight_rot and (
-            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
-        ):
-        if hasattr(state, 'hwp_spinning'):
-            if state.hwp_spinning:
-                state = state.replace(hwp_spinning=False)
-                duration += cmd.HWP_SPIN_DOWN
-                commands += [
-                    "run.hwp.stop(active=True)",
-                    "sup.disable_driver_board()",
-                ]
-
-            assert not state.hwp_spinning
-        commands += [f"run.acu.set_boresight({block.boresight_angle})"]
-        state = state.replace(boresight_rot_now=block.boresight_angle)
-        duration += 1*u.minute
-
-    return state, duration, commands
 
 def bias_step(state, block, bias_step_cadence=None):
     # -> should be done at a regular interval if bias_step_cadence is not None

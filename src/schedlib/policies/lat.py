@@ -75,7 +75,17 @@ def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=
 
 @cmd.operation(name='lat.setup_boresight', return_duration=True)
 def setup_boresight(state, block, apply_boresight_rot=True):
-    return tel.setup_boresight(state, block, apply_boresight_rot)
+    commands = []
+    duration = 0
+    if apply_boresight_rot and (
+            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+        ):
+
+        commands = [f"run.acu.set_boresight({block.boresight_angle})"]
+        state = state.replace(boresight_rot_now=block.boresight_angle)
+        duration = 1*u.minute
+
+    return state, duration, commands
 
 @cmd.operation(name='lat.bias_step', return_duration=True)
 def bias_step(state, block, bias_step_cadence=None):
