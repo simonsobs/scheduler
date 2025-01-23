@@ -598,7 +598,7 @@ class BuildOpSimple:
             post_block_name = "post_block (into)"
             state = state.replace(curr_time=constraint.t1)
 
-        block has been trimmed properly, so we can just do this
+        # block has been trimmed properly, so we can just do this
         if len(pre_ops) > 0:
             op_seq += [
                 IR(name=pre_block_name,
