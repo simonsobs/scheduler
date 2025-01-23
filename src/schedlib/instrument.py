@@ -49,6 +49,7 @@ class ScanBlock(core.NamedBlock):
     hwp_dir: Optional[bool] = None
     subtype: str = ""
     tag: str = ""
+    priority: float = 0
 
     def replace(self, **kwargs) -> "ScanBlock":
         """
@@ -303,7 +304,7 @@ def parse_sequence_from_toast(ifile):
     #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-               "el", "speed", "accel", "pass", "sub", "uid", "patch"]
+               "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
 
     # count the number of lines to skip
     with open(ifile) as f:
@@ -326,6 +327,7 @@ def parse_sequence_from_toast(ifile):
             throw=np.abs(row['az_max'] - row['az_min']),
             boresight_angle=row['rotation'],
             tag=row['uid'].strip(),
+            priority=row['#'],
             hwp_dir=(row['hwp_dir'] == 1)
         )
         blocks.append(block)

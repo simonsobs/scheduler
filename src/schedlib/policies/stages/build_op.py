@@ -909,7 +909,9 @@ class BuildOpSimple:
 
     def lower(self, seq, t0, t1, state):
         # group operations by priority
-        priorities = sorted(list(set(b['priority'] for b in seq)), reverse=True)
+        priorities = sorted(list(set(b['priority'] for b in seq)), reverse=False)
+
+        print(priorities)
 
         # process each priority group
         init_state = state
@@ -966,7 +968,7 @@ class BuildOpSimple:
                     logger.info(f"-> {b['name'][:5]:<5} ({b['block'].subtype:<3}): {b['block'].t0.strftime('%d-%m-%y %H:%M:%S')} -> {b['block'].t1.strftime('%d-%m-%y %H:%M:%S')}")
                     seq_out += ir
                     constraints = core.seq_flatten(core.seq_trim(constraints, t0=state.curr_time, t1=t1))
-                elif b['priority'] < priority:
+                elif b['priority'] > priority:
                     # lower priority item will pass through to be planned in the next round
                     seq_out += [b]
                 else:
