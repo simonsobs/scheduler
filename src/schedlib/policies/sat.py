@@ -378,7 +378,6 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        f"# priority={block.priority}, duration={block.duration}",
         "run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat()}',",
@@ -410,7 +409,6 @@ def source_scan(state, block):
     
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
-        f"# priority={block.priority}, duration={block.duration}",
         f"run.acu.move_to_target(az={round(block.az,3)}, el={round(block.alt,3)},",
         f"    start_time='{block.t0.isoformat()}',",
         f"    stop_time='{block.t1.isoformat()}',",
