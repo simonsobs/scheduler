@@ -14,7 +14,7 @@ logger = u.init_logger(__name__)
 
 class SunCrawler:
     def __init__(self, platform, path=None, cmd_txt=None):
-        assert platform in ['satp1', 'satp2', 'satp3'], (
+        assert platform in ['satp1', 'satp2', 'satp3', 'lat'], (
             f"{platform} is not an implemented platform, choose from satp1, "
              "satp2, or satp3"
         )
@@ -26,15 +26,16 @@ class SunCrawler:
                 from schedlib.policies.satp2 import make_config
             case "satp3":
                 from schedlib.policies.satp3 import make_config
+            case "lat":
+                from schedlib.policies.lat import make_config
 
         self.configs = make_config(
             master_file='None',
             az_speed=None, az_accel=None,
             iv_cadence=None, bias_step_cadence=None,
-            min_hwp_el=None, max_cmb_scan_duration=None,
-            cal_targets=None,
+            max_cmb_scan_duration=None, cal_targets=None,
         )['rules']['sun-avoidance']
-            
+
         if not path is None:
             self.from_cmds = False
             self.cmd_n = 0
@@ -58,7 +59,7 @@ class SunCrawler:
         self._get_initial_pos()
         self._generate_sun_solution()
         #self._test_sungod()
-        
+
     def next_line(self):
         if self.from_cmds:
             if self.cmd_n == len(self.cmd_list):
@@ -108,7 +109,7 @@ class SunCrawler:
                 width = float(l.split('=')[1].rstrip(', \n'))
             elif 'drift' in l and 'width' not in l:
                 drift = float(l.split('=')[1].rstrip(', \n'))
-                
+
         init_az_range = [self.cur_az, self.cur_az + width]
         drifted_az = self.cur_az + drift * (stop - self.cur_time)
         end_az_range = [drifted_az, drifted_az + width]
@@ -116,7 +117,7 @@ class SunCrawler:
         if self.cur_time - self.sungod.base_time > self.MAX_SUN_MAP_TDELTA:
             print('Resetting sun god!')
             self.sungod.reset(base_time=self.cur_time-100.)
-        
+
         d1 = self.sungod.check_trajectory(init_az_range, [self.cur_el, self.cur_el], t=self.cur_time)
         d2 = self.sungod.check_trajectory(end_az_range, [self.cur_el, self.cur_el], t=stop)
         assert((d1['sun_dist_min'] > self.policy['exclusion_radius']) and (d2['sun_dist_min'] > self.policy['exclusion_radius']))
@@ -125,10 +126,9 @@ class SunCrawler:
         #print('Min scan distance to sun at start', d1['sun_dist_min'])
         print('Min scan distance to sun at end', d2['sun_dist_min'])
 
-
         logger.debug(f"azimuth : {self.cur_az} --> {drifted_az + width}")
         logger.debug(f"timestamp : {self.cur_time} --> {stop}")
-        
+
         self.cur_az = drifted_az + width
         # Need to determine which az will be most stringent for next slew
         if d2['sun_dist_start'] >= d2['sun_dist_stop']:
@@ -152,7 +152,7 @@ class SunCrawler:
                 self.cur_az = az
                 self.cur_el = el
                 pos_flag = True
-                
+
             if 'wait_until' in l:
                 ts = self._wait_parse(l)
                 self.cur_time = ts
@@ -201,7 +201,7 @@ class SunCrawler:
         logger.info("Checking Sun Safety")
         cur_block = []
         scan_flag = False
-        
+
         while True:
             l = self.next_line()
 
@@ -209,7 +209,7 @@ class SunCrawler:
                 ts = self._wait_parse(l)
                 logger.debug(f"timestamp: '{self.cur_time} --> {ts}")
                 self.cur_time = ts
-            
+
             if 'move_to' in l:
                 az, el = self._move_to_parse(l)
 
@@ -217,7 +217,7 @@ class SunCrawler:
                     az_range, el_range = self._get_traj(az, el)
                     logger.debug(f"azimuth : {self.cur_az} --> {az}")
                     logger.debug(f"elevation : {self.cur_el} --> {el}")
-                    
+
                     self.cur_az = az
                     self.cur_el = el
                 elif el is not None:
@@ -232,15 +232,15 @@ class SunCrawler:
                     # if np.round(self.cur_az,2) == np.round(self.next_az,2):
                     #     self.cur_el = el
                     #     continue
-                    
+
                     self.cur_az = self.next_az
                     self.cur_el = el
-                    
+
                 #print('Ranges', az_range, el_range)
                 if self.cur_time - self.sungod.base_time > self.MAX_SUN_MAP_TDELTA:
                     logger.info('Resetting sun god!')
                     self.sungod.reset(base_time=self.cur_time-100.)
-                
+
                 d = self.sungod.check_trajectory(az_range, el_range, t=self.cur_time)
 
                 logger.info(f"Min slew distance to sun {d['sun_dist_min']}")

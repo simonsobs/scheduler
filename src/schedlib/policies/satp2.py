@@ -5,7 +5,8 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget, SchedMode
+from .sat import SATPolicy, State, SchedMode
+from .tel import make_blocks, CalTarget
 
 logger = u.init_logger(__name__)
 
@@ -15,46 +16,45 @@ logger = u.init_logger(__name__)
 # ----------------------------------------------------
 
 def make_geometry():
-    ws0_shift = np.degrees([0, 0])
-    ws1_shift = np.degrees([0, 0])
-    ws2_shift = np.degrees([0, 0])
-    ws3_shift = np.degrees([0, 0])
-    ws4_shift = np.degrees([0, 0])
-    ws5_shift = np.degrees([0, 0])
-    ws6_shift = np.degrees([0, 0])
+    ufm_mv19_shift = np.degrees([-0.01583734, 0.00073145])
+    ufm_mv15_shift = np.degrees([-0.01687046, -0.00117139])
+    ufm_mv7_shift = np.degrees([-1.7275653e-02, -2.0664736e-06])
+    ufm_mv9_shift = np.degrees([-0.01418133,  0.00820128])
+    ufm_mv18_shift = np.degrees([-0.01625605,  0.00198077])
+    ufm_mv22_shift = np.degrees([-0.0186627,  -0.00299793])
+    ufm_mv29_shift = np.degrees([-0.01480562,  0.00117084])
 
-    ## default SAT optics offests
     d_xi = 10.9624
     d_eta_side = 6.46363
     d_eta_mid = 12.634
 
     return {
         'ws3': {
-            'center': [-d_xi+ws3_shift[0], d_eta_side+ws3_shift[1]],
+            'center': [-d_xi+ufm_mv29_shift[0], d_eta_side+ufm_mv29_shift[1]],
             'radius': 6,
         },
         'ws2': {
-            'center': [-d_xi+ws2_shift[0], -d_eta_side+ws2_shift[1]],
+            'center': [-d_xi+ufm_mv22_shift[0], -d_eta_side+ufm_mv22_shift[1]],
             'radius': 6,
         },
         'ws4': {
-            'center': [0+ws4_shift[0], d_eta_mid+ws4_shift[1]],
+            'center': [0+ufm_mv7_shift[0], d_eta_mid+ufm_mv7_shift[1]],
             'radius': 6,
         },
         'ws0': {
-            'center': [0+ws0_shift[0], 0+ws0_shift[1]],
+            'center': [0+ufm_mv19_shift[0], 0+ufm_mv19_shift[1]],
             'radius': 6,
         },
         'ws1': {
-            'center': [0+ws1_shift[0], -d_eta_mid+ws1_shift[1]],
+            'center': [0+ufm_mv18_shift[0], -d_eta_mid+ufm_mv18_shift[1]],
             'radius': 6,
         },
         'ws5': {
-            'center': [d_xi+ws5_shift[0], d_eta_side+ws5_shift[1]],
+            'center': [d_xi+ufm_mv9_shift[0], d_eta_side+ufm_mv9_shift[1]],
             'radius': 6,
         },
         'ws6': {
-            'center': [d_xi+ws6_shift[0], -d_eta_side+ws6_shift[1]],
+            'center': [d_xi+ufm_mv15_shift[0], -d_eta_side+ufm_mv15_shift[1]],
             'radius': 6,
         },
     }
@@ -122,52 +122,8 @@ def make_cal_target(
         drift=drift,
         az_branch=az_branch,
         az_speed=az_speed,
-        az_accel=az_accel
+        az_accel=az_accel,
     )
-
-def make_blocks(master_file):
-    return {
-        'baseline': {
-            'cmb': {
-                'type': 'toast',
-                'file': master_file
-            }
-        },
-        'calibration': {
-            'saturn': {
-                'type' : 'source',
-                'name' : 'saturn',
-            },
-            'jupiter': {
-                'type' : 'source',
-                'name' : 'jupiter',
-            },
-            'moon': {
-                'type' : 'source',
-                'name' : 'moon',
-            },
-            'uranus': {
-                'type' : 'source',
-                'name' : 'uranus',
-            },
-            'neptune': {
-                'type' : 'source',
-                'name' : 'neptune',
-            },
-            'mercury': {
-                'type' : 'source',
-                'name' : 'mercury',
-            },
-            'venus': {
-                'type' : 'source',
-                'name' : 'venus',
-            },
-            'mars': {
-                'type' : 'source',
-                'name' : 'mars',
-            }
-        },
-    }
 
 def make_operations(
     az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
@@ -214,9 +170,9 @@ def make_config(
     az_accel,
     iv_cadence,
     bias_step_cadence,
-    min_hwp_el,
     max_cmb_scan_duration,
     cal_targets,
+    min_hwp_el=None,
     az_stow=None,
     el_stow=None,
     boresight_override=None,
@@ -299,8 +255,8 @@ class SATP2Policy(SATPolicy):
     @classmethod
     def from_defaults(cls, master_file, az_speed=0.8, az_accel=1.5,
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-        min_hwp_el=48, max_cmb_scan_duration=1*u.hour,
-        cal_targets=None, az_stow=None, el_stow=None,
+        max_cmb_scan_duration=1*u.hour, cal_targets=None,
+        min_hwp_el=48, az_stow=None, el_stow=None,
         boresight_override=None, hwp_override=None,
         state_file=None, **op_cfg
     ):
@@ -309,15 +265,12 @@ class SATP2Policy(SATPolicy):
 
         x = cls(**make_config(
             master_file, az_speed, az_accel,
-            iv_cadence, bias_step_cadence, min_hwp_el,
-            max_cmb_scan_duration, cal_targets, az_stow,
-            el_stow, boresight_override, hwp_override, **op_cfg
+            iv_cadence, bias_step_cadence, max_cmb_scan_duration,
+            cal_targets, min_hwp_el, az_stow, el_stow, boresight_override,
+            hwp_override, **op_cfg
         ))
         x.state_file=state_file
         return x
-
-    def add_cal_target(self, *args, **kwargs):
-        self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp1, if needed"""
