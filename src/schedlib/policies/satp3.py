@@ -283,6 +283,9 @@ class SATP3Policy(SATPolicy):
         x.state_file = state_file
         return x
 
+    def add_cal_target(self, *args, **kwargs):
+        self.cal_targets.append(make_cal_target(*args, **kwargs))
+
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp1, if needed"""
         return State(
