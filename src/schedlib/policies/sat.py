@@ -413,6 +413,7 @@ class SATPolicy:
     scan_tag: Optional[str] = None
     boresight_override: Optional[float] = None
     hwp_override: Optional[bool] = None
+    az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
     iv_cadence : float = 4 * u.hour
@@ -478,6 +479,17 @@ class SATPolicy:
                     blocks = core.seq_map(
                         lambda b: b.replace(
                             hwp_dir=self.hwp_override
+                        ), blocks
+                    )
+                if self.az_motion_override:
+                    blocks = core.seq_map(
+                        lambda b: b.replace(
+                            az_speed=self.az_speed
+                        ), blocks
+                    )
+                    blocks = core.seq_map(
+                        lambda b: b.replace(
+                            az_accel=self.az_accel
                         ), blocks
                     )
                 return blocks
