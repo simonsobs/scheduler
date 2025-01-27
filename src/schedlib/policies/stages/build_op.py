@@ -911,8 +911,6 @@ class BuildOpSimple:
         # group operations by priority
         priorities = sorted(list(set(b['priority'] for b in seq)), reverse=False)
 
-        print(priorities)
-
         # process each priority group
         init_state = state
 
