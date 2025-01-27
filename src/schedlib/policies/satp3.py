@@ -3,8 +3,7 @@ from dataclasses import dataclass
 import datetime as dt
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget
-from ..commands import SchedMode
+from .sat import SATPolicy, State, CalTarget, SchedMode
 
 logger = u.init_logger(__name__)
 
@@ -195,7 +194,7 @@ def make_operations(
     home_at_end=False, relock_cadence=None,
 ):
     if hwp_cfg is None:
-        hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper'}
+        hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper',}
 
     pre_session_ops = [
         { 'name': 'sat.preamble'        , 'sched_mode': SchedMode.PreSession, },
@@ -218,13 +217,13 @@ def make_operations(
         ]
 
     cal_ops += [
-        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp},
+        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp,},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp},
+        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp,},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence},
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
@@ -236,7 +235,10 @@ def make_operations(
     else:
         post_session_ops = []
 
-    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
+    wiregrid_ops = [
+        { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
+    ]
+    return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 
 def make_config(
     master_file,
@@ -251,6 +253,7 @@ def make_config(
     el_stow=None,
     boresight_override=None,
     hwp_override=None,
+    az_motion_override=False,
     **op_cfg
 ):
     blocks = make_blocks(master_file)
@@ -299,6 +302,7 @@ def make_config(
         'scan_tag': None,
         'boresight_override': boresight_override,
         'hwp_override': hwp_override,
+        'az_motion_override': az_motion_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'iv_cadence': iv_cadence,
@@ -334,6 +338,7 @@ class SATP3Policy(SATPolicy):
         min_hwp_el=48, max_cmb_scan_duration=1*u.hour,
         cal_targets=None, az_stow=None, el_stow=None,
         boresight_override=None, hwp_override=None,
+        az_motion_override=False,
         state_file=None, **op_cfg
     ):
         if cal_targets is None:
@@ -344,7 +349,7 @@ class SATP3Policy(SATPolicy):
             iv_cadence, bias_step_cadence, min_hwp_el,
             max_cmb_scan_duration, cal_targets,
             az_stow, el_stow, boresight_override,
-            hwp_override, **op_cfg)
+            hwp_override, az_motion_override, **op_cfg)
         )
         x.state_file = state_file
         return x
