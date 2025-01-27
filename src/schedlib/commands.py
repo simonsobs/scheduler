@@ -12,8 +12,8 @@ logger = u.init_logger(__name__)
 
 
 MIN_DURATION = 0.01
-HWP_SPIN_DOWN = 15*u.minute
 HWP_SPIN_UP = 7*u.minute
+HWP_SPIN_DOWN = 15*u.minute
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -119,41 +119,6 @@ class State:
             A new State instance with the current time incremented by the specified number of seconds.
         """
         return self.replace(curr_time=self.curr_time+dt.timedelta(seconds=dt_sec))
-
-
-class SchedMode:
-    """
-    Enumerate different options for scheduling operations in SATPolicy.
-
-    Attributes
-    ----------
-    PreCal : str
-        'pre_cal'; Operations scheduled before block.t0 for calibration.
-    PreObs : str
-        'pre_obs'; Observations scheduled before block.t0 for observation.
-    InCal : str
-        'in_cal'; Calibration operations scheduled between block.t0 and block.t1.
-    InObs : str
-        'in_obs'; Observation operations scheduled between block.t0 and block.t1.
-    PostCal : str
-        'post_cal'; Calibration operations scheduled after block.t1.
-    PostObs : str
-        'post_obs'; Observations operations scheduled after block.t1.
-    PreSession : str
-        'pre_session'; Represents the start of a session, scheduled from the beginning of the requested t0.
-    PostSession : str
-        'post_session'; Indicates the end of a session, scheduled after the last operation.
-
-    """
-    PreCal = 'pre_cal'
-    PreObs = 'pre_obs'
-    InCal = 'in_cal'
-    InObs = 'in_obs'
-    PostCal = 'post_cal'
-    PostObs = 'post_obs'
-    PreSession = 'pre_session'
-    PostSession = 'post_session'
-
 
 # -------------------------------------------------------------------------
 #                         Register operations
