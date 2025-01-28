@@ -299,6 +299,16 @@ def parse_sequence_from_toast(ifile):
         List of ScanBlock objects parsed from the input file.
 
     """
+
+    def escape_string(input_string):
+        escape_dict = {
+        "'": "\\'",
+        '"': '\\"'
+        }
+        for char, escape in escape_dict.items():
+            input_string = input_string.replace(char, escape)
+        return input_string
+
     #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
     #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
@@ -316,7 +326,7 @@ def parse_sequence_from_toast(ifile):
     blocks = []
     for _, row in df.iterrows():
         block = ScanBlock(
-            name=row['patch'].strip(),
+            name=escape_string(row['patch'].strip()),
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
             alt=row['el'],
@@ -325,7 +335,7 @@ def parse_sequence_from_toast(ifile):
             az_accel=row['accel'],
             throw=np.abs(row['az_max'] - row['az_min']),
             boresight_angle=row['rotation'],
-            tag=row['uid'].strip(),
+            tag=escape_string(row['uid'].strip()),
             hwp_dir=(row['hwp_dir'] == 1)
         )
         blocks.append(block)
