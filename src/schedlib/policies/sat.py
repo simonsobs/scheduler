@@ -129,6 +129,113 @@ def make_cal_target(
         az_accel=az_accel,
     )
 
+@dataclass(frozen=True)
+class WiregridTarget:
+    hour: int
+    el_target: float
+    az_target: float = 180
+    duration: float = 15*u.minute
+
+class SchedMode:
+    """
+    Enumerate different options for scheduling operations in SATPolicy.
+
+    Attributes
+    ----------
+    PreCal : str
+        'pre_cal'; Operations scheduled before block.t0 for calibration.
+    PreObs : str
+        'pre_obs'; Observations scheduled before block.t0 for observation.
+    InCal : str
+        'in_cal'; Calibration operations scheduled between block.t0 and block.t1.
+    InObs : str
+        'in_obs'; Observation operations scheduled between block.t0 and block.t1.
+    PostCal : str
+        'post_cal'; Calibration operations scheduled after block.t1.
+    PostObs : str
+        'post_obs'; Observations operations scheduled after block.t1.
+    PreSession : str
+        'pre_session'; Represents the start of a session, scheduled from the beginning of the requested t0.
+    PostSession : str
+        'post_session'; Indicates the end of a session, scheduled after the last operation.
+
+    """
+    PreCal = 'pre_cal'
+    PreObs = 'pre_obs'
+    InCal = 'in_cal'
+    InObs = 'in_obs'
+    PostCal = 'post_cal'
+    PostObs = 'post_obs'
+    PreSession = 'pre_session'
+    PostSession = 'post_session'
+    Wiregrid = 'wiregrid'
+
+def make_cal_target(
+    source: str, 
+    boresight: float, 
+    elevation: float, 
+    focus: str, 
+    allow_partial=False,
+    drift=True,
+    az_branch=None,
+    az_speed=None,
+    az_accel=None,
+) -> CalTarget:
+    array_focus = {
+        0 : {
+            'left' : 'ws3,ws2',
+            'middle' : 'ws0,ws1,ws4',
+            'right' : 'ws5,ws6',
+            'bottom': 'ws1,ws2,ws6',
+            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+        },
+        45 : {
+            'left' : 'ws3,ws4',
+            'middle' : 'ws2,ws0,ws5',
+            'right' : 'ws1,ws6',
+            'bottom': 'ws1,ws2,ws3',
+            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+        },
+        -45 : {
+            'left' : 'ws1,ws2',
+            'middle' : 'ws6,ws0,ws3',
+            'right' : 'ws4,ws5',
+            'bottom': 'ws1,ws6,ws5',
+            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+        },
+    }
+
+    boresight = float(boresight)
+    elevation = float(elevation)
+    focus = focus.lower()
+
+    focus_str = None
+    if int(boresight) not in array_focus:
+        logger.warning(
+            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
+        )
+        focus_str = focus ##
+    else:
+        focus_str = array_focus[int(boresight)].get(focus, focus)
+
+    assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
+
+    if az_branch is None:
+        az_branch = 180.
+
+    return CalTarget(
+        source=source, 
+        array_query=focus_str, 
+        el_bore=elevation, 
+        boresight_rot=boresight, 
+        tag=focus_str,
+        allow_partial=allow_partial,
+        drift=drift,
+        az_branch=az_branch,
+        az_speed=az_speed,
+        az_accel=az_accel,
+    )
+
 # ----------------------------------------------------
 #                  Register operations
 # ----------------------------------------------------
@@ -325,6 +432,39 @@ class SATPolicy(tel.TelPolicy):
             else:
                 config = yaml.load(config, Loader=loader)
         return cls(**config)
+
+    def divide_blocks(self, block, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
+        duration = block.duration
+
+        # if the block is small enough, return it as is
+        if duration <= (max_dt + min_dt):
+            return [block]
+
+        n_blocks = duration // max_dt
+        remainder = duration % max_dt
+
+        # split if 1 block with remainder > min duration
+        if n_blocks == 1:
+            return core.block_split(block, block.t0 + max_dt)
+
+        blocks = []
+        # calculate the offset for splitting
+        offset = (remainder + max_dt) / 2 if remainder.total_seconds() > 0 else max_dt
+
+        split_blocks = core.block_split(block, block.t0 + offset)
+        blocks.append(split_blocks[0])
+
+        # split the remaining block into chunks of max duration
+        for i in range(n_blocks - 1):
+            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + max_dt)
+            blocks.append(split_blocks[0])
+
+        # add the remaining part
+        if remainder.total_seconds() > 0:
+            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
+            blocks.append(split_blocks[0])
+
+        return blocks
 
     def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """

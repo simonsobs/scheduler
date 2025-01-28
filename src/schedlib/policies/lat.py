@@ -261,6 +261,7 @@ def make_config(
     az_stow=None,
     el_stow=None,
     boresight_override=None,
+    az_motion_override=False,
     **op_cfg
 ):
     blocks = make_blocks(master_file)
@@ -304,6 +305,7 @@ def make_config(
         'cal_targets': cal_targets,
         'scan_tag': None,
         'boresight_override': boresight_override,
+        'az_motion_override': az_motion_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'iv_cadence': iv_cadence,
@@ -362,7 +364,7 @@ class LATPolicy(tel.TelPolicy):
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
         max_cmb_scan_duration=1*u.hour, cal_targets=None,
         az_stow=None, el_stow=None, boresight_override=None,
-        state_file=None, **op_cfg
+        az_motion_override=False, state_file=None, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
@@ -371,7 +373,7 @@ class LATPolicy(tel.TelPolicy):
             master_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, max_cmb_scan_duration,
             cal_targets, az_stow, el_stow, boresight_override,
-            **op_cfg
+            az_motion_override, **op_cfg
         ))
         x.state_file=state_file
         return x
