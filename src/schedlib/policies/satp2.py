@@ -251,6 +251,10 @@ def make_config(
         'az_range': [-45, 405]
     }
 
+    el_range = {
+        'el_range': [40, 90]
+    }
+
     config = {
         'blocks': blocks,
         'geometries': geometries,
@@ -280,6 +284,7 @@ def make_config(
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
                     'az_limits': az_range['az_range'],
+                    'el_limits': el_range['el_range'],
                 }
             }
         }

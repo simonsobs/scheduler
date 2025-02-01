@@ -1311,6 +1311,7 @@ class PlanMoves:
     """solve moves to make seq possible"""
     sun_policy: Dict[str, Any]
     stow_position: Dict[str, Any]
+    el_limits: Tuple[float, float]
     az_step: float = 1
     az_limits: Tuple[float, float] = (-90, 450)
 
