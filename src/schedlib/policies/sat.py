@@ -963,7 +963,7 @@ class SATPolicy:
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': 3
+                    'priority': block.priority
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -972,7 +972,7 @@ class SATPolicy:
                     'pre': cmb_pre,
                     'in': cmb_in,
                     'post': cmb_post,
-                    'priority': 1
+                    'priority': block.priority
                 }
             elif block.subtype == 'wiregrid':
                 return {
@@ -981,7 +981,7 @@ class SATPolicy:
                     'pre': [],
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': 2
+                    'priority': block.priority
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -993,7 +993,7 @@ class SATPolicy:
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 3,
+            'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
         # move to stow position if specified, otherwise keep final position
@@ -1019,7 +1019,7 @@ class SATPolicy:
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 3,
+            'priority': 0,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
