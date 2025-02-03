@@ -212,6 +212,7 @@ def make_operations(
 
 def make_config(
     master_file,
+    state_file,
     az_speed,
     az_accel,
     iv_cadence,
@@ -258,6 +259,7 @@ def make_config(
     }
 
     config = {
+        'state_file': state_file,
         'blocks': blocks,
         'geometries': geometries,
         'rules': {
@@ -303,27 +305,23 @@ def make_config(
 
 @dataclass
 class SATP1Policy(SATPolicy):
-    state_file: Optional[str] = None
-
     @classmethod
-    def from_defaults(cls, master_file, az_speed=0.8, az_accel=1.5,
+    def from_defaults(cls, master_file, state_file=None, az_speed=0.8, az_accel=1.5,
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
         min_hwp_el=48, max_cmb_scan_duration=1*u.hour,
         cal_targets=None, az_stow=None, el_stow=None,
         boresight_override=None,  hwp_override=None,
-        az_motion_override=False,
-        state_file=None, **op_cfg
+        az_motion_override=False, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, az_speed, az_accel, iv_cadence,
+            master_file, state_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, min_hwp_el, max_cmb_scan_duration,
             cal_targets, az_stow, el_stow, boresight_override,
             hwp_override, az_motion_override, **op_cfg
         ))
-        x.state_file=state_file
         return x
 
     def add_cal_target(self, *args, **kwargs):

@@ -499,6 +499,8 @@ class SATPolicy:
 
     Parameters
     ----------
+    state_file : str
+        a string that provides the path to the state file
     blocks : dict
         a dict of blocks, with keys 'baseline' and 'calibration'
     rules : dict
@@ -520,6 +522,7 @@ class SATPolicy:
     operations : List[Dict[str, Any]]
         an orderred list of operation configurations
     """
+    state_file: Optional[str] = None
     blocks: Dict[str, Any] = field(default_factory=dict)
     rules: Dict[str, core.Rule] = field(default_factory=dict)
     geometries: List[Dict[str, Any]] = field(default_factory=list)
@@ -884,11 +887,22 @@ class SATPolicy:
         -------
         State
         """
+        if self.state_file is not None:
+            logger.info(f"using state from {self.state_file}")
+            state = State.load(self.state_file)
+            if state.curr_time < t0:
+                logger.info(
+                    f"Loaded state is at {state.curr_time}. Updating time to"
+                    f" {t0}"
+                )
+                state = state.replace(curr_time = t0)
+            return state
+
         return State(
             curr_time=t0,
             az_now=180,
             el_now=48,
-            boresight_rot_now=0,
+            boresight_rot_now=None,
             hwp_spinning=False,
         )
 
