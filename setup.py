@@ -14,6 +14,7 @@ setup(
         "jax[cpu]",
         "equinox",
         "so3g",
+        "socs",
         "pixell",
         "dataclasses_json",
     ],
