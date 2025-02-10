@@ -273,9 +273,9 @@ def make_config(
     )
 
     sun_policy = {
-        'min_angle': 41,
+        'min_angle': 30,
         'min_sun_time': 1980,
-        'min_el': 48,
+        'min_el': 30,
     }
 
     if az_stow is None or el_stow is None:
@@ -296,7 +296,7 @@ def make_config(
         'geometries': geometries,
         'rules': {
             'min-duration': {
-                'min_duration': 600
+                'min_duration': 60
             },
             'sun-avoidance': sun_policy,
             'az-range': az_range,
