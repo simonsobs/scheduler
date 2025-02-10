@@ -145,32 +145,32 @@ def move_to(state, az, el, min_el=48, force=False):
 # ----------------------------------------------------
 
 def make_geometry():
-    # These are just the median of the wafers and an ~overestimated rad rn
+    # These are just the median of the wafers and an ~estimated radius
     # To be updated later
     return {
         "i1_ws0": {
             "center": [1.3516076803207397, 0.5679303407669067],
-            "radius": 0.03,
+            "radius": 0.3,
         },
         "i1_ws1": {
             "center": [1.363024353981018, 1.2206860780715942],
-            "radius": 0.03,
+            "radius": 0.3,
         },
         "i1_ws2": {
             "center": [1.9164373874664307, 0.9008757472038269],
-            "radius": 0.03,
+            "radius": 0.3,
         },
         "i6_ws0": {
             "center": [1.3571038246154785, -1.2071731090545654],
-            "radius": 0.03,
+            "radius": 0.3,
         },
         "i6_ws1": {
             "center": [1.3628365993499756, -0.5654135942459106],
-            "radius": 0.03,
+            "radius": 0.3,
         },
         "i6_ws2": {
             "center": [1.9065929651260376, -0.8826764822006226],
-            "radius": 0.03,
+            "radius": 0.3,
         },
     }
 
