@@ -48,27 +48,14 @@ def get_site(site='lat') -> Location:
     """use lat as default following so3g convention"""
     return SITES[site]
 
-def get_source(name: str) -> Source:
-    # always get new object to avoid side effects
-    if name.lower() == 'taua':
-        obj = ephem.FixedBody()
-        obj._ra = 5.5755*np.pi/12.
-        obj._dec = 22.0167*np.pi/180.
-        return obj
-    if name.lower() == 'rcw38':
-        obj = ephem.FixedBody()
-        obj._ra = 8.98*np.pi/12.
-        obj._dec = -47.5*np.pi/180.
-        return obj
-    if name.lower() == 'galcenter':
-        obj = ephem.FixedBody()
-        obj._ra = 17.7611*np.pi/12.
-        obj._dec = -28.95*np.pi/180.
-        return obj
-    return SOURCES[name]()
 
+FIXED_SOURCES = {
+    'taua': (5.5755*np.pi/12., 22.0167*np.pi/180.),
+    'rcw38': (8.98*np.pi/12., -47.5*np.pi/180.),
+    'galcenter': (17.7611*np.pi/12., -28.95*np.pi/180.)
+}
 # source needs to be callable to avoid side effects
-SOURCES = {
+EPHEM_SOURCES = {
     'sun': ephem.Sun,
     'moon': ephem.Moon,
     'mercury': ephem.Mercury,
@@ -78,10 +65,36 @@ SOURCES = {
     'saturn': ephem.Saturn,
     'uranus': ephem.Uranus,
     'neptune': ephem.Neptune,
-    'taua': get_source('taua'),
-    'rcw38': get_source('rcw38'),
-    'galcenter': get_source('galcenter'),
 }
+
+def add_fixed_source(name, ra, dec):
+    name = name.lower()
+    if name in EPHEM_SOURCES:
+        logging.warning(
+            f"name {name} already registered in EPHEM_SOURCES. Not Adding"
+        )
+        return
+    if name in FIXED_SOURCES:
+        logging.warning(
+            f"name {name} already registered at {FIXED_SOURCES[name]}. " 
+             "Not Adding"
+        )
+        return
+    FIXED_SOURCES[name] = (ra*np.pi/12., dec*np.pi/180.)
+
+def get_source(name: str) -> Source:
+    # always get new object to avoid side effects
+    name = name.lower()
+    if name in FIXED_SOURCES:
+        obj = ephem.FixedBody()
+        obj._ra = FIXED_SOURCES[name][0]
+        obj._dec = FIXED_SOURCES[name][1]
+        return obj
+    if name in EPHEM_SOURCES:
+        return EPHEM_SOURCES[name]()
+    raise ValueError(
+        f"Source{name} not registered in FIXED_SOURCES or EPHEM_SOURCES"
+    )
 
 Source = Union[ephem.Body, ephem.FixedBody]
 
