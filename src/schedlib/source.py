@@ -67,6 +67,12 @@ EPHEM_SOURCES = {
     'neptune': ephem.Neptune,
 }
 
+def get_source_list():
+    s = {}
+    s.update(EPHEM_SOURCES)
+    s.update(FIXED_SOURCES)
+    return s
+
 def add_fixed_source(name, ra, dec):
     name = name.lower()
     if name in EPHEM_SOURCES:
