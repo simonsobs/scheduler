@@ -148,30 +148,24 @@ def make_geometry():
     # These are just the median of the wafers and an ~estimated radius
     # To be updated later
     return {
-        "i1_ws0": {
-            "center": [1.3516076803207397, 0.5679303407669067],
-            "radius": 0.3,
-        },
-        "i1_ws1": {
-            "center": [1.363024353981018, 1.2206860780715942],
-            "radius": 0.3,
-        },
-        "i1_ws2": {
-            "center": [1.9164373874664307, 0.9008757472038269],
-            "radius": 0.3,
-        },
-        "i6_ws0": {
-            "center": [1.3571038246154785, -1.2071731090545654],
-            "radius": 0.3,
-        },
-        "i6_ws1": {
-            "center": [1.3628365993499756, -0.5654135942459106],
-            "radius": 0.3,
-        },
-        "i6_ws2": {
-            "center": [1.9065929651260376, -0.8826764822006226],
-            "radius": 0.3,
-        },
+        "c1_ws0": {"center": [-0.3710, 0     ], "radius": 0.3,},
+        "c1_ws1": {"center": [ 0.1815, 0.3211], "radius": 0.3,},
+        "c1_ws2": {"center": [ 0.1815,-0.3211], "radius": 0.3,},
+        "i1_ws0": {"center": [-1.9112,-0.9052], "radius": 0.3,},
+        "i1_ws1": {"center": [-1.3584,-0.5704], "radius": 0.3,},
+        "i1_ws2": {"center": [-1.3587,-1.2133], "radius": 0.3,},
+        "i3_ws0": {"center": [ 1.1865,-0.8919], "radius": 0.3,},
+        "i3_ws1": {"center": [ 1.7326,-0.5705], "radius": 0.3,},
+        "i3_ws2": {"center": [ 1.7333,-1.2135], "radius": 0.3,},
+        "i4_ws0": {"center": [ 1.1732, 0.9052], "radius": 0.3,},
+        "i4_ws1": {"center": [ 1.7332, 1.2135], "radius": 0.3,},
+        "i4_ws2": {"center": [ 1.7326, 0.5705], "radius": 0.3,},
+        "i5_ws0": {"center": [-0.3655, 1.7833], "radius": 0.3,},
+        "i5_ws1": {"center": [ 0.1879, 2.1045], "radius": 0.3,},
+        "i5_ws2": {"center": [ 0.1867, 1.4620], "radius": 0.3,},
+        "i6_ws0": {"center": [-1.9082, 0.8920], "radius": 0.3,},
+        "i6_ws1": {"center": [-1.3577, 1.2133], "radius": 0.3,},
+        "i6_ws2": {"center": [-1.3584, 0.5854], "radius": 0.3,},
     }
 
 def make_cal_target(
@@ -187,7 +181,12 @@ def make_cal_target(
 ) -> CalTarget:
 
     array_focus = {
-        'all' : 'i1_ws0,i1_ws1,i1_ws2,i6_ws0,i6_ws1,i6_ws2'
+        'c1' : 'c1_ws0,c1_ws1,c1_ws2',
+        'i1' : 'i1_ws0,i1_ws1,i1_ws2',
+        'i3' : 'i3_ws0,i3_ws1,i3_ws2',
+        'i4' : 'i4_ws0,i4_ws1,i4_ws2',
+        'i5' : 'i5_ws0,i5_ws1,i5_ws2',
+        'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
 
     boresight = float(boresight)
