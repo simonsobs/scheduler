@@ -2,10 +2,10 @@ import numpy as np
 from dataclasses import dataclass
 import datetime as dt
 
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget, SchedMode, WiregridTarget
+from .sat import SATPolicy, State, CalTarget, SchedMode
 
 logger = u.init_logger(__name__)
 
@@ -60,38 +60,16 @@ def make_geometry():
 
 def make_cal_target(
     source: str, 
-    boresight: float, 
-    elevation: float, 
-    focus: str, 
+    boresight: float,
+    elevation: float,
+    focus: str,
+    array_focus: Dict[str, Any],
     allow_partial=False,
     drift=True,
     az_branch=None,
     az_speed=None,
     az_accel=None,
 ) -> CalTarget:
-    array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-    }
 
     boresight = float(boresight)
     elevation = float(elevation)
@@ -102,7 +80,7 @@ def make_cal_target(
         logger.warning(
             f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
         )
-        focus_str = focus ##
+        focus_str = focus
     else:
         focus_str = array_focus[int(boresight)].get(focus, focus)
 
@@ -164,6 +142,14 @@ def make_blocks(master_file):
             'mars': {
                 'type' : 'source',
                 'name' : 'mars',
+            },
+            'planet': {
+                'type': 'planet',
+                'file': master_file
+            },
+            'wiregrid': {
+                'type' : 'wiregrid',
+                'file': master_file,
             }
         },
     }
@@ -198,6 +184,12 @@ def make_operations(
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
+    wg_gain_ops = [
+        {'name': 'sat.wiregrid_gain', 'sched_mode': SchedMode.WiregridGain}
+    ]
+    wg_tc_ops = [
+        {'name': 'sat.wiregrid_time_const', 'sched_mode': SchedMode.WiregridTimeConst}
+    ]
     if home_at_end:
         post_session_ops = [
             { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
@@ -205,9 +197,6 @@ def make_operations(
     else:
         post_session_ops = []
 
-    wiregrid_ops = [
-        { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
-    ]
     return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 
 def make_config(
@@ -224,6 +213,7 @@ def make_config(
     boresight_override=None,
     hwp_override=None,
     az_motion_override=False,
+    wiregrid_override=False,
     **op_cfg
 ):
     blocks = make_blocks(master_file)
@@ -257,9 +247,34 @@ def make_config(
         'el_range': [40, 90]
     }
 
+    array_focus = {
+        0 : {
+            'left' : 'ws3,ws2',
+            'middle' : 'ws0,ws1,ws4',
+            'right' : 'ws5,ws6',
+            'bottom': 'ws1,ws2,ws6',
+            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+        },
+        45 : {
+            'left' : 'ws3,ws4',
+            'middle' : 'ws2,ws0,ws5',
+            'right' : 'ws1,ws6',
+            'bottom': 'ws1,ws2,ws3',
+            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+        },
+        -45 : {
+            'left' : 'ws1,ws2',
+            'middle' : 'ws6,ws0,ws3',
+            'right' : 'ws4,ws5',
+            'bottom': 'ws1,ws6,ws5',
+            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+        },
+    }
+
     config = {
         'blocks': blocks,
         'geometries': geometries,
+        'array_focus': array_focus,
         'rules': {
             'min-duration': {
                 'min_duration': 600
@@ -273,6 +288,7 @@ def make_config(
         'boresight_override': boresight_override,
         'hwp_override': hwp_override,
         'az_motion_override': az_motion_override,
+        'wiregrid_override': wiregrid_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'iv_cadence': iv_cadence,
@@ -310,8 +326,8 @@ class SATP1Policy(SATPolicy):
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
         min_hwp_el=48, max_cmb_scan_duration=1*u.hour,
         cal_targets=None, az_stow=None, el_stow=None,
-        boresight_override=None,  hwp_override=None,
-        az_motion_override=False,
+        boresight_override=None, hwp_override=None,
+        az_motion_override=False, wiregrid_override=False,
         state_file=None, **op_cfg
     ):
         if cal_targets is None:
@@ -321,13 +337,13 @@ class SATP1Policy(SATPolicy):
             master_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, min_hwp_el, max_cmb_scan_duration,
             cal_targets, az_stow, el_stow, boresight_override,
-            hwp_override, az_motion_override, **op_cfg
+            hwp_override, az_motion_override, wiregrid_override, **op_cfg
         ))
         x.state_file=state_file
         return x
 
-    def add_cal_target(self, *args, **kwargs):
-        self.cal_targets.append(make_cal_target(*args, **kwargs))
+    # def add_cal_target(self, *args, **kwargs):
+    #     self.cal_targets.append(make_cal_target(array_focus=self.array_focus, *args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp1, if needed"""

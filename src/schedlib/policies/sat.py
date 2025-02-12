@@ -14,6 +14,7 @@ from functools import reduce
 
 from .. import config as cfg, core, source as src, rules as ru
 from .. import commands as cmd, instrument as inst, utils as u
+from ..instrument import CalTarget
 from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
@@ -57,26 +58,6 @@ class State(cmd.State):
     is_det_setup: bool = False
 
 
-@dataclass(frozen=True)
-class CalTarget:
-    source: str
-    array_query: str
-    el_bore: float
-    tag: str
-    boresight_rot: float = 0
-    allow_partial: bool = False
-    drift: bool = True
-    az_branch: Optional[float] = None
-    az_speed: Optional[float]= None
-    az_accel: Optional[float] = None
-
-@dataclass(frozen=True)
-class WiregridTarget:
-    hour: int
-    el_target: float
-    az_target: float = 180
-    duration: float = 15*u.minute
-
 class SchedMode:
     """
     Enumerate different options for scheduling operations in SATPolicy.
@@ -109,42 +90,21 @@ class SchedMode:
     PostObs = 'post_obs'
     PreSession = 'pre_session'
     PostSession = 'post_session'
-    Wiregrid = 'wiregrid'
+    WiregridGain = 'wiregrid_gain'
+    WiregridTimeConst = 'wiregrid_time_const'
 
 def make_cal_target(
-    source: str, 
-    boresight: float, 
-    elevation: float, 
+    source: str,
+    boresight: float,
+    elevation: float,
     focus: str, 
+    array_focus: Dict[str, Any],
     allow_partial=False,
     drift=True,
     az_branch=None,
     az_speed=None,
     az_accel=None,
 ) -> CalTarget:
-    array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-    }
 
     boresight = float(boresight)
     elevation = float(elevation)
@@ -155,7 +115,7 @@ def make_cal_target(
         logger.warning(
             f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
         )
-        focus_str = focus ##
+        focus_str = focus
     else:
         focus_str = array_focus[int(boresight)].get(focus, focus)
 
@@ -406,7 +366,7 @@ def source_scan(state, block):
         )
     else:
         commands = []
-    
+
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
         f"run.acu.move_to_target(az={round(block.az,3)}, el={round(block.alt,3)},",
@@ -487,11 +447,22 @@ def bias_step(state, block, bias_step_cadence=None):
     else:
         return state, 0, []
 
-@cmd.operation(name='sat.wiregrid', duration=15*u.minute)
-def wiregrid(state):
+@cmd.operation(name='sat.wiregrid_gain', duration=15*u.minute)
+def wiregrid_gain(state):
     return state, [
-        "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
+        f"# starting wiregrid measurement with hwp spinning and forward={state.hwp_dir}",
+        "run.wiregrid.calibrate(continuous=False, elevation_check=True, temperature_check=True)"
     ]
+
+@cmd.operation(name='sat.wiregrid_time_const', duration=60*u.minute)
+def wiregrid_time_const(state):
+    cmds = []
+    cmds += [f"# starting wiregrid measurement with hwp spinning and forward={state.hwp_dir}",
+    "run.wiregrid.calibrate(continuous=False, elevation_check=True, temperature_check=True)"]
+    # reverse hwp direction
+    state = state.replace(hwp_dir=(not state.hwp_dir))
+    cmds += [f"# ending wiregrid measurement with hwp spinning and forward={state.hwp_dir}"]
+    return state, cmds
 
 @dataclass
 class SATPolicy:
@@ -505,16 +476,30 @@ class SATPolicy:
         a dict of rules, specifies rule cfgs for e.g., 'sun-avoidance', 'az-range', 'min-duration'
     geometries : dict
         a dict of geometries, with the leave node being dict with keys 'center' and 'radius'
+    array_focus : dict
+        a dict of wafers to be focused on for planet scans
     cal_targets : list[CalTarget]
         a list of calibration target each described by CalTarget object
-    cal_policy : str
-        calibration policy: default to round-robin
     scan_tag : str
         a tag to be added to all scans
+    boresight_override : float
+        a float specifying the angle to use for the boresight instead of the one from the master schedules
+    az_motion_override : bool
+        a bool that overrides the az_speed and az_accel from the master schedule
+    wiregrid_motion_override : bool
+        a bool that will skip wiregrid measurements if true
     az_speed : float
         the az speed in deg / s
     az_accel : float
         the az acceleration in deg / s^2
+    iv_cadence : float
+        the cadence to use between iv curve measurents
+    bias_step_cadence : float
+        the cadence to use between bias step measurents
+    min_hwp_el : float
+        minimum allowed elevation in deg where the hwp can be kept spinning
+    max_cmb_scan_duration : float
+        maximum duration allowed of cmb observations
     wafer_sets : dict[str, str]
         a dict of wafer sets definitions
     operations : List[Dict[str, Any]]
@@ -523,11 +508,13 @@ class SATPolicy:
     blocks: Dict[str, Any] = field(default_factory=dict)
     rules: Dict[str, core.Rule] = field(default_factory=dict)
     geometries: List[Dict[str, Any]] = field(default_factory=list)
+    array_focus: Dict[str, Any] = field(default_factory=dict)
     cal_targets: List[CalTarget] = field(default_factory=list)
     scan_tag: Optional[str] = None
     boresight_override: Optional[float] = None
     hwp_override: Optional[bool] = None
     az_motion_override: bool = False
+    wiregrid_override: bool = False,
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
     iv_cadence : float = 4 * u.hour
@@ -611,37 +598,48 @@ class SATPolicy:
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
+
+        def load_seq(file):
+            blocks = inst.parse_sequence_from_toast_2(file)
+
         def construct_seq(loader_cfg):
             if loader_cfg['type'] == 'source':
                 return src.source_gen_seq(loader_cfg['name'], t0, t1)
-            elif loader_cfg['type'] == 'toast':
-                blocks = inst.parse_sequence_from_toast(loader_cfg['file'])
-                if self.boresight_override is not None:
-                    blocks = core.seq_map(
-                        lambda b: b.replace(
-                            boresight_angle=self.boresight_override
-                        ), blocks
-                    )
-                if self.hwp_override is not None:
-                    blocks = core.seq_map(
-                        lambda b: b.replace(
-                            hwp_dir=self.hwp_override
-                        ), blocks
-                    )
-                if self.az_motion_override:
-                    blocks = core.seq_map(
-                        lambda b: b.replace(
-                            az_speed=self.az_speed
-                        ), blocks
-                    )
-                    blocks = core.seq_map(
-                        lambda b: b.replace(
-                            az_accel=self.az_accel
-                        ), blocks
-                    )
-                return blocks
+            elif loader_cfg['type'] == 'wiregrid':
+                if (not self.wiregrid_override):
+                    blocks = inst.parse_sequence_from_toast(loader_cfg['file'], 'wiregrid')
+                else:
+                    blocks = []
+            elif loader_cfg['type'] == 'cmb':
+                blocks = inst.parse_sequence_from_toast(loader_cfg['file'], 'cmb')
+            elif loader_cfg['type'] == 'cal':
+                blocks = inst.parse_sequence_from_toast(loader_cfg['file'], 'cal')
             else:
                 raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
+            if self.boresight_override is not None:
+                blocks = core.seq_map(
+                    lambda b: b.replace(
+                        boresight_angle=self.boresight_override
+                    ), blocks
+                )
+            if self.hwp_override is not None:
+                blocks = core.seq_map(
+                    lambda b: b.replace(
+                        hwp_dir=self.hwp_override
+                    ), blocks
+                )
+            if self.az_motion_override:
+                blocks = core.seq_map(
+                    lambda b: b.replace(
+                        az_speed=self.az_speed
+                    ), blocks
+                )
+                blocks = core.seq_map(
+                    lambda b: b.replace(
+                        az_accel=self.az_accel
+                    ), blocks
+                )
+            return blocks
 
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(construct_seq, self.blocks,
@@ -653,26 +651,6 @@ class SATPolicy:
                 source = cal_target.source
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, WiregridTarget):
-                wiregrid_candidates = []
-                current_date = t0.date()
-                end_date = t1.date()
-
-                while current_date <= end_date:
-                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                    if t0 <= candidate_time <= t1:
-                        wiregrid_candidates.append(
-                            inst.StareBlock(
-                                name='wiregrid',
-                                t0=candidate_time,
-                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                                az=cal_target.az_target,
-                                alt=cal_target.el_target,
-                                subtype='wiregrid'
-                            )
-                        )
-                    current_date += dt.timedelta(days=1)
-                blocks['calibration']['wiregrid'] = wiregrid_candidates
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -728,11 +706,11 @@ class SATPolicy:
         for target in self.cal_targets:
             logger.info(f"-> planning calibration scans for {target}...")
 
-            if isinstance(target, WiregridTarget):
-                logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'), 
-                                           blocks['calibration']['wiregrid'])
-                continue
+            # if isinstance(target, WiregridTarget):
+            #     logger.info(f"-> planning wiregrid scans for {target}...")
+            #     cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
+            #                                blocks['calibration']['wiregrid'])
+            #     continue
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
@@ -803,7 +781,8 @@ class SATPolicy:
             )
             cal_blocks.append(cal_block)
 
-        blocks['calibration'] = cal_blocks
+        # add wiregrid blocks
+        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 
@@ -828,7 +807,7 @@ class SATPolicy:
 
         # add proper subtypes
         blocks['calibration'] = core.seq_map(
-            lambda block: block.replace(subtype="cal") if block.name != 'wiregrid' else block,
+            lambda block: block.replace(subtype="cal") if (block.obs_type != 1 and block.obs_type != 2) else block.replace(subtype="wiregrid"),
             blocks['calibration']
         )
 
@@ -953,7 +932,8 @@ class SATPolicy:
         cmb_post = [op for op in self.operations if op['sched_mode'] == SchedMode.PostObs]
         pre_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PreSession]
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
-        wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        wiregrid_gain = [op for op in self.operations if op['sched_mode'] == SchedMode.WiregridGain]
+        wiregrid_time_const = [op for op in self.operations if op['sched_mode'] == SchedMode.WiregridTimeConst]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -975,11 +955,15 @@ class SATPolicy:
                     'priority': block.priority
                 }
             elif block.subtype == 'wiregrid':
+                if block.obs_type == 1:
+                    wg_ops = wiregrid_gain
+                elif block.obs_type == 2:
+                    wg_ops = wiregrid_time_const
                 return {
                     'name': block.name,
                     'block': block,
                     'pre': [],
-                    'in': wiregrid_in,
+                    'in': wg_ops,
                     'post': [],
                     'priority': block.priority
                 }
@@ -1087,10 +1071,7 @@ class SATPolicy:
         return schedule
 
     def add_cal_target(self, *args, **kwargs):
-        self.cal_targets.append(make_cal_target(*args, **kwargs))
-
-    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, duration=15*u.minute, **kwargs):
-        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target, duration=duration))
+        self.cal_targets.append(make_cal_target(array_focus=self.array_focus, *args, **kwargs))
 
 # ------------------------
 # utilities
