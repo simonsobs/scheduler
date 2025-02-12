@@ -1410,7 +1410,7 @@ class PlanMoves:
                     az=block.az, alt=block.alt)])
             else:
                 movet = block.t1 #max(safet, block.t1)
-                buffer_t = dt.timedelta(seconds=300)
+                buffer_t = dt.timedelta(seconds=min(300, int((t_end - movet).total_seconds() / 2)))
                 az_parking, alt_parking, t0_parking, t1_parking = get_parking(movet, t_end + buffer_t, block.alt, self.sun_policy)
 
                 move_away_by = get_traj_ok_time(
