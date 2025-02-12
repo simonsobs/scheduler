@@ -186,10 +186,10 @@ def make_operations(
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
     wg_gain_ops = [
-        {'name': 'sat.wiregrid_gain', 'sched_mode': SchedMode.WiregridGain}
+        {'name': 'sat.wiregrid_gain', 'sched_mode': SchedMode.WiregridGain, 'disable_hwp': disable_hwp}
     ]
     wg_tc_ops = [
-        {'name': 'sat.wiregrid_time_const', 'sched_mode': SchedMode.WiregridTimeConst}
+        {'name': 'sat.wiregrid_time_const', 'sched_mode': SchedMode.WiregridTimeConst, 'disable_hwp': disable_hwp}
     ]
     if home_at_end:
         post_session_ops = [

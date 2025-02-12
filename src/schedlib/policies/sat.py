@@ -243,7 +243,7 @@ def hwp_spin_up(state, block, disable_hwp=False):
     state = state.replace(hwp_dir=hwp_dir)
     state = state.replace(hwp_spinning=True)
 
-    freq = 2 if hwp_dir else -2
+    freq = 2 if hwp_dir is True else -2
     return state, duration + cmd.HWP_SPIN_UP, cmds + [
         "sup.enable_driver_board()",
         f"run.hwp.set_freq(freq={freq})",
@@ -447,22 +447,28 @@ def bias_step(state, block, bias_step_cadence=None):
     else:
         return state, 0, []
 
-@cmd.operation(name='sat.wiregrid_gain', duration=15*u.minute)
-def wiregrid_gain(state):
-    return state, [
+@cmd.operation(name='sat.wiregrid_gain', return_duration=True)
+def wiregrid_gain(state, disable_hwp=False):
+    if disable_hwp:
+        return state, 0, ["# hwp disabled, skipping wiregrid gain"]
+
+    cmds = [
         f"# starting wiregrid measurement with hwp spinning and forward={state.hwp_dir}",
         "run.wiregrid.calibrate(continuous=False, elevation_check=True, temperature_check=True)"
     ]
+    return state, 15*u.minute, cmds
 
-@cmd.operation(name='sat.wiregrid_time_const', duration=60*u.minute)
-def wiregrid_time_const(state):
+@cmd.operation(name='sat.wiregrid_time_const', return_duration=True)
+def wiregrid_time_const(state, disable_hwp=False):
+    if disable_hwp:
+        return state, 0, ["# hwp disabled, skipping wiregrid time const"]
     cmds = []
-    cmds += [f"# starting wiregrid measurement with hwp spinning and forward={state.hwp_dir}",
-    "run.wiregrid.calibrate(continuous=False, elevation_check=True, temperature_check=True)"]
+    cmds += [f"# starting wiregrid time const measurement with hwp spinning and forward={state.hwp_dir}",
+    ""]
     # reverse hwp direction
     state = state.replace(hwp_dir=(not state.hwp_dir))
-    cmds += [f"# ending wiregrid measurement with hwp spinning and forward={state.hwp_dir}"]
-    return state, cmds
+    cmds += [f"# wiregrid time const measurement ended with hwp spinning and forward={state.hwp_dir}"]
+    return state, 60*u.minute, cmds
 
 @dataclass
 class SATPolicy:
@@ -600,47 +606,48 @@ class SATPolicy:
         """
 
         def load_seq(file):
-            blocks = inst.parse_sequence_from_toast_2(file)
+            blocks = inst.parse_sequence_from_toast(file)
+            return blocks
 
         def construct_seq(loader_cfg):
             if loader_cfg['type'] == 'source':
                 return src.source_gen_seq(loader_cfg['name'], t0, t1)
+            elif loader_cfg['type'] == 'cmb':
+                cmb_blocks = core.seq_sort(core.seq_filter(lambda b: isinstance(b, inst.ScanBlock) and b.obs_type == 0, blocks), flatten=True)
+                if self.boresight_override is not None:
+                    cmb_blocks = core.seq_map(
+                        lambda b: b.replace(
+                            boresight_angle=self.boresight_override
+                        ), cmb_blocks
+                    )
+                if self.hwp_override is not None:
+                    cmb_blocks = core.seq_map(
+                        lambda b: b.replace(
+                            hwp_dir=self.hwp_override
+                        ), cmb_blocks
+                    )
+                if self.az_motion_override:
+                    cmb_blocks = core.seq_map(
+                        lambda b: b.replace(
+                            az_speed=self.az_speed
+                        ), cmb_blocks
+                    )
+                    cmb_blocks = core.seq_map(
+                        lambda b: b.replace(
+                            az_accel=self.az_accel
+                        ), cmb_blocks
+                    )
+                return cmb_blocks
+            elif loader_cfg['type'] == 'cal':
+                return core.seq_sort(core.seq_filter(lambda b: isinstance(b, CalTarget), blocks), flatten=True)
             elif loader_cfg['type'] == 'wiregrid':
                 if (not self.wiregrid_override):
-                    blocks = inst.parse_sequence_from_toast(loader_cfg['file'], 'wiregrid')
-                else:
-                    blocks = []
-            elif loader_cfg['type'] == 'cmb':
-                blocks = inst.parse_sequence_from_toast(loader_cfg['file'], 'cmb')
-            elif loader_cfg['type'] == 'cal':
-                blocks = inst.parse_sequence_from_toast(loader_cfg['file'], 'cal')
+                    return core.seq_sort(core.seq_filter(lambda b: isinstance(b, inst.ScanBlock) and (b.obs_type == 1 or b.obs_type == 2), blocks), flatten=True)
             else:
                 raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
-            if self.boresight_override is not None:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        boresight_angle=self.boresight_override
-                    ), blocks
-                )
-            if self.hwp_override is not None:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        hwp_dir=self.hwp_override
-                    ), blocks
-                )
-            if self.az_motion_override:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        az_speed=self.az_speed
-                    ), blocks
-                )
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        az_accel=self.az_accel
-                    ), blocks
-                )
-            return blocks
 
+        # get blocks
+        blocks = load_seq(self.blocks['baseline']['cmb']['file'])
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(construct_seq, self.blocks,
                              is_leaf=lambda x: isinstance(x, dict) and 'type' in x)

@@ -106,7 +106,7 @@ def make_blocks(master_file):
     return {
         'baseline': {
             'cmb': {
-                'type': 'toast',
+                'type': 'cmb',
                 'file': master_file
             }
         },
@@ -144,7 +144,7 @@ def make_blocks(master_file):
                 'name' : 'mars',
             },
             'planet': {
-                'type': 'planet',
+                'type': 'cal',
                 'file': master_file
             },
             'wiregrid': {
@@ -185,10 +185,10 @@ def make_operations(
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
     wg_gain_ops = [
-        {'name': 'sat.wiregrid_gain', 'sched_mode': SchedMode.WiregridGain}
+        {'name': 'sat.wiregrid_gain', 'sched_mode': SchedMode.WiregridGain, 'disable_hwp': disable_hwp}
     ]
     wg_tc_ops = [
-        {'name': 'sat.wiregrid_time_const', 'sched_mode': SchedMode.WiregridTimeConst}
+        {'name': 'sat.wiregrid_time_const', 'sched_mode': SchedMode.WiregridTimeConst, 'disable_hwp': disable_hwp}
     ]
     if home_at_end:
         post_session_ops = [
@@ -197,7 +197,7 @@ def make_operations(
     else:
         post_session_ops = []
 
-    return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
+    return pre_session_ops + cal_ops + cmb_ops + wg_gain_ops + wg_tc_ops + post_session_ops
 
 def make_config(
     master_file,

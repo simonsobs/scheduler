@@ -223,6 +223,7 @@ class CalTarget:
     az_branch: Optional[float] = None
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
+    hwp_dir: Optional[bool] = None
 
 # dummy type variable for readability
 Spec = TypeVar('Spec')
@@ -301,93 +302,7 @@ def array_info_from_query(geometries, query):
     arrays = [make_circular_cover(*g['center'], g['radius']) for g in matched]
     return array_info_merge(arrays)
 
-def parse_sequence_from_toast(ifile, block_type):
-    """
-    Parameters
-    ----------
-    ifile : str
-        Path to the input master schedule from toast.
-
-    Returns
-    -------
-    list of ScanBlock
-        List of ScanBlock objects parsed from the input file.
-
-    """
-
-    def escape_string(input_string):
-        escape_dict = {
-        "'": "\\'",
-        '"': '\\"'
-        }
-        for char, escape in escape_dict.items():
-            input_string = input_string.replace(char, escape)
-        return input_string
-
-    #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
-    #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
-    #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
-    columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-               "el", "speed", "accel", "#", "ob_ty", "pass", "sub", "uid", "patch"]
-
-    # count the number of lines to skip
-    with open(ifile) as f:
-        for i, l in enumerate(f):
-            if l.startswith('#'):
-                continue
-            else:
-                break
-    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
-    blocks = []
-    for _, row in df.iterrows():
-        if block_type == 'cmb' and (row['ob_ty'] == 0):
-            block = ScanBlock(
-                name=escape_string(row['patch'].strip()),
-                t0=u.str2datetime(row['start_utc']),
-                t1=u.str2datetime(row['stop_utc']),
-                alt=row['el'],
-                az=row['az_min'],
-                az_speed=row['speed'],
-                az_accel=row['accel'],
-                throw=np.abs(row['az_max'] - row['az_min']),
-                boresight_angle=row['rotation'],
-                priority=row['#'],
-                tag=escape_string(row['uid'].strip()),
-                hwp_dir=(row['hwp_dir'] == 1),
-                obs_type=row['ob_ty'],
-            )
-            blocks.append(block)
-        elif block_type == 'wiregrid' and (row['ob_ty'] == 1 or row['ob_ty'] == 2):
-            block = StareBlock(
-                    name=escape_string(row['patch'].strip()),
-                    t0=u.str2datetime(row['start_utc']),
-                    t1=u.str2datetime(row['stop_utc']),
-                    alt=row['el'],
-                    az=row['az_min'],
-                    boresight_angle=row['rotation'],
-                    priority=row['#'],
-                    tag=escape_string(row['uid'].strip()),
-                    hwp_dir=(row['hwp_dir'] == 1),
-                    obs_type=row['ob_ty'],
-                    )
-            blocks.append(block)
-        # elif block_type == 'cal' and (row['ob_ty'] == 3):
-        #     block = CalTarget(
-        #             source: str
-        #             array_query: str
-        #             el_bore: float
-        #             tag: str
-        #             boresight_rot: float = 0
-        #             allow_partial: bool = False
-        #             drift: bool = True
-        #             az_branch: Optional[float] = None
-        #             az_speed: Optional[float]= None
-        #             az_accel: Optional[float] = None
-        #             )
-        #     blocks.append(block)
-    return blocks
-
-def parse_sequence_from_toast_2(ifile):
+def parse_sequence_from_toast(ifile):
     """
     Parameters
     ----------
@@ -464,6 +379,7 @@ def parse_sequence_from_toast_2(ifile):
         #             az_branch: Optional[float] = None
         #             az_speed: Optional[float]= None
         #             az_accel: Optional[float] = None
+        #             hwp_dir=(row['hwp_dir'] == 1),
         #             )
         else:
             block = None
