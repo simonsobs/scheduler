@@ -987,6 +987,10 @@ class SATPolicy:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
+
+        # check if any observations were added
+        assert len(seq) != 0, "No observations fall within time-range"
+
         start_block = {
             'name': 'pre-session',
             'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
