@@ -484,7 +484,7 @@ class SATPolicy(tel.TelPolicy):
             The initialized sequences
         """
         columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "pass", "sub", "uid", "patch"]
+                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
 
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
@@ -703,6 +703,24 @@ class SATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # -----------------------------------------------------------------
+        # step 5: verify
+        # -----------------------------------------------------------------
+
+        # check if blocks are above min elevation
+        alt_limits = self.stages['build_op']['plan_moves']['el_limits']
+        for block in core.seq_flatten(blocks):
+            if hasattr(block, 'alt'):
+                assert block.alt >= alt_limits[0], (
+                f"Block {block} is below the minimum elevation "
+                f"of {alt_limits[0]} degrees."
+                )
+
+                assert block.alt < alt_limits[1], (
+                f"Block {block} is above the maximum elevation "
+                f"of {alt_limits[1]} degrees."
+                )
+
         return blocks
 
     def init_state(self, t0: dt.datetime) -> State:
@@ -720,11 +738,22 @@ class SATPolicy(tel.TelPolicy):
         -------
         State
         """
+        if self.state_file is not None:
+            logger.info(f"using state from {self.state_file}")
+            state = State.load(self.state_file)
+            if state.curr_time < t0:
+                logger.info(
+                    f"Loaded state is at {state.curr_time}. Updating time to"
+                    f" {t0}"
+                )
+                state = state.replace(curr_time = t0)
+            return state
+
         return State(
             curr_time=t0,
             az_now=180,
             el_now=48,
-            boresight_rot_now=0,
+            boresight_rot_now=None,
             hwp_spinning=False,
         )
 
@@ -799,7 +828,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': 3
+                    'priority': block.priority
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -808,7 +837,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cmb_pre,
                     'in': cmb_in,
                     'post': cmb_post,
-                    'priority': 1
+                    'priority': block.priority
                 }
             elif block.subtype == 'wiregrid':
                 return {
@@ -817,19 +846,23 @@ class SATPolicy(tel.TelPolicy):
                     'pre': [],
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': 2
+                    'priority': block.priority
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
+
+        # check if any observations were added
+        assert len(seq) != 0, "No observations fall within time-range"
+
         start_block = {
             'name': 'pre-session',
             'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 3,
+            'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
         # move to stow position if specified, otherwise keep final position
@@ -855,7 +888,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 3,
+            'priority': 0,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]

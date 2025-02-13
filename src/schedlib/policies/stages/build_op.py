@@ -270,7 +270,7 @@ class BuildOpSimple:
 
     def lower(self, seq, t0, t1, state):
         # group operations by priority
-        priorities = sorted(list(set(b['priority'] for b in seq)), reverse=True)
+        priorities = sorted(list(set(b['priority'] for b in seq)), reverse=False)
 
         # process each priority group
         init_state = state
@@ -327,7 +327,7 @@ class BuildOpSimple:
                     logger.info(f"-> {b['name'][:5]:<5} ({b['block'].subtype:<3}): {b['block'].t0.strftime('%d-%m-%y %H:%M:%S')} -> {b['block'].t1.strftime('%d-%m-%y %H:%M:%S')}")
                     seq_out += ir
                     constraints = core.seq_flatten(core.seq_trim(constraints, t0=state.curr_time, t1=t1))
-                elif b['priority'] < priority:
+                elif b['priority'] > priority:
                     # lower priority item will pass through to be planned in the next round
                     seq_out += [b]
                 else:
@@ -675,6 +675,7 @@ class PlanMoves:
     """solve moves to make seq possible"""
     sun_policy: Dict[str, Any]
     stow_position: Dict[str, Any]
+    el_limits: Tuple[float, float]
     az_step: float = 1
     az_limits: Tuple[float, float] = (-90, 450)
 
@@ -773,7 +774,8 @@ class PlanMoves:
                     az=block.az, alt=block.alt)])
             else:
                 movet = block.t1 #max(safet, block.t1)
-                az_parking, alt_parking, t0_parking, t1_parking = get_parking(movet, t_end, block.alt, self.sun_policy)
+                buffer_t = dt.timedelta(seconds=min(300, int((t_end - movet).total_seconds() / 2)))
+                az_parking, alt_parking, t0_parking, t1_parking = get_parking(movet, t_end + buffer_t, block.alt, self.sun_policy)
 
                 move_away_by = get_traj_ok_time(
                     block.az, az_parking, block.alt, alt_parking, movet, self.sun_policy)

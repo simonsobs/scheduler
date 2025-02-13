@@ -31,6 +31,7 @@ class SunCrawler:
 
         self.configs = make_config(
             master_file='None',
+            state_file=None,
             az_speed=None, az_accel=None,
             iv_cadence=None, bias_step_cadence=None,
             max_cmb_scan_duration=None, cal_targets=None,

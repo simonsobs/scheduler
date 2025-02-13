@@ -254,6 +254,7 @@ def make_operations(
 
 def make_config(
     master_file,
+    state_file,
     az_speed,
     az_accel,
     iv_cadence,
@@ -293,7 +294,12 @@ def make_config(
         'az_range': [-45, 405]
     }
 
+    el_range = {
+        'el_range': [40, 90]
+    }
+
     config = {
+        'state_file': state_file,
         'blocks': blocks,
         'geometries': geometries,
         'rules': {
@@ -320,6 +326,7 @@ def make_config(
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
                     'az_limits': az_range['az_range'],
+                    'el_limits': el_range['el_range'],
                 }
             }
         }
@@ -329,14 +336,7 @@ def make_config(
 @dataclass
 class LATPolicy(tel.TelPolicy):
     """a more realistic LAT policy.
-
-    Parameters
-    ----------
-    state_file : string
-        optional path to the state file.
     """
-
-    state_file: Optional[str] = None
 
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
@@ -362,22 +362,22 @@ class LATPolicy(tel.TelPolicy):
         return cls(**config)
 
     @classmethod
-    def from_defaults(cls, master_file, az_speed=0.8, az_accel=1.5,
-        iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-        max_cmb_scan_duration=1*u.hour, cal_targets=None,
-        az_stow=None, el_stow=None, boresight_override=None,
-        az_motion_override=False, state_file=None, **op_cfg
+    def from_defaults(cls, master_file, state_file=None, 
+        az_speed=0.8, az_accel=1.5, iv_cadence=4*u.hour,
+        bias_step_cadence=0.5*u.hour, max_cmb_scan_duration=1*u.hour,
+        cal_targets=None, az_stow=None, el_stow=None,
+        boresight_override=None, az_motion_override=False, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, az_speed, az_accel, iv_cadence,
+            master_file, state_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, max_cmb_scan_duration,
             cal_targets, az_stow, el_stow, boresight_override,
             az_motion_override, **op_cfg
         ))
-        x.state_file=state_file
+
         return x
 
     def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
@@ -396,8 +396,8 @@ class LATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "pass", "sub", "uid", "patch"]
+        columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max",
+                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
             partial(self.construct_seq, t0=t0, t1=t1, columns=columns),

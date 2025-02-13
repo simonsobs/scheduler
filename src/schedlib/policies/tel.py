@@ -348,6 +348,8 @@ class TelPolicy:
 
     Parameters
     ----------
+    state_file : str
+        a string that provides the path to the state file
     blocks : dict
         a dict of blocks, with keys 'baseline' and 'calibration'
     rules : dict
@@ -369,6 +371,7 @@ class TelPolicy:
     operations : List[Dict[str, Any]]
         an orderred list of operation configurations
     """
+    state_file: Optional[str] = None
     blocks: Dict[str, Any] = field(default_factory=dict)
     rules: Dict[str, core.Rule] = field(default_factory=dict)
     geometries: List[Dict[str, Any]] = field(default_factory=list)

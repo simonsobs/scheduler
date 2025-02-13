@@ -168,6 +168,7 @@ def make_operations(
 
 def make_config(
     master_file,
+    state_file,
     az_speed,
     az_accel,
     iv_cadence,
@@ -209,7 +210,12 @@ def make_config(
         'az_range': [-45, 405]
     }
 
+    el_range = {
+        'el_range': [40, 90]
+    }
+
     config = {
+        'state_file': state_file,
         'blocks': blocks,
         'geometries': geometries,
         'rules': {
@@ -238,6 +244,7 @@ def make_config(
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
                     'az_limits': az_range['az_range'],
+                    'el_limits': el_range['el_range'],
                 }
             }
         }
@@ -254,34 +261,30 @@ def make_config(
 
 @dataclass
 class SATP2Policy(SATPolicy):
-    state_file: Optional[str] = None
-
     @classmethod
-    def from_defaults(cls, master_file, az_speed=0.8, az_accel=1.5,
+    def from_defaults(cls, master_file, state_file=None, az_speed=0.8, az_accel=1.5,
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
         max_cmb_scan_duration=1*u.hour, cal_targets=None,
         min_hwp_el=48, az_stow=None, el_stow=None,
         boresight_override=None, hwp_override=None,
-        az_motion_override=False,
-        state_file=None, **op_cfg
+        az_motion_override=False, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, az_speed, az_accel,
+            master_file, state_file, az_speed, az_accel,
             iv_cadence, bias_step_cadence, max_cmb_scan_duration,
             cal_targets, min_hwp_el, az_stow, el_stow, boresight_override,
             hwp_override, az_motion_override, **op_cfg
         ))
-        x.state_file=state_file
         return x
 
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
-        """customize typical initial state for satp1, if needed"""
+        """customize typical initial state for satp2, if needed"""
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
