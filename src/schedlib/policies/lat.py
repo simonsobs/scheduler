@@ -42,7 +42,7 @@ class State(tel.State):
     corotator_now: float = 0
 
     def get_boresight(self):
-        return self.el_now - 60 - self.corotator_now
+        return -1*(self.el_now - 60 - self.corotator_now)
 
 @dataclass(frozen=True)
 class StimulatorTarget:
@@ -191,7 +191,7 @@ def make_geometry():
 
 def make_cal_target(
     source: str, 
-    boresight: float, 
+    corotator: float, 
     elevation: float, 
     focus: str, 
     allow_partial=False,
@@ -210,18 +210,15 @@ def make_cal_target(
         'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
 
-    boresight = float(boresight)
+    boresight = float(-1*(elevation - 60 - corotator))
     elevation = float(elevation)
     focus = focus.lower()
 
     focus_str = None
-    if int(boresight) not in array_focus:
-        logger.warning(
-            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
-        )
-        focus_str = focus
+    if focus in array_focus.keys():
+        focus_str = array_focus[focus]
     else:
-        focus_str = array_focus[int(boresight)].get(focus, focus)
+        focus_str = focus
 
     sources = src.get_source_list()
     assert source in sources, f"source should be one of {sources.keys()}"
@@ -314,7 +311,7 @@ def make_config(
     }
 
     el_range = {
-        'el_range': [40, 90]
+        'el_range': [30, 90]
     }
 
     config = {
