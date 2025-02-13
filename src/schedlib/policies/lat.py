@@ -279,7 +279,7 @@ def make_config(
     cal_targets,
     az_stow=None,
     el_stow=None,
-    boresight_override=None,
+    corotator_override=None,
     az_motion_override=False,
     **op_cfg
 ):
@@ -328,7 +328,7 @@ def make_config(
         'operations': operations,
         'cal_targets': cal_targets,
         'scan_tag': None,
-        'boresight_override': boresight_override,
+        'corotator_override': corotator_override,
         'az_motion_override': az_motion_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
@@ -353,7 +353,17 @@ def make_config(
 class LATPolicy(tel.TelPolicy):
     """a more realistic LAT policy.
     """
+    corotator_override: Optional[float] = None
 
+    def apply_overrides(self, blocks):
+        if self.corotator_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    corotator_angle=self.corotator_override
+                ), blocks
+            )
+        return super().apply_overrides(blocks)
+    
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """
@@ -382,7 +392,7 @@ class LATPolicy(tel.TelPolicy):
         az_speed=0.8, az_accel=1.5, iv_cadence=4*u.hour,
         bias_step_cadence=0.5*u.hour, max_cmb_scan_duration=1*u.hour,
         cal_targets=None, az_stow=None, el_stow=None,
-        boresight_override=None, az_motion_override=False, **op_cfg
+        corotator_override=None, az_motion_override=False, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
@@ -390,7 +400,7 @@ class LATPolicy(tel.TelPolicy):
         x = cls(**make_config(
             master_file, state_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, max_cmb_scan_duration,
-            cal_targets, az_stow, el_stow, boresight_override,
+            cal_targets, az_stow, el_stow, corotator_override,
             az_motion_override, **op_cfg
         ))
 

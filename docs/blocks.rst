@@ -33,6 +33,7 @@ Represents scanning for the telescopes
 * tag: str = ""
 * priority: float = 0
 
+
 instrument.StareBlock(instrument.ScanBlock)
 ---------------------------------------
 Represents a time period where the telescope isn't moving
