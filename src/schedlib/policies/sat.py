@@ -417,7 +417,17 @@ class SATPolicy(tel.TelPolicy):
     """
     hwp_override: Optional[bool] = None
     min_hwp_el: float = 48 # deg
+    boresight_override: Optional[float] = None
 
+    def apply_overrides(self, blocks):
+        if self.boresight_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    boresight_angle=self.boresight_override
+                ), blocks
+            )
+        return super().apply_overrides(blocks)
+    
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """

@@ -380,7 +380,6 @@ class TelPolicy:
     geometries: List[Dict[str, Any]] = field(default_factory=list)
     cal_targets: List[CalTarget] = field(default_factory=list)
     scan_tag: Optional[str] = None
-    boresight_override: Optional[float] = None
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
@@ -397,26 +396,26 @@ class TelPolicy:
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
         elif loader_cfg['type'] == 'toast':
             blocks = inst.parse_sequence_from_toast(loader_cfg['file'], columns)
-            if self.boresight_override is not None:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        boresight_angle=self.boresight_override
-                    ), blocks
-                )
-            if self.az_motion_override:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        az_speed=self.az_speed
-                    ), blocks
-                )
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        az_accel=self.az_accel
-                    ), blocks
-                )
+            blocks = self.apply_overrides(blocks)
             return blocks
         else:
             raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
+    
+    def apply_overrides(self, blocks):
+        # these overrides get applied AFTER the telescope specific overrides
+        if self.az_motion_override:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    az_speed=self.az_speed
+                ), blocks
+            )
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    az_accel=self.az_accel
+                ), blocks
+            )
+        return blocks
+
 
     def divide_blocks(self, block, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
         duration = block.duration
