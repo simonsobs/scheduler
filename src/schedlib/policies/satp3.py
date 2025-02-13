@@ -87,7 +87,8 @@ def make_cal_target(
     focus_str = None
     focus_str = array_focus.get(focus, focus)
 
-    assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
+    sources = src.get_source_list()
+    assert source in sources, f"source should be one of {sources.keys()}"
 
     if az_branch is None:
         az_branch = 180.
