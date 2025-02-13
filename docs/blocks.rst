@@ -10,7 +10,7 @@ A generic block of time that you can do math on
 * t0
 * t1
 
-core.NamedBlock(Block)
+core.NamedBlock(core.Block)
 -----------------------
 Adds a name
 
@@ -27,10 +27,18 @@ Represents scanning for the telescopes
 * az_speed: float = 1. # deg / s
 * az_accel: float = 2. # deg / s**2
 * boresight_angle: Optional[float] = None # deg
+* corotator_angle: Optional[float] = None # deg
 * hwp_dir: Optional[bool] = None
 * subtype: str = ""
 * tag: str = ""
 * priority: float = 0
+
+instrument.StareBlock(instrument.ScanBlock)
+---------------------------------------
+Represents a time period where the telescope isn't moving
+
+* throw: float = 0 # deg 
+
 
 source.SourceBlock(core.NamedBlock)
 -------------------------------------
