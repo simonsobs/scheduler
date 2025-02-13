@@ -33,17 +33,24 @@ class State(tel.State):
     """
     State relevant to SAT operation scheduling. Inherits other fields:
     (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`.
+    from the base State defined in `schedlib.commands`.And others from 
+    `tel.State`
 
     Parameters
     ----------
+    boresight_rot_now : int
+        The current boresight rotation state.
     hwp_spinning : bool
         Whether the high-precision measurement wheel is spinning or not.
     hwp_dir : bool
         Current direction of HWP.  True is forward, False is backwards.
     """
+    boresight_rot_now: float = 0
     hwp_spinning: bool = False
     hwp_dir: bool = None
+
+    def get_boresight(self):
+        return self.boresight_rot_now
 
 @dataclass(frozen=True)
 class WiregridTarget:
