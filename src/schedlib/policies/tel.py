@@ -27,8 +27,6 @@ class State(cmd.State):
 
     Parameters
     ----------
-    boresight_rot_now : int
-        The current boresight rotation state.
     last_ufm_relock : Optional[datetime.datetime]
         The last time the UFM was relocked, or None if it has not been relocked.
     last_bias_step : Optional[datetime.datetime]
@@ -36,7 +34,7 @@ class State(cmd.State):
     is_det_setup : bool
         Whether the detectors have been set up or not.
     """
-    boresight_rot_now: float = 0
+    
     last_ufm_relock: Optional[dt.datetime] = None
     last_bias_step: Optional[dt.datetime] = None
     last_bias_step_boresight: Optional[float] = None
@@ -46,6 +44,11 @@ class State(cmd.State):
     last_iv_elevation: Optional[float] = None
     # relock sets to false, tracks if detectors are biased at all
     is_det_setup: bool = False
+
+    def get_boresight(self):
+        raise NotImplementedError(
+            "get_boresight must be defined by child classes"
+        )
 
 class SchedMode:
     """

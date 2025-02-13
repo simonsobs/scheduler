@@ -25,6 +25,25 @@ logger = u.init_logger(__name__)
 BORESIGHT_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
+@dataclass_json
+@dataclass(frozen=True)
+class State(tel.State):
+    """
+    State relevant to LAT operation scheduling. Inherits other fields:
+    (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
+    from the base State defined in `schedlib.commands`. And others from 
+    `tel.State`
+
+    Parameters
+    ----------
+    corotator_now : int
+        The current corotator state.
+    """
+    corotator_now: float = 0
+
+    def get_boresight(self):
+        return self.el_now - 60 - self.corotator_now
+
 @dataclass(frozen=True)
 class StimulatorTarget:
     hour: int
@@ -625,8 +644,8 @@ class LATPolicy(tel.TelPolicy):
         return State(
             curr_time=t0,
             az_now=180,
-            el_now=48,
-            boresight_rot_now=None,
+            el_now=60,
+            corotator_now=0,
         )
 
     def seq2cmd(
