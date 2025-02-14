@@ -63,48 +63,6 @@ class SchedMode(tel.SchedMode):
     """
     Wiregrid = 'wiregrid'
 
-
-@dataclass(frozen=True)
-class WiregridTarget:
-    hour: int
-    el_target: float
-    az_target: float = 180
-    duration: float = 15*u.minute
-
-class SchedMode:
-    """
-    Enumerate different options for scheduling operations in SATPolicy.
-
-    Attributes
-    ----------
-    PreCal : str
-        'pre_cal'; Operations scheduled before block.t0 for calibration.
-    PreObs : str
-        'pre_obs'; Observations scheduled before block.t0 for observation.
-    InCal : str
-        'in_cal'; Calibration operations scheduled between block.t0 and block.t1.
-    InObs : str
-        'in_obs'; Observation operations scheduled between block.t0 and block.t1.
-    PostCal : str
-        'post_cal'; Calibration operations scheduled after block.t1.
-    PostObs : str
-        'post_obs'; Observations operations scheduled after block.t1.
-    PreSession : str
-        'pre_session'; Represents the start of a session, scheduled from the beginning of the requested t0.
-    PostSession : str
-        'post_session'; Indicates the end of a session, scheduled after the last operation.
-
-    """
-    PreCal = 'pre_cal'
-    PreObs = 'pre_obs'
-    InCal = 'in_cal'
-    InObs = 'in_obs'
-    PostCal = 'post_cal'
-    PostObs = 'post_obs'
-    PreSession = 'pre_session'
-    PostSession = 'post_session'
-    Wiregrid = 'wiregrid'
-
 def make_cal_target(
     source: str, 
     boresight: float, 
@@ -149,7 +107,7 @@ def make_cal_target(
         logger.warning(
             f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
         )
-        focus_str = focus ##
+        focus_str = focus
     else:
         focus_str = array_focus[int(boresight)].get(focus, focus)
 
