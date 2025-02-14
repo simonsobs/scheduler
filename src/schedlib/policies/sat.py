@@ -219,16 +219,17 @@ def make_cal_target(
     else:
         focus_str = array_focus[int(boresight)].get(focus, focus)
 
-    assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
+    sources = src.get_source_list()
+    assert source in sources, f"source should be one of {sources.keys()}"
 
     if az_branch is None:
         az_branch = 180.
 
     return CalTarget(
-        source=source, 
-        array_query=focus_str, 
-        el_bore=elevation, 
-        boresight_rot=boresight, 
+        source=source,
+        array_query=focus_str,
+        el_bore=elevation,
+        boresight_rot=boresight,
         tag=focus_str,
         allow_partial=allow_partial,
         drift=drift,
