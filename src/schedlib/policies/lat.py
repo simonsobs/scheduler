@@ -724,6 +724,8 @@ class LATPolicy(tel.TelPolicy):
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
+        #assert len(seq) != 0, "No observations fall within time-range"
+
         start_block = {
             'name': 'pre-session',
             'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
@@ -747,9 +749,12 @@ class LATPolicy(tel.TelPolicy):
             else:
                 az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
                 alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
-        else:
+        elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt
+        else:
+            az_stow = state.az_now
+            alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
             'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
