@@ -114,10 +114,10 @@ def make_cal_target(
         az_branch = 180.
 
     return CalTarget(
-        source=source, 
-        array_query=focus_str, 
-        el_bore=elevation, 
-        boresight_rot=boresight, 
+        source=source,
+        array_query=focus_str,
+        el_bore=elevation,
+        boresight_rot=boresight,
         tag=focus_str,
         allow_partial=allow_partial,
         drift=drift,
