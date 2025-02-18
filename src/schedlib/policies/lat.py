@@ -651,7 +651,7 @@ class LATPolicy(tel.TelPolicy):
         return State(
             curr_time=t0,
             az_now=180,
-            el_now=60,
+            el_now=40,
             corotator_now=0,
         )
 
