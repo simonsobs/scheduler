@@ -129,8 +129,8 @@ def make_cal_target(
 
 def make_operations(
     az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    disable_hwp=False, apply_boresight_rot=True, hwp_cfg=None,
-    home_at_end=False, run_relock=False
+    det_setup_duration=20*u.minute, disable_hwp=False, apply_boresight_rot=True,
+    hwp_cfg=None, home_at_end=False, run_relock=False
 ):
     if hwp_cfg is None:
         hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper',}
@@ -145,14 +145,16 @@ def make_operations(
         ]
     cal_ops = [
         { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
-        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence },
+        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
+        'det_setup_duration': det_setup_duration},
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp,},
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops = [
         { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
-        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence},
+        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
+        'det_setup_duration': det_setup_duration},
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp,},
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
@@ -188,9 +190,13 @@ def make_config(
 ):
     blocks = make_blocks(master_file)
     geometries = make_geometry()
+
+    det_setup_duration = 20*u.minute
+
     operations = make_operations(
         az_speed, az_accel,
         iv_cadence, bias_step_cadence,
+        det_setup_duration,
         **op_cfg
     )
 
@@ -265,22 +271,40 @@ def make_config(
 @dataclass
 class SATP1Policy(SATPolicy):
     @classmethod
-    def from_defaults(cls, master_file, state_file=None, az_speed=0.8, az_accel=1.5,
-        iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-        max_cmb_scan_duration=1*u.hour, cal_targets=None,
-        min_hwp_el=48, az_stow=None, el_stow=None,
-        boresight_override=None, hwp_override=None,
-        az_motion_override=False, **op_cfg
+    def from_defaults(cls,
+        master_file,
+        state_file=None,
+        az_speed=0.8,
+        az_accel=1.5,
+        iv_cadence=4*u.hour,
+        bias_step_cadence=0.5*u.hour,
+        max_cmb_scan_duration=1*u.hour,
+        cal_targets=None,
+        min_hwp_el=48, az_stow=None,
+        el_stow=None,
+        boresight_override=None,
+        hwp_override=None,
+        az_motion_override=False,
+        **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, state_file, az_speed, az_accel, iv_cadence,
-            bias_step_cadence, max_cmb_scan_duration,
-            cal_targets, min_hwp_el, az_stow, el_stow,
-            boresight_override, hwp_override,
-            az_motion_override, **op_cfg
+            master_file,
+            state_file,
+            az_speed, az_accel,
+            iv_cadence,
+            bias_step_cadence,
+            max_cmb_scan_duration,
+            cal_targets,
+            min_hwp_el,
+            az_stow,
+            el_stow,
+            boresight_override,
+            hwp_override,
+            az_motion_override,
+            **op_cfg
         ))
         return x
 
