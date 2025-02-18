@@ -25,6 +25,25 @@ logger = u.init_logger(__name__)
 BORESIGHT_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
+@dataclass_json
+@dataclass(frozen=True)
+class State(tel.State):
+    """
+    State relevant to LAT operation scheduling. Inherits other fields:
+    (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
+    from the base State defined in `schedlib.commands`. And others from 
+    `tel.State`
+
+    Parameters
+    ----------
+    corotator_now : int
+        The current corotator state.
+    """
+    corotator_now: float = 0
+
+    def get_boresight(self):
+        return -1*(self.el_now - 60 - self.corotator_now)
+
 @dataclass(frozen=True)
 class StimulatorTarget:
     hour: int
@@ -172,7 +191,7 @@ def make_geometry():
 
 def make_cal_target(
     source: str, 
-    boresight: float, 
+    corotator: float, 
     elevation: float, 
     focus: str, 
     allow_partial=False,
@@ -191,18 +210,15 @@ def make_cal_target(
         'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
 
-    boresight = float(boresight)
+    boresight = float(-1*(elevation - 60 - corotator))
     elevation = float(elevation)
     focus = focus.lower()
 
     focus_str = None
-    if int(boresight) not in array_focus:
-        logger.warning(
-            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
-        )
-        focus_str = focus
+    if focus in array_focus.keys():
+        focus_str = array_focus[focus]
     else:
-        focus_str = array_focus[int(boresight)].get(focus, focus)
+        focus_str = focus
 
     sources = src.get_source_list()
     assert source in sources, f"source should be one of {sources.keys()}"
@@ -263,7 +279,7 @@ def make_config(
     cal_targets,
     az_stow=None,
     el_stow=None,
-    boresight_override=None,
+    corotator_override=None,
     az_motion_override=False,
     **op_cfg
 ):
@@ -295,7 +311,7 @@ def make_config(
     }
 
     el_range = {
-        'el_range': [40, 90]
+        'el_range': [30, 90]
     }
 
     config = {
@@ -312,7 +328,7 @@ def make_config(
         'operations': operations,
         'cal_targets': cal_targets,
         'scan_tag': None,
-        'boresight_override': boresight_override,
+        'corotator_override': corotator_override,
         'az_motion_override': az_motion_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
@@ -337,7 +353,17 @@ def make_config(
 class LATPolicy(tel.TelPolicy):
     """a more realistic LAT policy.
     """
+    corotator_override: Optional[float] = None
 
+    def apply_overrides(self, blocks):
+        if self.corotator_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    corotator_angle=self.corotator_override
+                ), blocks
+            )
+        return super().apply_overrides(blocks)
+    
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """
@@ -366,7 +392,7 @@ class LATPolicy(tel.TelPolicy):
         az_speed=0.8, az_accel=1.5, iv_cadence=4*u.hour,
         bias_step_cadence=0.5*u.hour, max_cmb_scan_duration=1*u.hour,
         cal_targets=None, az_stow=None, el_stow=None,
-        boresight_override=None, az_motion_override=False, **op_cfg
+        corotator_override=None, az_motion_override=False, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
@@ -374,7 +400,7 @@ class LATPolicy(tel.TelPolicy):
         x = cls(**make_config(
             master_file, state_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, max_cmb_scan_duration,
-            cal_targets, az_stow, el_stow, boresight_override,
+            cal_targets, az_stow, el_stow, corotator_override,
             az_motion_override, **op_cfg
         ))
 
@@ -625,8 +651,8 @@ class LATPolicy(tel.TelPolicy):
         return State(
             curr_time=t0,
             az_now=180,
-            el_now=48,
-            boresight_rot_now=None,
+            el_now=40,
+            corotator_now=0,
         )
 
     def seq2cmd(
