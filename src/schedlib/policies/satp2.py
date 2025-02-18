@@ -299,7 +299,7 @@ class SATP2Policy(SATPolicy):
         return State(
             curr_time=t0,
             az_now=180,
-            el_now=40,
+            el_now=48,
             boresight_rot_now=None,
             hwp_spinning=False,
         )

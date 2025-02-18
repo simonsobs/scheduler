@@ -242,7 +242,8 @@ def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=
             last_bias_step_elevation = block.alt,
             last_bias_step_boresight = block.boresight_angle,
         )
-        return state, 12*u.minute, commands
+        #return state, 12*u.minute, commands
+        return state, 20*u.minute, commands
     else:
         return state, 0, []
 
