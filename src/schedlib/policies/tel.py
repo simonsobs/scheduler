@@ -186,7 +186,7 @@ def ufm_relock(state, commands=None):
     else:
         return state, 0, ["# no ufm relock needed at this time"]
 
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None):
+def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
     # when should det setup be done?
     # -> should always be done if the block is a cal block
     # -> should always be done if elevation has changed
@@ -239,7 +239,7 @@ def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=
             last_bias_step_elevation = block.alt,
             last_bias_step_boresight = block.boresight_angle,
         )
-        return state, 12*u.minute, commands
+        return state, det_setup_duration, commands
     else:
         return state, 0, []
 

@@ -221,8 +221,8 @@ def hwp_spin_down(state, disable_hwp=False):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='sat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup_duration)
 
 @cmd.operation(name='sat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):

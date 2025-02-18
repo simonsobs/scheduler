@@ -91,8 +91,8 @@ def ufm_relock(state, commands=None):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=False, iv_cadence=None):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+def det_setup(state, block, commands=None, apply_boresight_rot=False, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup)
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -225,7 +225,7 @@ def make_cal_target(
 
 def make_operations(
     az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    disable_hwp=False, home_at_end=False, run_relock=False
+    det_setup_duration=20*u.minute, home_at_end=False, run_relock=False
 ):
 
     pre_session_ops = [
@@ -269,9 +269,13 @@ def make_config(
 ):
     blocks = make_blocks(master_file)
     geometries = make_geometry()
+
+    det_setup_duration = 20*u.minute
+
     operations = make_operations(
         az_speed, az_accel,
         iv_cadence, bias_step_cadence,
+        det_setup_duration,
         **op_cfg
     )
 
@@ -362,20 +366,38 @@ class LATPolicy(tel.TelPolicy):
         return cls(**config)
 
     @classmethod
-    def from_defaults(cls, master_file, state_file=None, 
-        az_speed=0.8, az_accel=1.5, iv_cadence=4*u.hour,
-        bias_step_cadence=0.5*u.hour, max_cmb_scan_duration=1*u.hour,
-        cal_targets=None, az_stow=None, el_stow=None,
-        boresight_override=None, az_motion_override=False, **op_cfg
+    def from_defaults(cls,
+        master_file,
+        state_file=None,
+        az_speed=0.8,
+        az_accel=1.5,
+        iv_cadence=4*u.hour,
+        bias_step_cadence=0.5*u.hour,
+        max_cmb_scan_duration=1*u.hour,
+        cal_targets=None,
+        az_stow=None,
+        el_stow=None,
+        boresight_override=None,
+        az_motion_override=False,
+        **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, state_file, az_speed, az_accel, iv_cadence,
-            bias_step_cadence, max_cmb_scan_duration,
-            cal_targets, az_stow, el_stow, boresight_override,
-            az_motion_override, **op_cfg
+            master_file,
+            state_file,
+            az_speed,
+            az_accel,
+            iv_cadence,
+            bias_step_cadence,
+            max_cmb_scan_duration,
+            cal_targets,
+            az_stow,
+            el_stow,
+            boresight_override,
+            az_motion_override,
+            **op_cfg
         ))
 
         return x
