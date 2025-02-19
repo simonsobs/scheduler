@@ -307,7 +307,7 @@ def make_config(
 
     az_range = {
         'trim': False,
-        'az_range': [-45, 405]
+        'az_range': [-180+10, 360-10],
     }
 
     el_range = {
