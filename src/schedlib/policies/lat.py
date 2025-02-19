@@ -201,6 +201,7 @@ def make_cal_target(
     az_accel=None,
 ) -> CalTarget:
 
+    ## focus = 'all' will concatenate all of the tubes
     array_focus = {
         'c1' : 'c1_ws0,c1_ws1,c1_ws2',
         'i1' : 'i1_ws0,i1_ws1,i1_ws2',
@@ -215,7 +216,9 @@ def make_cal_target(
     focus = focus.lower()
 
     focus_str = None
-    if focus in array_focus.keys():
+    if focus == 'all':
+        focus_str = ','.join( [v for k,v in array_focus.items()] )
+    elif focus in array_focus.keys():
         focus_str = array_focus[focus]
     else:
         focus_str = focus
