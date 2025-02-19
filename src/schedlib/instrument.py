@@ -31,6 +31,8 @@ class ScanBlock(core.NamedBlock):
         Azimuth acceleration in degrees per second squared (default is 2).
     boresight_angle : float, optional
         Boresight angle in degrees (default is None).
+    corotator_angle : float, optional
+        Corotator angle in degrees (default is None)
     hwp_dir : bool, optional
         HWP direction for SATs. Forward is True, backwards if False.
         Default is None.
@@ -46,6 +48,7 @@ class ScanBlock(core.NamedBlock):
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
     boresight_angle: Optional[float] = None # deg
+    corotator_angle: Optional[float] = None # deg
     hwp_dir: Optional[bool] = None
     subtype: str = ""
     tag: str = ""
