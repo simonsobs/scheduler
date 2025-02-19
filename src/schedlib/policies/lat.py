@@ -291,11 +291,11 @@ def make_config(
 
     az_range = {
         'trim': False,
-        'az_range': [-45, 405]
+        'az_range': [-175, 355]
     }
 
     el_range = {
-        'el_range': [40, 90]
+        'el_range': [0, 90]
     }
 
     config = {
