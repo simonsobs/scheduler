@@ -1,4 +1,4 @@
-"""A production-level implementation of the SAT policy
+"""A production-level implementation of the LAT policy
 
 """
 import numpy as np
@@ -18,50 +18,157 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from .tel import CalTarget
+from .tel import State, CalTarget, make_blocks
 
 logger = u.init_logger(__name__)
 
-HWP_SPIN_UP = 7*u.minute
-HWP_SPIN_DOWN = 15*u.minute
 BORESIGHT_DURATION = 1*u.minute
-WIREGRID_DURATION = 15*u.minute
-
-@dataclass_json
-@dataclass(frozen=True)
-class State(tel.State):
-    """
-    State relevant to SAT operation scheduling. Inherits other fields:
-    (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`.
-
-    Parameters
-    ----------
-    hwp_spinning : bool
-        Whether the high-precision measurement wheel is spinning or not.
-    hwp_dir : bool
-        Current direction of HWP.  True is forward, False is backwards.
-    """
-    hwp_spinning: bool = False
-    hwp_dir: bool = None
+STIMULATOR_DURATION = 15*u.minute
 
 @dataclass(frozen=True)
-class WiregridTarget:
+class StimulatorTarget:
     hour: int
     el_target: float
     az_target: float = 180
-    duration: float = WIREGRID_DURATION
+    duration: float = STIMULATOR_DURATION
 
 class SchedMode(tel.SchedMode):
     """
-    Enumerate different options for scheduling operations in SATPolicy.
+    Enumerate different options for scheduling operations in LATPolicy.
 
     Attributes
     ----------
-    Wiregrid : str
-        'wiregrid'; Wiregrid observations scheduled between block.t0 and block.t1
+    Stimulator : str
+        'stimulator'; Stimulator observations scheduled between block.t0 and block.t1
     """
-    Wiregrid = 'wiregrid'
+    Stimulator = 'stimulator'
+
+
+# ----------------------------------------------------
+#                  Register operations
+# ----------------------------------------------------
+# Note: to avoid naming collisions. Use appropriate prefixes
+# whenver necessary. For example, all lat specific
+# operations should start with `lat`.
+#
+# Registered operations can be three kinds of functions:
+#
+# 1. for operations with static duration, it can be defined as a function
+#    that returns a list of commands, with the static duration specified in
+#    the decorator
+# 2. for operations with dynamic duration, meaning the duration is determined
+#    at runtime, it can be defined as a function that returns a tuple of
+#    duration and commands; the decorator should be informed with the option
+#    `return_duration=True`
+# 3. for operations that depends and/or modifies the state, the operation
+#    function should take the state as the first argument (no renaming allowed)
+#    and return a new state before the rest of the return values
+#
+# For example the following are all valid definitions:
+#  @cmd.operation(name='my-op', duration=10)
+#  def my_op():
+#      return ["do something"]
+#
+#  @cmd.operation(name='my-op', return_duration=True)
+#  def my_op():
+#      return 10, ["do something"]
+#
+#  @cmd.operation(name='my-op')
+#  def my_op(state):
+#      return state, ["do something"]
+#
+#  @cmd.operation(name='my-op', return_duration=True)
+#  def my_op(state):
+#      return state, 10, ["do something"]
+
+@cmd.operation(name="lat.preamble", duration=0)
+def preamble():
+    return tel.preamble()
+
+@cmd.operation(name='lat.ufm_relock', return_duration=True)
+def ufm_relock(state, commands=None, relock_cadence=None):
+    return tel.ufm_relock(state, commands, relock_cadence)
+
+# per block operation: block will be passed in as parameter
+@cmd.operation(name='lat.det_setup', return_duration=True)
+def det_setup(state, block, commands=None, apply_boresight_rot=False, iv_cadence=None):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+
+@cmd.operation(name='lat.cmb_scan', return_duration=True)
+def cmb_scan(state, block):
+    return tel.cmb_scan(state, block)
+
+@cmd.operation(name='lat.source_scan', return_duration=True)
+def source_scan(state, block):
+    return tel.source_scan(state, block)
+
+"""
+@cmd.operation(name='lat.setup_boresight', return_duration=True)
+def setup_boresight(state, block, apply_boresight_rot=True):
+    commands = []
+    duration = 0
+
+    if apply_boresight_rot and (
+            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+        ):
+
+        commands += [f"run.acu.set_boresight({block.boresight_angle})"]
+        state = state.replace(boresight_rot_now=block.boresight_angle)
+        duration += BORESIGHT_DURATION
+
+    return state, duration, commands
+"""
+
+# passthrough any arguments, to be used in any sched-mode
+@cmd.operation(name='lat.bias_step', return_duration=True)
+def bias_step(state, block, bias_step_cadence=None):
+    return tel.bias_step(state, block, bias_step_cadence)
+
+@cmd.operation(name='lat.stimulator', duration=STIMULATOR_DURATION)
+def stimulator(state):
+    return state, [
+        "run.stimulator.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
+    ]
+
+@cmd.operation(name="move_to", return_duration=True)
+def move_to(state, az, el, min_el=48, force=False):
+    if not force and (state.az_now == az and state.el_now == el):
+        return state, 0, []
+
+    cmd = [
+        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+    ]
+    state = state.replace(az_now=az, el_now=el)
+
+    return state, 0, cmd
+
+# ----------------------------------------------------
+#         setup LAT specific configs
+# ----------------------------------------------------
+
+def make_geometry():
+    # These are just the median of the wafers and an ~estimated radius
+    # To be updated later
+    return {
+        "c1_ws0": {"center": [-0.3710, 0     ], "radius": 0.3,},
+        "c1_ws1": {"center": [ 0.1815, 0.3211], "radius": 0.3,},
+        "c1_ws2": {"center": [ 0.1815,-0.3211], "radius": 0.3,},
+        "i1_ws0": {"center": [-1.9112,-0.9052], "radius": 0.3,},
+        "i1_ws1": {"center": [-1.3584,-0.5704], "radius": 0.3,},
+        "i1_ws2": {"center": [-1.3587,-1.2133], "radius": 0.3,},
+        "i3_ws0": {"center": [ 1.1865,-0.8919], "radius": 0.3,},
+        "i3_ws1": {"center": [ 1.7326,-0.5705], "radius": 0.3,},
+        "i3_ws2": {"center": [ 1.7333,-1.2135], "radius": 0.3,},
+        "i4_ws0": {"center": [ 1.1732, 0.9052], "radius": 0.3,},
+        "i4_ws1": {"center": [ 1.7332, 1.2135], "radius": 0.3,},
+        "i4_ws2": {"center": [ 1.7326, 0.5705], "radius": 0.3,},
+        "i5_ws0": {"center": [-0.3655, 1.7833], "radius": 0.3,},
+        "i5_ws1": {"center": [ 0.1879, 2.1045], "radius": 0.3,},
+        "i5_ws2": {"center": [ 0.1867, 1.4620], "radius": 0.3,},
+        "i6_ws0": {"center": [-1.9082, 0.8920], "radius": 0.3,},
+        "i6_ws1": {"center": [-1.3577, 1.2133], "radius": 0.3,},
+        "i6_ws2": {"center": [-1.3584, 0.5854], "radius": 0.3,},
+    }
 
 def make_cal_target(
     source: str, 
@@ -74,28 +181,14 @@ def make_cal_target(
     az_speed=None,
     az_accel=None,
 ) -> CalTarget:
+
     array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
+        'c1' : 'c1_ws0,c1_ws1,c1_ws2',
+        'i1' : 'i1_ws0,i1_ws1,i1_ws2',
+        'i3' : 'i3_ws0,i3_ws1,i3_ws2',
+        'i4' : 'i4_ws0,i4_ws1,i4_ws2',
+        'i5' : 'i5_ws0,i5_ws1,i5_ws2',
+        'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
 
     boresight = float(boresight)
@@ -130,179 +223,131 @@ def make_cal_target(
         az_accel=az_accel,
     )
 
-# ----------------------------------------------------
-#                  Register operations
-# ----------------------------------------------------
-# Note: to avoid naming collisions. Use appropriate prefixes
-# whenver necessary. For example, all satp1 specific
-# operations should start with `satp1`.
-#
-# Registered operations can be three kinds of functions:
-#
-# 1. for operations with static duration, it can be defined as a function
-#    that returns a list of commands, with the static duration specified in
-#    the decorator
-# 2. for operations with dynamic duration, meaning the duration is determined
-#    at runtime, it can be defined as a function that returns a tuple of
-#    duration and commands; the decorator should be informed with the option
-#    `return_duration=True`
-# 3. for operations that depends and/or modifies the state, the operation
-#    function should take the state as the first argument (no renaming allowed)
-#    and return a new state before the rest of the return values
-#
-# For example the following are all valid definitions:
-#  @cmd.operation(name='my-op', duration=10)
-#  def my_op():
-#      return ["do something"]
-#
-#  @cmd.operation(name='my-op', return_duration=True)
-#  def my_op():
-#      return 10, ["do something"]
-#
-#  @cmd.operation(name='my-op')
-#  def my_op(state):
-#      return state, ["do something"]
-#
-#  @cmd.operation(name='my-op', return_duration=True)
-#  def my_op(state):
-#      return state, 10, ["do something"]
+def make_operations(
+    az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
+    disable_hwp=False, home_at_end=False, relock_cadence=None
+):
 
-@cmd.operation(name="sat.preamble", duration=0)
-def preamble():
-    base = tel.preamble()
-    append = ["sup = OCSClient('hwp-supervisor')", "",]
-    return base + append
-
-@cmd.operation(name='sat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None, relock_cadence=None):
-    return tel.ufm_relock(state, commands, relock_cadence)
-
-@cmd.operation(name='sat.hwp_spin_up', return_duration=True)
-def hwp_spin_up(state, block, disable_hwp=False):
-    cmds = []
-    duration = 0
-
-    if disable_hwp:
-        return state, 0, ["# hwp disabled"]
-
-    elif state.hwp_spinning:
-        # if spinning in opposite direction, spin down first
-        if block.hwp_dir is not None and state.hwp_dir != block.hwp_dir:
-            duration += HWP_SPIN_DOWN
-            cmds += [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-            ]
-        else:
-            return state, 0, [f"# hwp already spinning with forward={state.hwp_dir}"]
-
-    hwp_dir = block.hwp_dir if block.hwp_dir is not None else state.hwp_dir
-    state = state.replace(hwp_dir=hwp_dir)
-    state = state.replace(hwp_spinning=True)
-
-    freq = 2 if hwp_dir else -2
-    return state, duration + HWP_SPIN_UP, cmds + [
-        "sup.enable_driver_board()",
-        f"run.hwp.set_freq(freq={freq})",
+    pre_session_ops = [
+        { 'name': 'lat.preamble'        , 'sched_mode': SchedMode.PreSession},
+        { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
+        { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
 
-@cmd.operation(name='sat.hwp_spin_down', return_duration=True)
-def hwp_spin_down(state, disable_hwp=False):
-    if disable_hwp:
-        return state, 0, ["# hwp disabled"]
-    elif not state.hwp_spinning:
-        return state, 0, ["# hwp already stopped"]
+    cal_ops = []
+    cmb_ops = []
+
+    if relock_cadence is not None:
+        pre_session_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
+        ]
+        cal_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
+        ]
+        cmb_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
+        ]
+
+    cal_ops = [
+        #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence },
+        { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
+        { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
+    ]
+    cmb_ops = [
+        #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence},
+        { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
+        { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
+    ]
+
+    return pre_session_ops + cal_ops + cmb_ops
+
+def make_config(
+    master_file,
+    state_file,
+    az_speed,
+    az_accel,
+    iv_cadence,
+    bias_step_cadence,
+    max_cmb_scan_duration,
+    cal_targets,
+    az_stow=None,
+    el_stow=None,
+    boresight_override=None,
+    az_motion_override=False,
+    **op_cfg
+):
+    blocks = make_blocks(master_file)
+    geometries = make_geometry()
+    operations = make_operations(
+        az_speed, az_accel,
+        iv_cadence, bias_step_cadence,
+        **op_cfg
+    )
+
+    sun_policy = {
+        'min_angle': 30,
+        'min_sun_time': 1980,
+        'min_el': 30,
+    }
+
+    if az_stow is None or el_stow is None:
+        stow_position = {}
     else:
-        state = state.replace(hwp_spinning=False)
-        return state, HWP_SPIN_DOWN, [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-        ]
+        stow_position = {
+            'az_stow': az_stow,
+            'el_stow': el_stow,
+        }
 
-# per block operation: block will be passed in as parameter
-@cmd.operation(name='sat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+    az_range = {
+        'trim': False,
+        'az_range': [-45, 405]
+    }
 
-@cmd.operation(name='sat.cmb_scan', return_duration=True)
-def cmb_scan(state, block):
-    return tel.cmb_scan(state, block)
+    el_range = {
+        'el_range': [40, 90]
+    }
 
-@cmd.operation(name='sat.source_scan', return_duration=True)
-def source_scan(state, block):
-    return tel.source_scan(state, block)
-
-@cmd.operation(name='sat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True):
-    commands = []
-    duration = 0
-
-    if apply_boresight_rot and (
-            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
-        ):
-        if state.hwp_spinning:
-            state = state.replace(hwp_spinning=False)
-            duration += HWP_SPIN_DOWN
-            commands += [
-                "run.hwp.stop(active=True)",
-                "sup.disable_driver_board()",
-            ]
-
-        assert not state.hwp_spinning
-        commands += [f"run.acu.set_boresight({block.boresight_angle})"]
-        state = state.replace(boresight_rot_now=block.boresight_angle)
-        duration += BORESIGHT_DURATION
-
-    return state, duration, commands
-
-# passthrough any arguments, to be used in any sched-mode
-@cmd.operation(name='sat.bias_step', return_duration=True)
-def bias_step(state, block, bias_step_cadence=None):
-    return tel.bias_step(state, block, bias_step_cadence)
-
-@cmd.operation(name='sat.wiregrid', duration=WIREGRID_DURATION)
-def wiregrid(state):
-    return state, [
-        "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
-    ]
-
-@cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, force=False):
-    if not force and (state.az_now == az and state.el_now == el):
-        return state, 0, []
-
-    duration = 0
-    cmd = []
-
-    if state.hwp_spinning and el < min_el:
-        state = state.replace(hwp_spinning=False)
-        duration += HWP_SPIN_DOWN
-        cmd += [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-        ]
-
-    cmd += [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
-    ]
-    state = state.replace(az_now=az, el_now=el)
-
-    return state, duration, cmd
+    config = {
+        'state_file': state_file,
+        'blocks': blocks,
+        'geometries': geometries,
+        'rules': {
+            'min-duration': {
+                'min_duration': 60
+            },
+            'sun-avoidance': sun_policy,
+            'az-range': az_range,
+        },
+        'operations': operations,
+        'cal_targets': cal_targets,
+        'scan_tag': None,
+        'boresight_override': boresight_override,
+        'az_motion_override': az_motion_override,
+        'az_speed': az_speed,
+        'az_accel': az_accel,
+        'iv_cadence': iv_cadence,
+        'bias_step_cadence': bias_step_cadence,
+        'max_cmb_scan_duration': max_cmb_scan_duration,
+        'stages': {
+            'build_op': {
+                'plan_moves': {
+                    'stow_position': stow_position,
+                    'sun_policy': sun_policy,
+                    'az_step': 0.5,
+                    'az_limits': az_range['az_range'],
+                    'el_limits': el_range['el_range'],
+                }
+            }
+        }
+    }
+    return config
 
 @dataclass
-class SATPolicy(tel.TelPolicy):
-    """a more realistic SAT policy.
-
-    Parameters
-    ----------
-    hwp_override : bool
-        a bool that specifies the hwp direction if overriding the master schedule.  True is forward
-        and False is reverse.
-    min_hwp_el : float
-        the minimum elevation a move command to go to without stopping the hwp first
+class LATPolicy(tel.TelPolicy):
+    """a more realistic LAT policy.
     """
-    hwp_override: Optional[bool] = None
-    min_hwp_el: float = 48 # deg
 
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
@@ -327,38 +372,24 @@ class SATPolicy(tel.TelPolicy):
                 config = yaml.load(config, Loader=loader)
         return cls(**config)
 
-    def divide_blocks(self, block, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
-        duration = block.duration
+    @classmethod
+    def from_defaults(cls, master_file, state_file=None, 
+        az_speed=0.8, az_accel=1.5, iv_cadence=4*u.hour,
+        bias_step_cadence=0.5*u.hour, max_cmb_scan_duration=1*u.hour,
+        cal_targets=None, az_stow=None, el_stow=None,
+        boresight_override=None, az_motion_override=False, **op_cfg
+    ):
+        if cal_targets is None:
+            cal_targets = []
 
-        # if the block is small enough, return it as is
-        if duration <= (max_dt + min_dt):
-            return [block]
+        x = cls(**make_config(
+            master_file, state_file, az_speed, az_accel, iv_cadence,
+            bias_step_cadence, max_cmb_scan_duration,
+            cal_targets, az_stow, el_stow, boresight_override,
+            az_motion_override, **op_cfg
+        ))
 
-        n_blocks = duration // max_dt
-        remainder = duration % max_dt
-
-        # split if 1 block with remainder > min duration
-        if n_blocks == 1:
-            return core.block_split(block, block.t0 + max_dt)
-
-        blocks = []
-        # calculate the offset for splitting
-        offset = (remainder + max_dt) / 2 if remainder.total_seconds() > 0 else max_dt
-
-        split_blocks = core.block_split(block, block.t0 + offset)
-        blocks.append(split_blocks[0])
-
-        # split the remaining block into chunks of max duration
-        for i in range(n_blocks - 1):
-            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + max_dt)
-            blocks.append(split_blocks[0])
-
-        # add the remaining part
-        if remainder.total_seconds() > 0:
-            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
-            blocks.append(split_blocks[0])
-
-        return blocks
+        return x
 
     def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
@@ -376,9 +407,8 @@ class SATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
+        columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max",
                    "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
-
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
             partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
@@ -386,40 +416,32 @@ class SATPolicy(tel.TelPolicy):
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
 
-        # override hwp direction
-        if self.hwp_override is not None:
-            blocks['baseline'] = core.seq_map(
-                lambda b: b.replace(
-                    hwp_dir=self.hwp_override
-                ), blocks['baseline']
-            )
-
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
             if isinstance(cal_target, CalTarget):
                 source = cal_target.source
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, WiregridTarget):
-                wiregrid_candidates = []
+            elif isinstance(cal_target, StimulatorTarget):
+                stimulator_candidates = []
                 current_date = t0.date()
                 end_date = t1.date()
 
                 while current_date <= end_date:
                     candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
                     if t0 <= candidate_time <= t1:
-                        wiregrid_candidates.append(
+                        stimulator_candidates.append(
                             inst.StareBlock(
-                                name='wiregrid',
+                                name='stimulator',
                                 t0=candidate_time,
                                 t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
                                 az=cal_target.az_target,
                                 alt=cal_target.el_target,
-                                subtype='wiregrid'
+                                subtype='stimulator'
                             )
                         )
                     current_date += dt.timedelta(days=1)
-                blocks['calibration']['wiregrid'] = wiregrid_candidates
+                blocks['calibration']['stimulator'] = stimulator_candidates
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -475,10 +497,10 @@ class SATPolicy(tel.TelPolicy):
         for target in self.cal_targets:
             logger.info(f"-> planning calibration scans for {target}...")
 
-            if isinstance(target, WiregridTarget):
-                logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'), 
-                                           blocks['calibration']['wiregrid'])
+            if isinstance(target, StimulatorTarget):
+                logger.info(f"-> planning stimulator scans for {target}...")
+                cal_blocks += core.seq_map(lambda b: b.replace(subtype='stimulator'), 
+                                           blocks['calibration']['stimulator'])
                 continue
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
@@ -575,7 +597,7 @@ class SATPolicy(tel.TelPolicy):
 
         # add proper subtypes
         blocks['calibration'] = core.seq_map(
-            lambda block: block.replace(subtype="cal") if block.name != 'wiregrid' else block,
+            lambda block: block.replace(subtype="cal") if block.name != 'stimulator' else block,
             blocks['calibration']
         )
 
@@ -596,41 +618,10 @@ class SATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
-        # -----------------------------------------------------------------
-        # step 5: verify
-        # -----------------------------------------------------------------
-
-        # check if blocks are above min elevation
-        alt_limits = self.stages['build_op']['plan_moves']['el_limits']
-        for block in core.seq_flatten(blocks):
-            if hasattr(block, 'alt'):
-                assert block.alt >= alt_limits[0], (
-                f"Block {block} is below the minimum elevation "
-                f"of {alt_limits[0]} degrees."
-                )
-
-                assert block.alt < alt_limits[1], (
-                f"Block {block} is above the maximum elevation "
-                f"of {alt_limits[1]} degrees."
-                )
-
         return blocks
 
     def init_state(self, t0: dt.datetime) -> State:
-        """
-        Initializes the observatory state with some reasonable guess.
-        In practice it should ideally be replaced with actual data
-        from the observatory controller.
-
-        Parameters
-        ----------
-        t0 : float
-            The initial time for the state, typically representing the current time in a specific format.
-
-        Returns
-        -------
-        State
-        """
+        """customize typical initial state for lat, if needed"""
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
@@ -647,7 +638,6 @@ class SATPolicy(tel.TelPolicy):
             az_now=180,
             el_now=48,
             boresight_rot_now=None,
-            hwp_spinning=False,
         )
 
     def seq2cmd(
@@ -694,8 +684,8 @@ class SATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
-        wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
-        cal_blocks += wiregrid_blocks
+        stimulator_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'stimulator', seq))
+        cal_blocks += stimulator_blocks
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
@@ -711,7 +701,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_post = [op for op in self.operations if op['sched_mode'] == SchedMode.PostObs]
         pre_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PreSession]
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
-        wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        stimulator_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Stimulator]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -721,7 +711,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': block.priority
+                    'priority': 3
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -730,16 +720,16 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cmb_pre,
                     'in': cmb_in,
                     'post': cmb_post,
-                    'priority': block.priority
+                    'priority': 1
                 }
-            elif block.subtype == 'wiregrid':
+            elif block.subtype == 'stimulator':
                 return {
                     'name': block.name,
                     'block': block,
                     'pre': [],
-                    'in': wiregrid_in,
+                    'in': stimulator_in,
                     'post': [],
-                    'priority': block.priority
+                    'priority': 2
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -755,7 +745,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 0,
+            'priority': 3,
             'pinned': True  # remain unchanged during multi-pass
         }
         # move to stow position if specified, otherwise keep final position
@@ -781,7 +771,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 0,
+            'priority': 3,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
@@ -794,27 +784,5 @@ class SATPolicy(tel.TelPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, duration=WIREGRID_DURATION, **kwargs):
-        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target, duration=duration))
-
-# ------------------------
-# utilities
-# ------------------------
-
-def simplify_hwp(op_seq):
-    # if hwp is spinning up and down right next to each other, we can just remove them
-    core.seq_assert_sorted(op_seq)
-    def rewriter(seq_prev, b_next):
-        if len(seq_prev) == 0:
-            return [b_next]
-        b_prev = seq_prev[-1]
-        if (b_prev.name == 'sat.hwp_spin_up' and b_next.name == 'sat.hwp_spin_down') or \
-           (b_prev.name == 'sat.hwp_spin_down' and b_next.name == 'sat.hwp_spin_up'):
-            return seq_prev[:-1] + [cmd.OperationBlock(
-                name='wait-until', 
-                t0=b_prev.t0, 
-                t1=b_next.t1, 
-            )]
-        else:
-            return seq_prev+[b_next]
-    return reduce(rewriter, op_seq, [])
+    def add_stimulator_target(self, el_target, hour_utc=12, az_target=180, duration=STIMULATOR_DURATION, **kwargs):
+        self.cal_targets.append(StimulatorTarget(hour=hour_utc, az_target=az_target, el_target=el_target, duration=duration))

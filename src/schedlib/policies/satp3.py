@@ -3,7 +3,8 @@ from dataclasses import dataclass
 import datetime as dt
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, CalTarget, SchedMode
+from .sat import SATPolicy, State, SchedMode
+from .tel import make_blocks, CalTarget
 
 logger = u.init_logger(__name__)
 
@@ -86,7 +87,8 @@ def make_cal_target(
     focus_str = None
     focus_str = array_focus.get(focus, focus)
 
-    assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
+    sources = src.get_source_list()
+    assert source in sources, f"source should be one of {sources.keys()}"
 
     if az_branch is None:
         az_branch = 180.
@@ -104,61 +106,6 @@ def make_cal_target(
         az_accel=az_accel,
     )
 
-def make_blocks(master_file):
-    return {
-        'baseline': {
-            'cmb': {
-                'type': 'toast',
-                'file': master_file
-            }
-        },
-        'calibration': {
-            'saturn': {
-                'type' : 'source',
-                'name' : 'saturn',
-            },
-            'jupiter': {
-                'type' : 'source',
-                'name' : 'jupiter',
-            },
-            'moon': {
-                'type' : 'source',
-                'name' : 'moon',
-            },
-            'uranus': {
-                'type' : 'source',
-                'name' : 'uranus',
-            },
-            'neptune': {
-                'type' : 'source',
-                'name' : 'neptune',
-            },
-            'mercury': {
-                'type' : 'source',
-                'name' : 'mercury',
-            },
-            'venus': {
-                'type' : 'source',
-                'name' : 'venus',
-            },
-            'mars': {
-                'type' : 'source',
-                'name' : 'mars',
-            },
-            'rcw38': {
-                'type' : 'source',
-                'name' : 'rcw38',
-            },
-            'taua': {
-                'type' : 'source',
-                'name' : 'taua',
-            },
-            'galcenter': {
-                'type' : 'source',
-                'name' : 'galcenter',
-            },
-        },
-    }
 
 commands_uxm_relock = [
     "",
@@ -242,13 +189,14 @@ def make_operations(
 
 def make_config(
     master_file,
+    state_file,
     az_speed,
     az_accel,
     iv_cadence,
     bias_step_cadence,
-    min_hwp_el,
     max_cmb_scan_duration,
     cal_targets,
+    min_hwp_el=None,
     az_stow=None,
     el_stow=None,
     boresight_override=None,
@@ -287,7 +235,12 @@ def make_config(
         'az_range': [-45, 405]
     }
 
+    el_range = {
+        'el_range': [40, 90]
+    }
+
     config = {
+        'state_file': state_file,
         'blocks': blocks,
         'geometries': geometries,
         'rules': {
@@ -316,6 +269,7 @@ def make_config(
                     'sun_policy': sun_policy,
                     'az_step': 0.5,
                     'az_limits': az_range['az_range'],
+                    'el_limits': el_range['el_range'],
                 }
             }
         }
@@ -333,23 +287,21 @@ def make_config(
 @dataclass
 class SATP3Policy(SATPolicy):
     @classmethod
-    def from_defaults(cls, master_file, az_speed=0.5, az_accel=0.25,
+    def from_defaults(cls, master_file, state_file=None, az_speed=0.5, az_accel=0.25,
         iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-        min_hwp_el=48, max_cmb_scan_duration=1*u.hour,
-        cal_targets=None, az_stow=None, el_stow=None,
-        boresight_override=None, hwp_override=None,
-        az_motion_override=False,
-        state_file=None, **op_cfg
+        max_cmb_scan_duration=1*u.hour, cal_targets=None, min_hwp_el=48,
+        az_stow=None, el_stow=None, boresight_override=None, hwp_override=None,
+        az_motion_override=False, **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, az_speed, az_accel,
-            iv_cadence, bias_step_cadence, min_hwp_el,
-            max_cmb_scan_duration, cal_targets,
-            az_stow, el_stow, boresight_override,
-            hwp_override, az_motion_override, **op_cfg)
+            master_file, state_file, az_speed, az_accel,
+            iv_cadence, bias_step_cadence,
+            max_cmb_scan_duration, cal_targets, min_hwp_el,
+            az_stow, el_stow, boresight_override, hwp_override,
+            az_motion_override, **op_cfg)
         )
         x.state_file = state_file
         return x
@@ -358,7 +310,18 @@ class SATP3Policy(SATPolicy):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_state(self, t0: dt.datetime) -> State:
-        """customize typical initial state for satp1, if needed"""
+        """customize typical initial state for satp3, if needed"""
+        if self.state_file is not None:
+            logger.info(f"using state from {self.state_file}")
+            state = State.load(self.state_file)
+            if state.curr_time < t0:
+                logger.info(
+                    f"Loaded state is at {state.curr_time}. Updating time to"
+                    f" {t0}"
+                )
+                state = state.replace(curr_time = t0)
+            return state
+
         return State(
             curr_time=t0,
             az_now=180,
