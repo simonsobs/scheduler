@@ -747,7 +747,7 @@ class SATPolicy(tel.TelPolicy):
         seq = [map_block(b) for b in seq]
 
         # check if any observations were added
-        assert len(seq) != 0, "No observations fall within time-range"
+        #assert len(seq) != 0, "No observations fall within time-range"
 
         start_block = {
             'name': 'pre-session',
@@ -758,6 +758,7 @@ class SATPolicy(tel.TelPolicy):
             'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
+
         # move to stow position if specified, otherwise keep final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
@@ -772,9 +773,12 @@ class SATPolicy(tel.TelPolicy):
             else:
                 az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
                 alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
-        else:
+        elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt
+        else:
+            az_stow = state.az_now
+            alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
             'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
