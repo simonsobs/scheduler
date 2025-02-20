@@ -159,7 +159,7 @@ def preamble():
         "",
         ]
 
-def ufm_relock(state, commands=None, relock_cadence=None):
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     doit = False
     if state.last_ufm_relock is None:
         doit = True

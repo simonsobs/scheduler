@@ -86,7 +86,7 @@ def preamble():
     return tel.preamble()
 
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None, relock_cadence=None):
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     return tel.ufm_relock(state, commands, relock_cadence)
 
 # per block operation: block will be passed in as parameter

@@ -174,7 +174,7 @@ def preamble():
     return base + append
 
 @cmd.operation(name='sat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None, relock_cadence=None):
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     return tel.ufm_relock(state, commands, relock_cadence)
 
 @cmd.operation(name='sat.hwp_spin_up', return_duration=True)
