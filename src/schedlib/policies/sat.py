@@ -221,8 +221,8 @@ def hwp_spin_down(state, disable_hwp=False):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='sat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup_duration)
 
 @cmd.operation(name='sat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -634,7 +634,7 @@ class SATPolicy(tel.TelPolicy):
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
-            if state.curr_time < t0:
+            if state.curr_time != t0:
                 logger.info(
                     f"Loaded state is at {state.curr_time}. Updating time to"
                     f" {t0}"
@@ -747,7 +747,7 @@ class SATPolicy(tel.TelPolicy):
         seq = [map_block(b) for b in seq]
 
         # check if any observations were added
-        assert len(seq) != 0, "No observations fall within time-range"
+        #assert len(seq) != 0, "No observations fall within time-range"
 
         start_block = {
             'name': 'pre-session',
@@ -758,6 +758,7 @@ class SATPolicy(tel.TelPolicy):
             'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
+
         # move to stow position if specified, otherwise keep final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
@@ -772,9 +773,12 @@ class SATPolicy(tel.TelPolicy):
             else:
                 az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
                 alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
-        else:
+        elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt
+        else:
+            az_stow = state.az_now
+            alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
             'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
