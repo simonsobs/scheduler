@@ -128,9 +128,16 @@ def make_cal_target(
 
 
 def make_operations(
-    az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    det_setup_duration=20*u.minute, disable_hwp=False, apply_boresight_rot=True,
-    hwp_cfg=None, home_at_end=False, run_relock=False
+    az_speed, 
+    az_accel,
+    iv_cadence=4*u.hour,
+    bias_step_cadence=0.5*u.hour,
+    det_setup_duration=20*u.minute,
+    disable_hwp=False,
+    apply_boresight_rot=True,
+    hwp_cfg=None,
+    home_at_end=False,
+    relock_cadence=24*u.hour,
 ):
     if hwp_cfg is None:
         hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper',}
@@ -139,11 +146,22 @@ def make_operations(
         { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
         { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
-    if run_relock:
+
+    cal_ops = []
+    cmb_ops = []
+
+    if relock_cadence is not None:
         pre_session_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, }
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
         ]
-    cal_ops = [
+        cal_ops += [
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
+        ]
+        cmb_ops += [
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
+        ]
+
+    cal_ops += [
         { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
@@ -151,7 +169,7 @@ def make_operations(
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
-    cmb_ops = [
+    cmb_ops += [
         { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},

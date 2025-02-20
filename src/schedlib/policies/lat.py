@@ -86,8 +86,8 @@ def preamble():
     return tel.preamble()
 
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None):
-    return tel.ufm_relock(state, commands)
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+    return tel.ufm_relock(state, commands, relock_cadence)
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
@@ -224,8 +224,14 @@ def make_cal_target(
     )
 
 def make_operations(
-    az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    det_setup_duration=20*u.minute, home_at_end=False, run_relock=False
+    az_speed,
+    az_accel,
+    iv_cadence=4*u.hour,
+    bias_step_cadence=0.5*u.hour,
+    det_setup_duration=20*u.minute,
+    disable_hwp=False,
+    home_at_end=False,
+    relock_cadence=24*u.hour
 ):
 
     pre_session_ops = [
@@ -233,17 +239,28 @@ def make_operations(
         { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
         { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
-    if run_relock:
+
+    cal_ops = []
+    cmb_ops = []
+
+    if relock_cadence is not None:
         pre_session_ops += [
-            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, }
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
         ]
-    cal_ops = [
+        cal_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
+        ]
+        cmb_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
+        ]
+
+    cal_ops += [
         #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
-    cmb_ops = [
+    cmb_ops += [
         #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},

@@ -159,23 +159,24 @@ def preamble():
         "",
         ]
 
-def ufm_relock(state, commands=None):
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+    doit = False
     if state.last_ufm_relock is None:
         doit = True
-    elif (state.curr_time - state.last_ufm_relock).total_seconds() > 12*u.hour:
-        doit = True
-    else:
-        doit = False
+    if not doit and relock_cadence is not None:
+        if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence:
+            doit = True
 
     if doit:
         if commands is None:
             commands = [
-                "############# Daily Relock",
-                "run.smurf.zero_biases()",
                 "",
+                "####################### Relock #######################",
+                "run.smurf.zero_biases()",
                 "time.sleep(120)",
                 "run.smurf.take_noise(concurrent=True, tag='res_check')",
                 "run.smurf.uxm_relock(concurrent=True)",
+                "################## Relock Over #######################",
                 "",
             ]
         state = state.replace(
@@ -184,7 +185,7 @@ def ufm_relock(state, commands=None):
         )
         return state, 15*u.minute, commands
     else:
-        return state, 0, ["# no ufm relock needed at this time"]
+        return state, 0, []
 
 def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
     # when should det setup be done?
