@@ -614,7 +614,7 @@ class LATPolicy(tel.TelPolicy):
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
-            if state.curr_time < t0:
+            if state.curr_time != t0:
                 logger.info(
                     f"Loaded state is at {state.curr_time}. Updating time to"
                     f" {t0}"
