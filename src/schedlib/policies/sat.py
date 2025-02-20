@@ -278,7 +278,8 @@ def move_to(state, az, el, min_el=48, force=False):
         state = state.replace(hwp_spinning=False)
         duration += HWP_SPIN_DOWN
         cmd += [
-            "run.hwp.stop(active=True)",
+            "run.hwp.stop(active=False)",
+            "time.sleep(15*60)",
             "sup.disable_driver_board()",
         ]
 
