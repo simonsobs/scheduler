@@ -295,7 +295,7 @@ def make_config(
     }
 
     el_range = {
-        'el_range': [0, 90]
+        'el_range': [0, 175]
     }
 
     config = {
