@@ -200,20 +200,20 @@ class BuildOpSimple:
                     break
                 seq_ = seq_new
 
-                cmb_blocks = self.merge_adjacent_blocks([s['block'] for s in seq_ if s['block'].subtype == 'cmb'],
-                             dt.timedelta(seconds=self.policy_config.max_cmb_scan_duration))
+                # cmb_blocks = self.merge_adjacent_blocks([s['block'] for s in seq_ if s['block'].subtype == 'cmb'],
+                #              dt.timedelta(seconds=self.policy_config.max_cmb_scan_duration))
 
-                seq_temp = []
-                cmb_index = 0
-                for s in seq_:
-                    if s['block'].subtype == 'cmb':
-                        if cmb_blocks[cmb_index] is not None:
-                            s = s.copy()
-                            s['block'] = cmb_blocks[cmb_index]
-                        cmb_index += 1
-                    seq_temp.append(s)
+                # seq_temp = []
+                # cmb_index = 0
+                # for s in seq_:
+                #     if s['block'].subtype == 'cmb':
+                #         if cmb_blocks[cmb_index] is not None:
+                #             s = s.copy()
+                #             s['block'] = cmb_blocks[cmb_index]
+                #         cmb_index += 1
+                #     seq_temp.append(s)
 
-                seq_ = seq_temp
+                # seq_ = seq_temp
 
             else:
                 logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes, proceeding anyway")

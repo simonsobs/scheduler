@@ -6,6 +6,7 @@ import yaml
 import os.path as op
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
+import pandas as pd
 
 import datetime as dt
 from typing import List, Union, Optional, Dict, Any, Tuple
@@ -295,7 +296,7 @@ def make_config(
     )
 
     sun_policy = {
-        'min_angle': 30,
+        'min_angle': 20,
         'min_sun_time': 1980,
         'min_el': 30,
     }
@@ -425,11 +426,62 @@ class LATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
+        # columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max",
+        #            "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
+
+        def parse_sequence_from_toast(ifile, columns):
+            def escape_string(input_string):
+                escape_dict = {
+                "'": "\\'",
+                '"': '\\"'
+                }
+                for char, escape in escape_dict.items():
+                    input_string = input_string.replace(char, escape)
+                return input_string
+
+            print('ifile', ifile)
+
+            # count the number of lines to skip
+            with open(ifile) as f:
+                for i, l in enumerate(f):
+                    if l.startswith('#'):
+                        continue
+                    else:
+                        break
+            df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+            blocks = []
+            for _, row in df.iterrows():
+                block = inst.ScanBlock(
+                    name=escape_string(row['patch'].strip()),
+                    t0=u.str2datetime(row['start_utc']),
+                    t1=u.str2datetime(row['stop_utc']),
+                    alt=row['el'],
+                    az=row['az_min'],
+                    #az_speed=row['speed'],
+                    #az_accel=row['accel'],
+                    throw=np.abs(row['az_max'] - row['az_min']),
+                    #boresight_angle=row['rotation'],
+                    priority=1, #row['#'],
+                    tag=escape_string(str(row['uid']).strip()),
+                    #hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+                )
+                blocks.append(block)
+            return blocks
+
+        def construct_seq(loader_cfg, t0, t1, columns):
+            if loader_cfg['type'] == 'source':
+                return src.source_gen_seq(loader_cfg['name'], t0, t1)
+            elif loader_cfg['type'] == 'toast':
+                blocks = parse_sequence_from_toast(loader_cfg['file'], columns)
+                blocks = self.apply_overrides(blocks)
+                return blocks
+            else:
+                raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
+
+        columns = ["start_utc", "stop_utc", "patch", "el", "az_min", "az_max", "uid"]
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
+            partial(construct_seq, t0=t0, t1=t1, columns=columns),
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
@@ -707,8 +759,8 @@ class LATPolicy(tel.TelPolicy):
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
-        if self.max_cmb_scan_duration is not None:
-            seq = core.seq_flatten(core.seq_map(lambda b: self.divide_blocks(b, dt.timedelta(seconds=self.max_cmb_scan_duration)) if b.subtype=='cmb' else b, seq))
+        #if self.max_cmb_scan_duration is not None:
+        #    seq = core.seq_flatten(core.seq_map(lambda b: self.divide_blocks(b, dt.timedelta(seconds=self.max_cmb_scan_duration)) if b.subtype=='cmb' else b, seq))
 
         # compile operations
         cal_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreCal]
