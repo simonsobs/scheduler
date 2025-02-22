@@ -245,7 +245,7 @@ def make_cal_target(
 
 def make_operations(
     az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    disable_hwp=False, home_at_end=False, run_relock=False
+    home_at_end=False, run_relock=False
 ):
 
     pre_session_ops = [
@@ -287,7 +287,7 @@ def make_config(
     az_motion_override=False,
     **op_cfg
 ):
-    blocks = make_blocks(master_file)
+    blocks = make_blocks(master_file, 'lat-cmb')
     geometries = make_geometry()
     operations = make_operations(
         az_speed, az_accel,
@@ -426,11 +426,10 @@ class LATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
+        
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
+            partial(self.construct_seq, t0=t0, t1=t1),
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )

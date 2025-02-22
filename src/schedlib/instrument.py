@@ -290,7 +290,16 @@ def array_info_from_query(geometries, query):
     arrays = [make_circular_cover(*g['center'], g['radius']) for g in matched]
     return array_info_merge(arrays)
 
-def parse_sequence_from_toast(ifile, columns):
+def _escape_string(input_string):
+    escape_dict = {
+    "'": "\\'",
+    '"': '\\"'
+    }
+    for char, escape in escape_dict.items():
+        input_string = input_string.replace(char, escape)
+    return input_string
+
+def parse_sequence_from_toast_sat(ifile):
     """
     Parameters
     ----------
@@ -304,20 +313,15 @@ def parse_sequence_from_toast(ifile, columns):
 
     """
 
-    def escape_string(input_string):
-        escape_dict = {
-        "'": "\\'",
-        '"': '\\"'
-        }
-        for char, escape in escape_dict.items():
-            input_string = input_string.replace(char, escape)
-        return input_string
-
     #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
     #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     # columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
     #            "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
+    columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", 
+        "az_min", "az_max", "el", "speed", "accel", "#", "pass", 
+        "sub", "uid", "patch"
+    ]
 
     # count the number of lines to skip
     with open(ifile) as f:
@@ -330,7 +334,7 @@ def parse_sequence_from_toast(ifile, columns):
     blocks = []
     for _, row in df.iterrows():
         block = ScanBlock(
-            name=escape_string(row['patch'].strip()),
+            name=_escape_string(row['patch'].strip()),
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
             alt=row['el'],
@@ -340,8 +344,51 @@ def parse_sequence_from_toast(ifile, columns):
             throw=np.abs(row['az_max'] - row['az_min']),
             boresight_angle=row['rotation'],
             priority=row['#'],
-            tag=escape_string(row['uid'].strip()),
+            tag=_escape_string(row['uid'].strip()),
             hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+        )
+        blocks.append(block)
+    return blocks
+
+def parse_sequence_from_toast_lat(ifile):
+    """
+    Parameters
+    ----------
+    ifile : str
+        Path to the input master schedule from toast.
+
+    Returns
+    -------
+    list of ScanBlock
+        List of ScanBlock objects parsed from the input file.
+
+    """
+
+    columns = [
+        "start_utc", "stop_utc", "target", "el", "az_min", "az_max", "uid"
+    ]
+    # count the number of lines to skip
+    with open(ifile) as f:
+        for i, l in enumerate(f):
+            if l.startswith('#'):
+                continue
+            else:
+                break
+    df = pd.read_csv(
+        ifile, skiprows=i, delimiter="|", 
+        names=columns, comment='#'
+    )
+    blocks = []
+    for _, row in df.iterrows():
+        block = ScanBlock(
+            name=_escape_string(row['target'].strip()),
+            t0=u.str2datetime(row['start_utc']),
+            t1=u.str2datetime(row['stop_utc']),
+            alt=row['el'],
+            az=row['az_min'],
+            throw=np.abs(row['az_max'] - row['az_min']),
+            priority=1, #row['#'],
+            tag=_escape_string(str(row['uid']).strip()),
         )
         blocks.append(block)
     return blocks

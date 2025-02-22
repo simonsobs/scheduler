@@ -183,7 +183,7 @@ def make_config(
     az_motion_override=False,
     **op_cfg
 ):
-    blocks = make_blocks(master_file)
+    blocks = make_blocks(master_file, 'sat-cmb')
     geometries = make_geometry()
     operations = make_operations(
         az_speed, az_accel,

@@ -96,12 +96,13 @@ class CalTarget:
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
 
-def make_blocks(master_file):
+def make_blocks(master_file, master_file_type):
+    assert master_file_type in ['sat-cmb', 'lat-cmb']
     return {
         'baseline': {
             'cmb': {
-                'type': 'toast',
-                'file': master_file
+                'type': master_file_type,
+                'file': master_file,
             }
         },
         'calibration': {
@@ -392,11 +393,19 @@ class TelPolicy:
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
 
-    def construct_seq(self, loader_cfg, t0, t1, columns):
+    def construct_seq(self, loader_cfg, t0, t1):
         if loader_cfg['type'] == 'source':
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
-        elif loader_cfg['type'] == 'toast':
-            blocks = inst.parse_sequence_from_toast(loader_cfg['file'], columns)
+        elif loader_cfg['type'] == 'sat-cmb':
+            blocks = inst.parse_sequence_from_toast_sat(
+                loader_cfg['file'], 
+            )
+            blocks = self.apply_overrides(blocks)
+            return blocks
+        elif loader_cfg['type'] == 'lat-cmb':
+            blocks = inst.parse_sequence_from_toast_lat(
+                loader_cfg['file'], 
+            )
             blocks = self.apply_overrides(blocks)
             return blocks
         else:

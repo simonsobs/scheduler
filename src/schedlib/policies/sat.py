@@ -418,7 +418,7 @@ class SATPolicy(tel.TelPolicy):
     hwp_override: Optional[bool] = None
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
-
+ 
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
             blocks = core.seq_map(
@@ -500,12 +500,9 @@ class SATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
-
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
+            partial(self.construct_seq, t0=t0, t1=t1,),
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
