@@ -385,10 +385,14 @@ def parse_sequence_from_toast_lat(ifile):
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
             alt=row['el'],
+            corotator_angle=row['el']-60,
             az=row['az_min'],
             throw=np.abs(row['az_max'] - row['az_min']),
             priority=1, #row['#'],
-            tag=_escape_string(str(row['uid']).strip()),
+            tag=_escape_string(
+                str(row['target']).strip()+","+
+                str(row['uid']).strip()
+            ),
         )
         blocks.append(block)
     return blocks

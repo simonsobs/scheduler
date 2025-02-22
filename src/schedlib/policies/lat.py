@@ -281,6 +281,8 @@ def make_config(
     bias_step_cadence,
     max_cmb_scan_duration,
     cal_targets,
+    elevations_under_90=False,
+    remove_targets=[],
     az_stow=None,
     el_stow=None,
     corotator_override=None,
@@ -333,7 +335,9 @@ def make_config(
         'cal_targets': cal_targets,
         'scan_tag': None,
         'corotator_override': corotator_override,
+        'elevations_under_90': elevations_under_90,
         'az_motion_override': az_motion_override,
+        'remove_targets': remove_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'iv_cadence': iv_cadence,
@@ -358,14 +362,43 @@ class LATPolicy(tel.TelPolicy):
     """a more realistic LAT policy.
     """
     corotator_override: Optional[float] = None
+    elevations_under_90: Optional[bool] = False
+    remove_targets: Optional[Tuple] = ()
 
     def apply_overrides(self, blocks):
+
+        if self.elevations_under_90:
+            def fix_block(b):
+                if b.alt > 90:
+                    return b.replace(alt=180-b.alt, az=b.az-180)
+                return b
+            blocks = core.seq_map( fix_block, blocks)
+
+        if len(self.remove_targets) > 0:
+            blocks = core.seq_filter_out(
+                lambda b: b.name in self.remove_targets,
+                blocks
+            )
+
         if self.corotator_override is not None:
             blocks = core.seq_map(
                 lambda b: b.replace(
                     corotator_angle=self.corotator_override
                 ), blocks
             )
+            
+        blocks = core.seq_map(
+            lambda b: b.replace(
+                boresight_angle=-1*(b.alt-60-b.corotator_angle)
+            ), blocks
+        )
+        blocks = core.seq_map(
+            lambda b: b.replace(
+                az_speed= round( self.az_speed/np.cos(np.radians(b.alt)),2),
+                az_accel=self.az_accel,
+            ), blocks
+        )
+
         return super().apply_overrides(blocks)
     
     @classmethod
@@ -392,22 +425,40 @@ class LATPolicy(tel.TelPolicy):
         return cls(**config)
 
     @classmethod
-    def from_defaults(cls, master_file, state_file=None, 
-        az_speed=0.8, az_accel=1.5, iv_cadence=4*u.hour,
-        bias_step_cadence=0.5*u.hour, max_cmb_scan_duration=1*u.hour,
-        cal_targets=None, az_stow=None, el_stow=None,
-        corotator_override=None, az_motion_override=False, **op_cfg
+    def from_defaults(
+        cls, 
+        master_file, 
+        state_file=None, 
+        az_speed=0.8, 
+        az_accel=1.5, 
+        iv_cadence=4*u.hour,
+        bias_step_cadence=0.5*u.hour, 
+        max_cmb_scan_duration=1*u.hour,
+        cal_targets=None, 
+        az_stow=None, 
+        el_stow=None, 
+        elevations_under_90=False,
+        corotator_override=None, 
+        az_motion_override=False, 
+        remove_targets=(), 
+        **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
-
+        
         x = cls(**make_config(
             master_file, state_file, az_speed, az_accel, iv_cadence,
             bias_step_cadence, max_cmb_scan_duration,
-            cal_targets, az_stow, el_stow, corotator_override,
-            az_motion_override, **op_cfg
+            cal_targets,
+            elevations_under_90=elevations_under_90,
+            az_stow=az_stow, 
+            el_stow=el_stow,
+            corotator_override=corotator_override, 
+            az_motion_override=az_motion_override, 
+            remove_targets=remove_targets,
+            **op_cfg
         ))
-
+        
         return x
 
     def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
@@ -759,7 +810,7 @@ class LATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 3,
+            'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
         # move to stow position if specified, otherwise keep final position
