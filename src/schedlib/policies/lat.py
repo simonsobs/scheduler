@@ -168,7 +168,7 @@ def move_to(state, az, el, min_el=48, force=False):
 def make_geometry():
     # These are just the median of the wafers and an ~estimated radius
     # To be updated later
-    xi_offset = -0.5
+    xi_offset = 0
     return {
         "c1_ws0": {"center": [-0.3710+xi_offset, 0     ], "radius": 0.3,},
         "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211], "radius": 0.3,},
