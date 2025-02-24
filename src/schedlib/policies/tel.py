@@ -163,23 +163,30 @@ def preamble():
         "",
         ]
 
-def ufm_relock(state, commands=None):
+def wrap_up(state, block):
+    return state, [
+         f"run.wait_until('{block.t1.isoformat()}')",
+        "run.acu.stop_and_clear()"
+    ]
+
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+    doit = False
     if state.last_ufm_relock is None:
         doit = True
-    elif (state.curr_time - state.last_ufm_relock).total_seconds() > 12*u.hour:
-        doit = True
-    else:
-        doit = False
+    if not doit and relock_cadence is not None:
+        if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence:
+            doit = True
 
     if doit:
         if commands is None:
             commands = [
-                "############# Daily Relock",
-                "run.smurf.zero_biases()",
                 "",
+                "####################### Relock #######################",
+                "run.smurf.zero_biases()",
                 "time.sleep(120)",
                 "run.smurf.take_noise(concurrent=True, tag='res_check')",
                 "run.smurf.uxm_relock(concurrent=True)",
+                "################## Relock Over #######################",
                 "",
             ]
         state = state.replace(
@@ -188,9 +195,9 @@ def ufm_relock(state, commands=None):
         )
         return state, 15*u.minute, commands
     else:
-        return state, 0, ["# no ufm relock needed at this time"]
+        return state, 0, []
 
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None):
+def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
     # when should det setup be done?
     # -> should always be done if the block is a cal block
     # -> should always be done if elevation has changed
@@ -243,8 +250,7 @@ def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=
             last_bias_step_elevation = block.alt,
             last_bias_step_boresight = block.boresight_angle,
         )
-        #return state, 12*u.minute, commands
-        return state, 20*u.minute, commands
+        return state, det_setup_duration, commands
     else:
         return state, 0, []
 

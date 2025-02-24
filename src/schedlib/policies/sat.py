@@ -125,117 +125,10 @@ def make_cal_target(
         az_branch = 180.
 
     return CalTarget(
-        source=source, 
-        array_query=focus_str, 
-        el_bore=elevation, 
-        boresight_rot=boresight, 
-        tag=focus_str,
-        allow_partial=allow_partial,
-        drift=drift,
-        az_branch=az_branch,
-        az_speed=az_speed,
-        az_accel=az_accel,
-    )
-
-@dataclass(frozen=True)
-class WiregridTarget:
-    hour: int
-    el_target: float
-    az_target: float = 180
-    duration: float = 15*u.minute
-
-class SchedMode:
-    """
-    Enumerate different options for scheduling operations in SATPolicy.
-
-    Attributes
-    ----------
-    PreCal : str
-        'pre_cal'; Operations scheduled before block.t0 for calibration.
-    PreObs : str
-        'pre_obs'; Observations scheduled before block.t0 for observation.
-    InCal : str
-        'in_cal'; Calibration operations scheduled between block.t0 and block.t1.
-    InObs : str
-        'in_obs'; Observation operations scheduled between block.t0 and block.t1.
-    PostCal : str
-        'post_cal'; Calibration operations scheduled after block.t1.
-    PostObs : str
-        'post_obs'; Observations operations scheduled after block.t1.
-    PreSession : str
-        'pre_session'; Represents the start of a session, scheduled from the beginning of the requested t0.
-    PostSession : str
-        'post_session'; Indicates the end of a session, scheduled after the last operation.
-
-    """
-    PreCal = 'pre_cal'
-    PreObs = 'pre_obs'
-    InCal = 'in_cal'
-    InObs = 'in_obs'
-    PostCal = 'post_cal'
-    PostObs = 'post_obs'
-    PreSession = 'pre_session'
-    PostSession = 'post_session'
-    Wiregrid = 'wiregrid'
-
-def make_cal_target(
-    source: str, 
-    boresight: float, 
-    elevation: float, 
-    focus: str, 
-    allow_partial=False,
-    drift=True,
-    az_branch=None,
-    az_speed=None,
-    az_accel=None,
-) -> CalTarget:
-    array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-    }
-
-    boresight = float(boresight)
-    elevation = float(elevation)
-    focus = focus.lower()
-
-    focus_str = None
-    if int(boresight) not in array_focus:
-        logger.warning(
-            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
-        )
-        focus_str = focus ##
-    else:
-        focus_str = array_focus[int(boresight)].get(focus, focus)
-
-    assert source in src.SOURCES, f"source should be one of {src.SOURCES.keys()}"
-
-    if az_branch is None:
-        az_branch = 180.
-
-    return CalTarget(
-        source=source, 
-        array_query=focus_str, 
-        el_bore=elevation, 
-        boresight_rot=boresight, 
+        source=source,
+        array_query=focus_str,
+        el_bore=elevation,
+        boresight_rot=boresight,
         tag=focus_str,
         allow_partial=allow_partial,
         drift=drift,
@@ -287,9 +180,13 @@ def preamble():
     append = ["sup = OCSClient('hwp-supervisor')", "",]
     return base + append
 
+@cmd.operation(name='sat.wrap_up', duration=0)
+def wrap_up(state, block):
+    return tel.wrap_up(state, block)
+
 @cmd.operation(name='sat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None):
-    return tel.ufm_relock(state, commands)
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+    return tel.ufm_relock(state, commands, relock_cadence)
 
 @cmd.operation(name='sat.hwp_spin_up', return_duration=True)
 def hwp_spin_up(state, block, disable_hwp=False):
@@ -335,8 +232,8 @@ def hwp_spin_down(state, disable_hwp=False):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='sat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup_duration)
 
 @cmd.operation(name='sat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -755,7 +652,7 @@ class SATPolicy(tel.TelPolicy):
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
-            if state.curr_time < t0:
+            if state.curr_time != t0:
                 logger.info(
                     f"Loaded state is at {state.curr_time}. Updating time to"
                     f" {t0}"
@@ -868,7 +765,7 @@ class SATPolicy(tel.TelPolicy):
         seq = [map_block(b) for b in seq]
 
         # check if any observations were added
-        assert len(seq) != 0, "No observations fall within time-range"
+        #assert len(seq) != 0, "No observations fall within time-range"
 
         start_block = {
             'name': 'pre-session',
@@ -879,6 +776,7 @@ class SATPolicy(tel.TelPolicy):
             'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
+
         # move to stow position if specified, otherwise keep final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
@@ -893,9 +791,12 @@ class SATPolicy(tel.TelPolicy):
             else:
                 az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
                 alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
-        else:
+        elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt
+        else:
+            az_stow = state.az_now
+            alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
             'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),

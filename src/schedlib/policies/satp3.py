@@ -108,13 +108,14 @@ def make_cal_target(
 
 
 commands_uxm_relock = [
-    "############# Daily Relock",
-    "run.smurf.zero_biases()",
     "",
+    "############# Relock #############",
+    "run.smurf.zero_biases()",
     "time.sleep(120)",
     "run.smurf.take_noise(concurrent=True, tag='res_check')",
     "run.smurf.uxm_relock(concurrent=True)",
     "run.smurf.take_bgmap(concurrent=True)",
+    "############# Relock Over #############",
     "",
 ]
 
@@ -135,9 +136,16 @@ commands_det_setup = [
 ]
 
 def make_operations(
-    az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    disable_hwp=False, apply_boresight_rot=False, hwp_cfg=None,
-    home_at_end=False, run_relock=False,
+    az_speed,
+    az_accel,
+    iv_cadence=4*u.hour,
+    bias_step_cadence=0.5*u.hour,
+    det_setup_duration=20*u.minute,
+    disable_hwp=False,
+    apply_boresight_rot=False,
+    hwp_cfg=None,
+    home_at_end=False,
+    relock_cadence=24*u.hour
 ):
     if hwp_cfg is None:
         hwp_cfg = { 'iboot2': 'power-iboot-hwp-2', 'pid': 'hwp-pid', 'pmx': 'hwp-pmx', 'hwp-pmx': 'pmx', 'gripper': 'hwp-gripper',}
@@ -147,28 +155,43 @@ def make_operations(
         { 'name': 'start_time'          ,'sched_mode': SchedMode.PreSession},
         { 'name': 'set_scan_params' , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
-    if run_relock:
+
+    cal_ops = []
+    cmb_ops = []
+
+    if relock_cadence is not None:
         pre_session_ops += [
-            { 'name': 'sat.ufm_relock'  , 'sched_mode': SchedMode.PreSession, 'commands': commands_uxm_relock, }
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
         ]
-    cal_ops = [
+        cal_ops += [
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
+        ]
+        cmb_ops += [
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
+        ]
+
+    cal_ops += [
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp,},
-        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, },
+        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot,
+        'det_setup_duration': det_setup_duration},
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
-    cmb_ops = [
+    cmb_ops += [
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp,},
-        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence},
+        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
+        'det_setup_duration': det_setup_duration},
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
+    post_session_ops = []
     if home_at_end:
-        post_session_ops = [
+        post_session_ops += [
             { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
         ]
-    else:
-        post_session_ops = []
+    post_session_ops += [
+        { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
+    ]
 
     wiregrid_ops = [
         { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
@@ -194,9 +217,13 @@ def make_config(
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
     geometries = make_geometry()
+
+    det_setup_duration = 20*u.minute
+
     operations = make_operations(
         az_speed, az_accel,
         iv_cadence, bias_step_cadence,
+        det_setup_duration,
         **op_cfg
     )
 
@@ -275,23 +302,43 @@ def make_config(
 @dataclass
 class SATP3Policy(SATPolicy):
     @classmethod
-    def from_defaults(cls, master_file, state_file=None, az_speed=0.5, az_accel=0.25,
-        iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-        max_cmb_scan_duration=1*u.hour, cal_targets=None, min_hwp_el=48,
-        az_stow=None, el_stow=None, boresight_override=None, hwp_override=None,
-        az_motion_override=False, **op_cfg
+    def from_defaults(cls,
+        master_file,
+        state_file=None,
+        az_speed=0.5,
+        az_accel=0.25,
+        iv_cadence=4*u.hour,
+        bias_step_cadence=0.5*u.hour,
+        max_cmb_scan_duration=1*u.hour,
+        cal_targets=None,
+        min_hwp_el=48,
+        az_stow=None,
+        el_stow=None,
+        boresight_override=None,
+        hwp_override=None,
+        az_motion_override=False,
+        **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, state_file, az_speed, az_accel,
-            iv_cadence, bias_step_cadence,
-            max_cmb_scan_duration, cal_targets, min_hwp_el,
-            az_stow, el_stow, boresight_override, hwp_override,
-            az_motion_override, **op_cfg)
+            master_file,
+            state_file,
+            az_speed,
+            az_accel,
+            iv_cadence,
+            bias_step_cadence,
+            max_cmb_scan_duration,
+            cal_targets, min_hwp_el,
+            az_stow,
+            el_stow,
+            boresight_override,
+            hwp_override,
+            az_motion_override,
+            **op_cfg)
         )
-        x.state_file = state_file
+
         return x
 
     def add_cal_target(self, *args, **kwargs):
@@ -302,7 +349,7 @@ class SATP3Policy(SATPolicy):
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
-            if state.curr_time < t0:
+            if state.curr_time != t0:
                 logger.info(
                     f"Loaded state is at {state.curr_time}. Updating time to"
                     f" {t0}"

@@ -104,14 +104,18 @@ class SchedMode(tel.SchedMode):
 def preamble():
     return tel.preamble()
 
+@cmd.operation(name='lat.wrap_up', duration=0)
+def wrap_up(state, block):
+    return tel.wrap_up(state, block)
+
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None):
-    return tel.ufm_relock(state, commands)
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+    return tel.ufm_relock(state, commands, relock_cadence)
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=False, iv_cadence=None):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence)
+def det_setup(state, block, commands=None, apply_boresight_rot=False, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup)
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -231,10 +235,10 @@ def make_cal_target(
         az_branch = 180.
 
     return CalTarget(
-        source=source, 
-        array_query=focus_str, 
-        el_bore=elevation, 
-        boresight_rot=boresight, 
+        source=source,
+        array_query=focus_str,
+        el_bore=elevation,
+        boresight_rot=boresight,
         tag=focus_str,
         allow_partial=allow_partial,
         drift=drift,
@@ -244,8 +248,14 @@ def make_cal_target(
     )
 
 def make_operations(
-    az_speed, az_accel, iv_cadence=4*u.hour, bias_step_cadence=0.5*u.hour,
-    home_at_end=False, run_relock=False
+    az_speed,
+    az_accel,
+    iv_cadence=4*u.hour,
+    bias_step_cadence=0.5*u.hour,
+    det_setup_duration=20*u.minute,
+    disable_hwp=False,
+    home_at_end=False,
+    relock_cadence=24*u.hour
 ):
 
     pre_session_ops = [
@@ -253,24 +263,39 @@ def make_operations(
         { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
         { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
-    if run_relock:
+
+    cal_ops = []
+    cmb_ops = []
+
+    if relock_cadence is not None:
         pre_session_ops += [
-            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, }
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
         ]
-    cal_ops = [
+        cal_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
+        ]
+        cmb_ops += [
+            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
+        ]
+
+    cal_ops += [
         #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
-    cmb_ops = [
+    cmb_ops += [
         #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
 
-    return pre_session_ops + cal_ops + cmb_ops
+    post_session_ops = [
+        { 'name': 'lat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
+    ]
+
+    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
 
 def make_config(
     master_file,
@@ -291,9 +316,13 @@ def make_config(
 ):
     blocks = make_blocks(master_file, 'lat-cmb')
     geometries = make_geometry()
+
+    det_setup_duration = 20*u.minute
+
     operations = make_operations(
         az_speed, az_accel,
         iv_cadence, bias_step_cadence,
+        det_setup_duration,
         **op_cfg
     )
 
@@ -447,8 +476,13 @@ class LATPolicy(tel.TelPolicy):
             cal_targets = []
         
         x = cls(**make_config(
-            master_file, state_file, az_speed, az_accel, iv_cadence,
-            bias_step_cadence, max_cmb_scan_duration,
+            master_file, 
+            state_file, 
+            az_speed, 
+            az_accel, 
+            iv_cadence,
+            bias_step_cadence, 
+            max_cmb_scan_duration,
             cal_targets,
             elevations_under_90=elevations_under_90,
             az_stow=az_stow, 
@@ -694,7 +728,7 @@ class LATPolicy(tel.TelPolicy):
         if self.state_file is not None:
             logger.info(f"using state from {self.state_file}")
             state = State.load(self.state_file)
-            if state.curr_time < t0:
+            if state.curr_time != t0:
                 logger.info(
                     f"Loaded state is at {state.curr_time}. Updating time to"
                     f" {t0}"
@@ -804,6 +838,9 @@ class LATPolicy(tel.TelPolicy):
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
+        # check if any observations were added
+        # assert len(seq) != 0, "No observations fall within time-range"
+
         start_block = {
             'name': 'pre-session',
             'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
@@ -827,9 +864,12 @@ class LATPolicy(tel.TelPolicy):
             else:
                 az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
                 alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
-        else:
+        elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt
+        else:
+            az_stow = state.az_now
+            alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
             'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
