@@ -651,7 +651,7 @@ class BuildOpSimple:
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
                 if ir.block.name in ['pre-session', 'post-session']:
-                    state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt)
+                    state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt, block=ir.block)
                 else:
                     op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t0}]
                     state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)

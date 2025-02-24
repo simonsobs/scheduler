@@ -159,6 +159,12 @@ def preamble():
         "",
         ]
 
+def wrap_up(state, block):
+    return state, [
+         f"run.wait_until('{block.t1.isoformat()}')",
+        "run.acu.stop_and_clear()"
+    ]
+
 def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     doit = False
     if state.last_ufm_relock is None:

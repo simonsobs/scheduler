@@ -173,6 +173,10 @@ def preamble():
     append = ["sup = OCSClient('hwp-supervisor')", "",]
     return base + append
 
+@cmd.operation(name='sat.wrap_up', duration=0)
+def wrap_up(state, block):
+    return tel.wrap_up(state, block)
+
 @cmd.operation(name='sat.ufm_relock', return_duration=True)
 def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     return tel.ufm_relock(state, commands, relock_cadence)
