@@ -187,9 +187,12 @@ def make_operations(
     if home_at_end:
         post_session_ops = [
             { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
+            { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
         ]
     else:
-        post_session_ops = []
+        post_session_ops = [
+            { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
+        ]
 
     wiregrid_ops = [
         { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
