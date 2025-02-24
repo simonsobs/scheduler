@@ -85,6 +85,10 @@ class SchedMode(tel.SchedMode):
 def preamble():
     return tel.preamble()
 
+@cmd.operation(name='lat.wrap_up', duration=0)
+def wrap_up(state, block):
+    return tel.wrap_up(state, block)
+
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
 def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     return tel.ufm_relock(state, commands, relock_cadence)
@@ -265,6 +269,10 @@ def make_operations(
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
+    ]
+
+    post_session_ops = [
+        { 'name': 'lat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
     ]
 
     return pre_session_ops + cal_ops + cmb_ops
