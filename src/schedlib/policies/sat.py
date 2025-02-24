@@ -33,17 +33,24 @@ class State(tel.State):
     """
     State relevant to SAT operation scheduling. Inherits other fields:
     (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`.
+    from the base State defined in `schedlib.commands`.And others from 
+    `tel.State`
 
     Parameters
     ----------
+    boresight_rot_now : int
+        The current boresight rotation state.
     hwp_spinning : bool
         Whether the high-precision measurement wheel is spinning or not.
     hwp_dir : bool
         Current direction of HWP.  True is forward, False is backwards.
     """
+    boresight_rot_now: float = 0
     hwp_spinning: bool = False
     hwp_dir: bool = None
+
+    def get_boresight(self):
+        return self.boresight_rot_now
 
 @dataclass(frozen=True)
 class WiregridTarget:
@@ -307,7 +314,17 @@ class SATPolicy(tel.TelPolicy):
     """
     hwp_override: Optional[bool] = None
     min_hwp_el: float = 48 # deg
-
+    boresight_override: Optional[float] = None
+ 
+    def apply_overrides(self, blocks):
+        if self.boresight_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    boresight_angle=self.boresight_override
+                ), blocks
+            )
+        return super().apply_overrides(blocks)
+    
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """
@@ -380,12 +397,9 @@ class SATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
-
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
+            partial(self.construct_seq, t0=t0, t1=t1,),
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )

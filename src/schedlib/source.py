@@ -73,8 +73,9 @@ def get_source_list():
     s.update(FIXED_SOURCES)
     return s
 
-def add_fixed_source(name, ra, dec):
+def add_fixed_source(name, ra, dec, ra_units='deg'):
     name = name.lower()
+    assert ra_units in ['deg', 'hours'], "RA units must be 'hours' or 'deg'"
     if name in EPHEM_SOURCES:
         logging.warning(
             f"name {name} already registered in EPHEM_SOURCES. Not Adding"
@@ -86,7 +87,10 @@ def add_fixed_source(name, ra, dec):
              "Not Adding"
         )
         return
-    FIXED_SOURCES[name] = (ra*np.pi/12., dec*np.pi/180.)
+    if ra_units == 'deg':
+        FIXED_SOURCES[name] = (ra*np.pi/180., dec*np.pi/180.)
+    elif ra_units == 'hours':
+        FIXED_SOURCES[name] = (ra*np.pi/12., dec*np.pi/180.)
 
 def get_source(name: str) -> Source:
     # always get new object to avoid side effects
