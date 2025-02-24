@@ -184,15 +184,14 @@ def make_operations(
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
+    post_session_ops = []
     if home_at_end:
-        post_session_ops = [
+        post_session_ops += [
             { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
-            { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
         ]
-    else:
-        post_session_ops = [
-            { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
-        ]
+    post_session_ops += [
+        { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
+    ]
 
     wiregrid_ops = [
         { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
