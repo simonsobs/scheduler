@@ -155,7 +155,6 @@ def preamble():
         "    run.initialize()",
         "",
         "acu = run.CLIENTS['acu']",
-        "pysmurfs = run.CLIENTS['smurf']",
         "",
         ]
 
