@@ -263,7 +263,6 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
-    disable_hwp=False,
     home_at_end=False,
     relock_cadence=24*u.hour
 ):
@@ -425,7 +424,7 @@ class LATPolicy(tel.TelPolicy):
                     corotator_angle=self.corotator_override
                 ), blocks
             )
-            
+
         blocks = core.seq_map(
             lambda b: b.replace(
                 boresight_angle=-1*(b.alt-60-b.corotator_angle)
@@ -439,7 +438,7 @@ class LATPolicy(tel.TelPolicy):
         )
 
         return super().apply_overrides(blocks)
-    
+
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """
@@ -484,7 +483,7 @@ class LATPolicy(tel.TelPolicy):
     ):
         if cal_targets is None:
             cal_targets = []
-        
+
         x = cls(**make_config(
             master_file, 
             state_file, 
@@ -502,7 +501,7 @@ class LATPolicy(tel.TelPolicy):
             remove_targets=remove_targets,
             **op_cfg
         ))
-        
+
         return x
 
     def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
@@ -521,7 +520,7 @@ class LATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        
+
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
             partial(self.construct_seq, t0=t0, t1=t1),
@@ -848,8 +847,6 @@ class LATPolicy(tel.TelPolicy):
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
-        # check if any observations were added
-        # assert len(seq) != 0, "No observations fall within time-range"
 
         start_block = {
             'name': 'pre-session',
