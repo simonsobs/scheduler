@@ -27,8 +27,6 @@ class State(cmd.State):
 
     Parameters
     ----------
-    boresight_rot_now : int
-        The current boresight rotation state.
     last_ufm_relock : Optional[datetime.datetime]
         The last time the UFM was relocked, or None if it has not been relocked.
     last_bias_step : Optional[datetime.datetime]
@@ -36,7 +34,7 @@ class State(cmd.State):
     is_det_setup : bool
         Whether the detectors have been set up or not.
     """
-    boresight_rot_now: float = 0
+    
     last_ufm_relock: Optional[dt.datetime] = None
     last_bias_step: Optional[dt.datetime] = None
     last_bias_step_boresight: Optional[float] = None
@@ -46,6 +44,11 @@ class State(cmd.State):
     last_iv_elevation: Optional[float] = None
     # relock sets to false, tracks if detectors are biased at all
     is_det_setup: bool = False
+
+    def get_boresight(self):
+        raise NotImplementedError(
+            "get_boresight must be defined by child classes"
+        )
 
 class SchedMode:
     """
@@ -93,12 +96,13 @@ class CalTarget:
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
 
-def make_blocks(master_file):
+def make_blocks(master_file, master_file_type):
+    assert master_file_type in ['sat-cmb', 'lat-cmb']
     return {
         'baseline': {
             'cmb': {
-                'type': 'toast',
-                'file': master_file
+                'type': master_file_type,
+                'file': master_file,
             }
         },
         'calibration': {
@@ -193,7 +197,14 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     else:
         return state, 0, []
 
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
+def det_setup(
+        state, 
+        block, 
+        commands=None, 
+        apply_boresight_rot=True, 
+        iv_cadence=None, 
+        det_setup_duration=20*u.minute
+    ):
     # when should det setup be done?
     # -> should always be done if the block is a cal block
     # -> should always be done if elevation has changed
@@ -384,7 +395,6 @@ class TelPolicy:
     geometries: List[Dict[str, Any]] = field(default_factory=list)
     cal_targets: List[CalTarget] = field(default_factory=list)
     scan_tag: Optional[str] = None
-    boresight_override: Optional[float] = None
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
@@ -396,31 +406,39 @@ class TelPolicy:
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
 
-    def construct_seq(self, loader_cfg, t0, t1, columns):
+    def construct_seq(self, loader_cfg, t0, t1):
         if loader_cfg['type'] == 'source':
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
-        elif loader_cfg['type'] == 'toast':
-            blocks = inst.parse_sequence_from_toast(loader_cfg['file'], columns)
-            if self.boresight_override is not None:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        boresight_angle=self.boresight_override
-                    ), blocks
-                )
-            if self.az_motion_override:
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        az_speed=self.az_speed
-                    ), blocks
-                )
-                blocks = core.seq_map(
-                    lambda b: b.replace(
-                        az_accel=self.az_accel
-                    ), blocks
-                )
+        elif loader_cfg['type'] == 'sat-cmb':
+            blocks = inst.parse_sequence_from_toast_sat(
+                loader_cfg['file'], 
+            )
+            blocks = self.apply_overrides(blocks)
+            return blocks
+        elif loader_cfg['type'] == 'lat-cmb':
+            blocks = inst.parse_sequence_from_toast_lat(
+                loader_cfg['file'], 
+            )
+            blocks = self.apply_overrides(blocks)
             return blocks
         else:
             raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
+    
+    def apply_overrides(self, blocks):
+        # these overrides get applied AFTER the telescope specific overrides
+        if self.az_motion_override:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    az_speed=self.az_speed
+                ), blocks
+            )
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    az_accel=self.az_accel
+                ), blocks
+            )
+        return blocks
+
 
     def divide_blocks(self, block, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
         duration = block.duration

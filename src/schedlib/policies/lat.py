@@ -25,6 +25,25 @@ logger = u.init_logger(__name__)
 BORESIGHT_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
+@dataclass_json
+@dataclass(frozen=True)
+class State(tel.State):
+    """
+    State relevant to LAT operation scheduling. Inherits other fields:
+    (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
+    from the base State defined in `schedlib.commands`. And others from 
+    `tel.State`
+
+    Parameters
+    ----------
+    corotator_now : int
+        The current corotator state.
+    """
+    corotator_now: float = 0
+
+    def get_boresight(self):
+        return -1*(self.el_now - 60 - self.corotator_now)
+
 @dataclass(frozen=True)
 class StimulatorTarget:
     hour: int
@@ -95,8 +114,18 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=False, iv_cadence=None, det_setup_duration=20*u.minute):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup)
+def det_setup(
+    state, 
+    block, 
+    commands=None, 
+    apply_boresight_rot=False, 
+    iv_cadence=None, 
+    det_setup_duration=20*u.minute
+):
+    return tel.det_setup(
+        state, block, commands, apply_boresight_rot, 
+        iv_cadence, det_setup_duration
+    )
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -153,30 +182,31 @@ def move_to(state, az, el, min_el=48, force=False):
 def make_geometry():
     # These are just the median of the wafers and an ~estimated radius
     # To be updated later
+    xi_offset = 0
     return {
-        "c1_ws0": {"center": [-0.3710, 0     ], "radius": 0.3,},
-        "c1_ws1": {"center": [ 0.1815, 0.3211], "radius": 0.3,},
-        "c1_ws2": {"center": [ 0.1815,-0.3211], "radius": 0.3,},
-        "i1_ws0": {"center": [-1.9112,-0.9052], "radius": 0.3,},
-        "i1_ws1": {"center": [-1.3584,-0.5704], "radius": 0.3,},
-        "i1_ws2": {"center": [-1.3587,-1.2133], "radius": 0.3,},
-        "i3_ws0": {"center": [ 1.1865,-0.8919], "radius": 0.3,},
-        "i3_ws1": {"center": [ 1.7326,-0.5705], "radius": 0.3,},
-        "i3_ws2": {"center": [ 1.7333,-1.2135], "radius": 0.3,},
-        "i4_ws0": {"center": [ 1.1732, 0.9052], "radius": 0.3,},
-        "i4_ws1": {"center": [ 1.7332, 1.2135], "radius": 0.3,},
-        "i4_ws2": {"center": [ 1.7326, 0.5705], "radius": 0.3,},
-        "i5_ws0": {"center": [-0.3655, 1.7833], "radius": 0.3,},
-        "i5_ws1": {"center": [ 0.1879, 2.1045], "radius": 0.3,},
-        "i5_ws2": {"center": [ 0.1867, 1.4620], "radius": 0.3,},
-        "i6_ws0": {"center": [-1.9082, 0.8920], "radius": 0.3,},
-        "i6_ws1": {"center": [-1.3577, 1.2133], "radius": 0.3,},
-        "i6_ws2": {"center": [-1.3584, 0.5854], "radius": 0.3,},
+        "c1_ws0": {"center": [-0.3710+xi_offset, 0     ], "radius": 0.3,},
+        "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211], "radius": 0.3,},
+        "c1_ws2": {"center": [ 0.1815+xi_offset,-0.3211], "radius": 0.3,},
+        "i1_ws0": {"center": [-1.9112+xi_offset,-0.9052], "radius": 0.3,},
+        "i1_ws1": {"center": [-1.3584+xi_offset,-0.5704], "radius": 0.3,},
+        "i1_ws2": {"center": [-1.3587+xi_offset,-1.2133], "radius": 0.3,},
+        "i3_ws0": {"center": [ 1.1865+xi_offset,-0.8919], "radius": 0.3,},
+        "i3_ws1": {"center": [ 1.7326+xi_offset,-0.5705], "radius": 0.3,},
+        "i3_ws2": {"center": [ 1.7333+xi_offset,-1.2135], "radius": 0.3,},
+        "i4_ws0": {"center": [ 1.1732+xi_offset, 0.9052], "radius": 0.3,},
+        "i4_ws1": {"center": [ 1.7332+xi_offset, 1.2135], "radius": 0.3,},
+        "i4_ws2": {"center": [ 1.7326+xi_offset, 0.5705], "radius": 0.3,},
+        "i5_ws0": {"center": [-0.3655+xi_offset, 1.7833], "radius": 0.3,},
+        "i5_ws1": {"center": [ 0.1879+xi_offset, 2.1045], "radius": 0.3,},
+        "i5_ws2": {"center": [ 0.1867+xi_offset, 1.4620], "radius": 0.3,},
+        "i6_ws0": {"center": [-1.9082+xi_offset, 0.8920], "radius": 0.3,},
+        "i6_ws1": {"center": [-1.3577+xi_offset, 1.2133], "radius": 0.3,},
+        "i6_ws2": {"center": [-1.3584+xi_offset, 0.5854], "radius": 0.3,},
     }
 
 def make_cal_target(
     source: str, 
-    boresight: float, 
+    corotator: float, 
     elevation: float, 
     focus: str, 
     allow_partial=False,
@@ -186,6 +216,7 @@ def make_cal_target(
     az_accel=None,
 ) -> CalTarget:
 
+    ## focus = 'all' will concatenate all of the tubes
     array_focus = {
         'c1' : 'c1_ws0,c1_ws1,c1_ws2',
         'i1' : 'i1_ws0,i1_ws1,i1_ws2',
@@ -195,18 +226,17 @@ def make_cal_target(
         'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
 
-    boresight = float(boresight)
+    boresight = float(-1*(elevation - 60 - corotator))
     elevation = float(elevation)
     focus = focus.lower()
 
     focus_str = None
-    if int(boresight) not in array_focus:
-        logger.warning(
-            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
-        )
-        focus_str = focus
+    if focus == 'all':
+        focus_str = ','.join( [v for k,v in array_focus.items()] )
+    elif focus in array_focus.keys():
+        focus_str = array_focus[focus]
     else:
-        focus_str = array_focus[int(boresight)].get(focus, focus)
+        focus_str = focus
 
     sources = src.get_source_list()
     assert source in sources, f"source should be one of {sources.keys()}"
@@ -233,7 +263,6 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
-    disable_hwp=False,
     home_at_end=False,
     relock_cadence=24*u.hour
 ):
@@ -275,7 +304,7 @@ def make_operations(
         { 'name': 'lat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
     ]
 
-    return pre_session_ops + cal_ops + cmb_ops
+    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
 
 def make_config(
     master_file,
@@ -286,13 +315,15 @@ def make_config(
     bias_step_cadence,
     max_cmb_scan_duration,
     cal_targets,
+    elevations_under_90=False,
+    remove_targets=[],
     az_stow=None,
     el_stow=None,
-    boresight_override=None,
+    corotator_override=None,
     az_motion_override=False,
     **op_cfg
 ):
-    blocks = make_blocks(master_file)
+    blocks = make_blocks(master_file, 'lat-cmb')
     geometries = make_geometry()
 
     det_setup_duration = 20*u.minute
@@ -320,11 +351,11 @@ def make_config(
 
     az_range = {
         'trim': False,
-        'az_range': [-45, 405]
+        'az_range': [-180+10, 360-10],
     }
 
     el_range = {
-        'el_range': [40, 90]
+        'el_range': [30, 90]
     }
 
     config = {
@@ -341,8 +372,10 @@ def make_config(
         'operations': operations,
         'cal_targets': cal_targets,
         'scan_tag': None,
-        'boresight_override': boresight_override,
+        'corotator_override': corotator_override,
+        'elevations_under_90': elevations_under_90,
         'az_motion_override': az_motion_override,
+        'remove_targets': remove_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'iv_cadence': iv_cadence,
@@ -366,6 +399,45 @@ def make_config(
 class LATPolicy(tel.TelPolicy):
     """a more realistic LAT policy.
     """
+    corotator_override: Optional[float] = None
+    elevations_under_90: Optional[bool] = False
+    remove_targets: Optional[Tuple] = ()
+
+    def apply_overrides(self, blocks):
+
+        if self.elevations_under_90:
+            def fix_block(b):
+                if b.alt > 90:
+                    return b.replace(alt=180-b.alt, az=b.az-180)
+                return b
+            blocks = core.seq_map( fix_block, blocks)
+
+        if len(self.remove_targets) > 0:
+            blocks = core.seq_filter_out(
+                lambda b: b.name in self.remove_targets,
+                blocks
+            )
+
+        if self.corotator_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    corotator_angle=self.corotator_override
+                ), blocks
+            )
+
+        blocks = core.seq_map(
+            lambda b: b.replace(
+                boresight_angle=-1*(b.alt-60-b.corotator_angle)
+            ), blocks
+        )
+        blocks = core.seq_map(
+            lambda b: b.replace(
+                az_speed= round( self.az_speed/np.cos(np.radians(b.alt)),2),
+                az_accel=self.az_accel,
+            ), blocks
+        )
+
+        return super().apply_overrides(blocks)
 
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
@@ -391,37 +463,42 @@ class LATPolicy(tel.TelPolicy):
         return cls(**config)
 
     @classmethod
-    def from_defaults(cls,
-        master_file,
-        state_file=None,
-        az_speed=0.8,
-        az_accel=1.5,
+    def from_defaults(
+        cls, 
+        master_file, 
+        state_file=None, 
+        az_speed=0.8, 
+        az_accel=1.5, 
         iv_cadence=4*u.hour,
-        bias_step_cadence=0.5*u.hour,
+        bias_step_cadence=0.5*u.hour, 
         max_cmb_scan_duration=1*u.hour,
-        cal_targets=None,
-        az_stow=None,
-        el_stow=None,
-        boresight_override=None,
-        az_motion_override=False,
+        cal_targets=None, 
+        az_stow=None, 
+        el_stow=None, 
+        elevations_under_90=False,
+        corotator_override=None, 
+        az_motion_override=False, 
+        remove_targets=(), 
         **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file,
-            state_file,
-            az_speed,
-            az_accel,
+            master_file, 
+            state_file, 
+            az_speed, 
+            az_accel, 
             iv_cadence,
-            bias_step_cadence,
+            bias_step_cadence, 
             max_cmb_scan_duration,
             cal_targets,
-            az_stow,
-            el_stow,
-            boresight_override,
-            az_motion_override,
+            elevations_under_90=elevations_under_90,
+            az_stow=az_stow, 
+            el_stow=el_stow,
+            corotator_override=corotator_override, 
+            az_motion_override=az_motion_override, 
+            remove_targets=remove_targets,
             **op_cfg
         ))
 
@@ -443,11 +520,10 @@ class LATPolicy(tel.TelPolicy):
         BlocksTree (nested dict / list of blocks)
             The initialized sequences
         """
-        columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max",
-                   "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
+
         # construct seqs by traversing the blocks definition dict
         blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1, columns=columns),
+            partial(self.construct_seq, t0=t0, t1=t1),
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
@@ -672,8 +748,8 @@ class LATPolicy(tel.TelPolicy):
         return State(
             curr_time=t0,
             az_now=180,
-            el_now=48,
-            boresight_rot_now=None,
+            el_now=40,
+            corotator_now=0,
         )
 
     def seq2cmd(
@@ -771,8 +847,6 @@ class LATPolicy(tel.TelPolicy):
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
-        # check if any observations were added
-        # assert len(seq) != 0, "No observations fall within time-range"
 
         start_block = {
             'name': 'pre-session',
@@ -780,7 +854,7 @@ class LATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 3,
+            'priority': 0,
             'pinned': True  # remain unchanged during multi-pass
         }
         # move to stow position if specified, otherwise keep final position
