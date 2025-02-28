@@ -823,7 +823,7 @@ class LATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': 3
+                    'priority': 0
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -841,7 +841,7 @@ class LATPolicy(tel.TelPolicy):
                     'pre': [],
                     'in': stimulator_in,
                     'post': [],
-                    'priority': 2
+                    'priority': 0
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -883,7 +883,7 @@ class LATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 3,
+            'priority': 0,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
