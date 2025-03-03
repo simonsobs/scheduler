@@ -133,6 +133,7 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
+    brake_hwp=True,
     disable_hwp=False,
     apply_boresight_rot=True,
     hwp_cfg=None,
@@ -162,25 +163,25 @@ def make_operations(
         ]
 
     cal_ops += [
-        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
+        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
-        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp,},
+        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
+        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
-        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp,},
+        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs,  'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
     post_session_ops = []
     if home_at_end:
         post_session_ops += [
-            { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, },
+            { 'name': 'sat.hwp_spin_down'   , 'sched_mode': SchedMode.PostSession, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         ]
     post_session_ops += [
         { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
@@ -202,6 +203,7 @@ def make_config(
     el_stow=None,
     boresight_override=None,
     hwp_override=None,
+    brake_hwp=True,
     az_motion_override=False,
     **op_cfg
 ):
@@ -214,6 +216,7 @@ def make_config(
         az_speed, az_accel,
         iv_cadence, bias_step_cadence,
         det_setup_duration,
+        brake_hwp,
         **op_cfg
     )
 
@@ -256,6 +259,7 @@ def make_config(
         'scan_tag': None,
         'boresight_override': boresight_override,
         'hwp_override':  hwp_override,
+        'brake_hwp': brake_hwp,
         'az_motion_override': az_motion_override,
         'az_speed' : az_speed,
         'az_accel' : az_accel,
@@ -302,6 +306,7 @@ class SATP2Policy(SATPolicy):
         el_stow=None,
         boresight_override=None,
         hwp_override=None,
+        brake_hwp=True,
         az_motion_override=False,
         **op_cfg
     ):
@@ -322,6 +327,7 @@ class SATP2Policy(SATPolicy):
             el_stow,
             boresight_override,
             hwp_override,
+            brake_hwp,
             az_motion_override,
             **op_cfg
         ))
