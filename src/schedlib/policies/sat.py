@@ -32,7 +32,7 @@ COMMANDS_HWP_BRAKE = [
     "sup.disable_driver_board()",
 ]
 COMMANDS_HWP_STOP = [
-    "sup.hwp_stop(active=False)",
+    "run.hwp_stop(active=False)",
     "sup.disable_driver_board()",
 ]
 
