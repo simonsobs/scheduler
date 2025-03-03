@@ -305,8 +305,12 @@ class SATPolicy(tel.TelPolicy):
     hwp_override : bool
         a bool that specifies the hwp direction if overriding the master schedule.  True is forward
         and False is reverse.
+    'brake_hwp : bool
+        a bool that specifies whether or not active braking should be used for the hwp.
     min_hwp_el : float
         the minimum elevation a move command to go to without stopping the hwp first
+    'boresight_override : float
+        the angle of boresight to use if not None
     """
     hwp_override: Optional[bool] = None
     brake_hwp: Optional[bool] = True
