@@ -648,6 +648,8 @@ class BuildOpSimple:
                 # add min hwp elevation if present
                 if hasattr(self.policy_config, 'min_hwp_el'):
                     op_cfgs[0]['min_el'] = self.policy_config.min_hwp_el
+                if hasattr(self.policy_config, 'brake_hwp'):
+                    op_cfgs[0]['brake_hwp'] = self.policy_config.brake_hwp
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
                 if ir.block.name in ['pre-session', 'post-session']:

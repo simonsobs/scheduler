@@ -27,6 +27,15 @@ HWP_SPIN_DOWN = 15*u.minute
 BORESIGHT_DURATION = 1*u.minute
 WIREGRID_DURATION = 15*u.minute
 
+COMMANDS_HWP_BRAKE = [
+    "run.hwp.stop(active=True)",
+    "sup.disable_driver_board()",
+]
+COMMANDS_HWP_STOP = [
+    "run.hwp_stop(active=False)",
+    "sup.disable_driver_board()",
+]
+
 @dataclass_json
 @dataclass(frozen=True)
 class State(tel.State):
@@ -189,7 +198,7 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     return tel.ufm_relock(state, commands, relock_cadence)
 
 @cmd.operation(name='sat.hwp_spin_up', return_duration=True)
-def hwp_spin_up(state, block, disable_hwp=False):
+def hwp_spin_up(state, block, disable_hwp=False, brake_hwp=True):
     cmds = []
     duration = 0
 
@@ -200,10 +209,7 @@ def hwp_spin_up(state, block, disable_hwp=False):
         # if spinning in opposite direction, spin down first
         if block.hwp_dir is not None and state.hwp_dir != block.hwp_dir:
             duration += HWP_SPIN_DOWN
-            cmds += [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-            ]
+            cmds += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
         else:
             return state, 0, [f"# hwp already spinning with forward={state.hwp_dir}"]
 
@@ -218,17 +224,15 @@ def hwp_spin_up(state, block, disable_hwp=False):
     ]
 
 @cmd.operation(name='sat.hwp_spin_down', return_duration=True)
-def hwp_spin_down(state, disable_hwp=False):
+def hwp_spin_down(state, disable_hwp=False, brake_hwp=True):
     if disable_hwp:
         return state, 0, ["# hwp disabled"]
     elif not state.hwp_spinning:
         return state, 0, ["# hwp already stopped"]
     else:
         state = state.replace(hwp_spinning=False)
-        return state, HWP_SPIN_DOWN, [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-        ]
+        cmd = COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
+        return state, HWP_SPIN_DOWN, cmd
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='sat.det_setup', return_duration=True)
@@ -244,7 +248,7 @@ def source_scan(state, block):
     return tel.source_scan(state, block)
 
 @cmd.operation(name='sat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True):
+def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
     commands = []
     duration = 0
 
@@ -254,11 +258,7 @@ def setup_boresight(state, block, apply_boresight_rot=True):
         if state.hwp_spinning:
             state = state.replace(hwp_spinning=False)
             duration += HWP_SPIN_DOWN
-            commands += [
-                "run.hwp.stop(active=True)",
-                "sup.disable_driver_board()",
-            ]
-
+            commands += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
         assert not state.hwp_spinning
         commands += [f"run.acu.set_boresight({block.boresight_angle})"]
         state = state.replace(boresight_rot_now=block.boresight_angle)
@@ -278,7 +278,7 @@ def wiregrid(state):
     ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, force=False):
+def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
@@ -288,11 +288,7 @@ def move_to(state, az, el, min_el=48, force=False):
     if state.hwp_spinning and el < min_el:
         state = state.replace(hwp_spinning=False)
         duration += HWP_SPIN_DOWN
-        cmd += [
-            "run.hwp.stop(active=True)",
-            "sup.disable_driver_board()",
-        ]
-
+        cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
     cmd += [
         f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
     ]
@@ -309,10 +305,15 @@ class SATPolicy(tel.TelPolicy):
     hwp_override : bool
         a bool that specifies the hwp direction if overriding the master schedule.  True is forward
         and False is reverse.
+    brake_hwp : bool
+        a bool that specifies whether or not active braking should be used for the hwp.
     min_hwp_el : float
         the minimum elevation a move command to go to without stopping the hwp first
+    boresight_override : float
+        the angle of boresight to use if not None
     """
     hwp_override: Optional[bool] = None
+    brake_hwp: Optional[bool] = True
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
  
