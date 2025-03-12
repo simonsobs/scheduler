@@ -625,21 +625,17 @@ class SATPolicy(tel.TelPolicy):
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
                 if block.subtype=='cal':
-                    j = 1
                     # try next blocks
-                    while i + j < len(blocks):
-                        if (blocks[i+j].subtype=="cmb"):
+                    for j in range(1, len(blocks)-i):
+                        if blocks[i+j].subtype=="cmb":
                             blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
                             break
-                        j = j + 1
                     else:
-                        j = 1
                         # try previous blocks
-                        while i - j >= 0:
-                            if (blocks[i-j].subtype=="cmb"):
+                        for j in range(1, i+1):
+                            if blocks[i-j].subtype=="cmb":
                                 blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
                                 break
-                            j = j + 1
                         else:
                             raise ValueError(f"Cannot assign HWP direction to cal block {block}")
 
