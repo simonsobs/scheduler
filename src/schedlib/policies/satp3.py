@@ -109,13 +109,13 @@ def make_cal_target(
 
 commands_uxm_relock = [
     "",
-    "############# Relock #############",
+    "####################### Relock #######################",
     "run.smurf.zero_biases()",
     "time.sleep(120)",
     "run.smurf.take_noise(concurrent=True, tag='res_check')",
     "run.smurf.uxm_relock(concurrent=True)",
     "run.smurf.take_bgmap(concurrent=True)",
-    "############# Relock Over #############",
+    "################## Relock Over #######################",
     "",
 ]
 
@@ -161,13 +161,13 @@ def make_operations(
 
     if relock_cadence is not None:
         pre_session_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence, 'commands': commands_uxm_relock,}
         ]
         cal_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence, 'commands': commands_uxm_relock,}
         ]
         cmb_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence, 'commands': commands_uxm_relock,}
         ]
 
     cal_ops += [

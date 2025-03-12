@@ -17,6 +17,8 @@ from .stages.build_op import get_parking
 
 logger = u.init_logger(__name__)
 
+RELOCK_DURATION = 15*u.minute
+
 @dataclass_json
 @dataclass(frozen=True)
 class State(cmd.State):
@@ -31,10 +33,22 @@ class State(cmd.State):
         The last time the UFM was relocked, or None if it has not been relocked.
     last_bias_step : Optional[datetime.datetime]
         The last time a bias step was performed, or None if no bias step has been performed.
+    last_bias_step_boresight: Optional[float]
+        The boresight (deg) at which the last bias step was taken, or None if no bias step has been performed.
+    last_bias_step_elevation: Optional[float]
+        The elevation (deg) at which the last bias step was taken, or None if no bias step has been performed.
+    last_iv : Optional[datetime.datetime]
+        The last time an iv curve was taken, or None if no iv curve has been taken.
+    last_iv_boresight: Optional[float]
+        The boresight (deg) at which the iv curve step was taken, or None if no iv curve has been taken.
+    last_iv_elevation: Optional[float]
+        The elevation (deg) at which the last iv curve was taken, or None if no iv curve has been taken.
     is_det_setup : bool
         Whether the detectors have been set up or not.
+    has_active_channels : Optional[bool]
+        Whether there are any active channels such that take_noise can be run befor relock
     """
-    
+
     last_ufm_relock: Optional[dt.datetime] = None
     last_bias_step: Optional[dt.datetime] = None
     last_bias_step_boresight: Optional[float] = None
@@ -44,6 +58,7 @@ class State(cmd.State):
     last_iv_elevation: Optional[float] = None
     # relock sets to false, tracks if detectors are biased at all
     is_det_setup: bool = False
+    has_active_channels: Optional[bool] = True
 
     def get_boresight(self):
         raise NotImplementedError(
@@ -175,6 +190,8 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     if not doit and relock_cadence is not None:
         if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence:
             doit = True
+    if not doit and not state.has_active_channels:
+        doit = True
 
     if doit:
         if commands is None:
@@ -183,16 +200,24 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
                 "####################### Relock #######################",
                 "run.smurf.zero_biases()",
                 "time.sleep(120)",
-                "run.smurf.take_noise(concurrent=True, tag='res_check')",
+            ]
+            if state.has_active_channels:
+                commands += ["run.smurf.take_noise(concurrent=True, tag='res_check')"]
+            commands += [
                 "run.smurf.uxm_relock(concurrent=True)",
                 "################## Relock Over #######################",
-                "",
+                ""
             ]
+        elif not state.has_active_channels:
+            if "run.smurf.take_noise(concurrent=True, tag='res_check')" in commands:
+                commands.remove("run.smurf.take_noise(concurrent=True, tag='res_check')")
+
         state = state.replace(
             last_ufm_relock=state.curr_time,
             is_det_setup=False,
+            has_active_channels=True
         )
-        return state, 15*u.minute, commands
+        return state, RELOCK_DURATION, commands
     else:
         return state, 0, []
 
