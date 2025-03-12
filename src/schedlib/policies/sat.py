@@ -325,7 +325,7 @@ class SATPolicy(tel.TelPolicy):
                 ), blocks
             )
         return super().apply_overrides(blocks)
-    
+
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """
@@ -567,6 +567,13 @@ class SATPolicy(tel.TelPolicy):
                 az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
                 tag=f"{cal_block.tag},{target.tag}"
             )
+
+            # override hwp direction
+            print('hwp_override: ', self.hwp_override)
+            if self.hwp_override is not None:
+                cal_block = cal_block.replace(
+                    hwp_dir=self.hwp_override
+                )
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks
@@ -614,6 +621,28 @@ class SATPolicy(tel.TelPolicy):
             )
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
+
+        # add hwp direction to cal blocks
+        if self.hwp_override is None:
+            for i, block in enumerate(blocks):
+                if block.subtype=='cal':
+                    j = 1
+                    # try next blocks
+                    while i + j < len(blocks):
+                        if (blocks[i+j].subtype=="cmb"):
+                            blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
+                            break
+                        j = j + 1
+                    else:
+                        j = 1
+                        # try previous blocks
+                        while i - j >= 0:
+                            if (blocks[i-j].subtype=="cmb"):
+                                blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
+                                break
+                            j = j + 1
+                        else:
+                            raise ValueError(f"Cannot assign HWP direction to cal block {block}")
 
         # -----------------------------------------------------------------
         # step 5: verify
