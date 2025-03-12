@@ -569,7 +569,6 @@ class SATPolicy(tel.TelPolicy):
             )
 
             # override hwp direction
-            print('hwp_override: ', self.hwp_override)
             if self.hwp_override is not None:
                 cal_block = cal_block.replace(
                     hwp_dir=self.hwp_override
