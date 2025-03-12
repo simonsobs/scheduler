@@ -190,6 +190,8 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     if not doit and relock_cadence is not None:
         if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence:
             doit = True
+    if not doit and not state.has_active_channels:
+        doit = True
 
     if doit:
         if commands is None:
