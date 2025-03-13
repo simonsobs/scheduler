@@ -624,7 +624,7 @@ class SATPolicy(tel.TelPolicy):
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
-                if block.subtype=='cal':
+                if block.subtype=='cal' and block.hwp_dir is not None:
                     # try next blocks
                     for j in range(1, len(blocks)-i):
                         if blocks[i+j].subtype=="cmb":
