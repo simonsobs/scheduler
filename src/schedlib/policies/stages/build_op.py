@@ -290,7 +290,9 @@ class BuildOpSimple:
                 constraints = [core.Block(t0=t0, t1=t1)]
 
             seq_out = []
-            for b in seq:
+            for i, b in enumerate(seq):
+                # if i < len(seq) - 1:
+                #     print(seq[i+1]['block'])
                 # if it's already an planned, just execute it, otherwise plan it
                 # if isinstance(b, list) and all(isinstance(x, IR) for x in b):
                 #     for x in b:
@@ -316,7 +318,7 @@ class BuildOpSimple:
                 state, ir = self._plan_block_operations(
                     state, block=b['block'], constraint=constraint,
                     pre_ops=b['pre'], post_ops=b['post'], in_ops=b['in'],
-                    causal=not(b['priority'] == priority)
+                    causal=not(b['priority'] == priority), prev_block=seq[i-1]['block'] if i > 0 and not isinstance(seq[i-1], IR) else None
                 )
                 if len(ir) == 0:
                     logger.info(f"--> block {b['block']} has nothing that can be planned, skipping...")
@@ -455,7 +457,7 @@ class BuildOpSimple:
         return state, duration, op_blocks
 
     def _plan_block_operations(self, state, block, constraint,
-                               pre_ops, in_ops, post_ops, causal=True):
+                               pre_ops, in_ops, post_ops, causal=True, prev_block=None):
         """
         Plan block operations based on the current state, block information, constraint, and operational sequences.
 
@@ -501,10 +503,16 @@ class BuildOpSimple:
             state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
 
         shift = 10
-        safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+        if prev_block is None:
+            safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+        else:
+            safet = get_traj_ok_time(prev_block.az, block.az, prev_block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
         while safet <= state.curr_time:
             state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
-            safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+            if prev_block is None:
+                safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+            else:
+                safet = get_traj_ok_time(prev_block.az, block.az, prev_block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
         initial_state = state
 
