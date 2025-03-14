@@ -149,7 +149,7 @@ class BuildOpSimple:
     plan_moves: Dict[str, Any] = field(default_factory=dict)
     simplify_moves: Dict[str, Any] = field(default_factory=dict)
 
-    def merge_adjacent_blocks(self, seq, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
+    def merge_adjacent_blocks(self, seq, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=20)):
         for i in range(1, len(seq)):
             current, previous = seq[i], seq[i-1]
             # skip previously merged blocks
@@ -210,11 +210,12 @@ class BuildOpSimple:
                         if cmb_blocks[cmb_index] is not None:
                             s = s.copy()
                             s['block'] = cmb_blocks[cmb_index]
+                            seq_temp.append(s)
                         cmb_index += 1
-                    seq_temp.append(s)
+                    else:
+                        seq_temp.append(s)
 
                 seq_ = seq_temp
-
             else:
                 logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes, proceeding anyway")
 
