@@ -506,13 +506,15 @@ class BuildOpSimple:
         if prev_block is None:
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
         else:
-            safet = get_traj_ok_time(prev_block.az, block.az, prev_block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+            az_parking, alt_parking, t0_parking, t1_parking = get_parking(prev_block.t1, block.t0,
+                                                                          prev_block.alt, self.plan_moves['sun_policy'])
+            safet = get_traj_ok_time(az_parking, block.az, alt_parking, block.alt, state.curr_time, self.plan_moves['sun_policy'])
         while safet <= state.curr_time:
             state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
             if prev_block is None:
                 safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
             else:
-                safet = get_traj_ok_time(prev_block.az, block.az, prev_block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+                safet = get_traj_ok_time(az_parking, block.az, alt_parking, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
         initial_state = state
 
