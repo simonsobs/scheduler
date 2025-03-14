@@ -291,8 +291,6 @@ class BuildOpSimple:
 
             seq_out = []
             for i, b in enumerate(seq):
-                # if i < len(seq) - 1:
-                #     print(seq[i+1]['block'])
                 # if it's already an planned, just execute it, otherwise plan it
                 # if isinstance(b, list) and all(isinstance(x, IR) for x in b):
                 #     for x in b:
@@ -505,14 +503,18 @@ class BuildOpSimple:
         shift = 10
         if prev_block is None:
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+        elif prev_block.t1 == block.t0:
+            safet = get_traj_ok_time(prev_block.az, block.az, prev_block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
         else:
             az_parking, alt_parking, t0_parking, t1_parking = get_parking(prev_block.t1, block.t0,
                                                                           prev_block.alt, self.plan_moves['sun_policy'])
             safet = get_traj_ok_time(az_parking, block.az, alt_parking, block.alt, state.curr_time, self.plan_moves['sun_policy'])
-        while safet <= state.curr_time:
+        while safet < block.t0:
             state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
             if prev_block is None:
                 safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+            elif prev_block.t1 == block.t0:
+                safet = get_traj_ok_time(prev_block.az, block.az, prev_block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
             else:
                 safet = get_traj_ok_time(az_parking, block.az, alt_parking, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
