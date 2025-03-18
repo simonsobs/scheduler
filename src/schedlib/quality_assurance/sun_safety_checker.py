@@ -16,9 +16,9 @@ class SunCrawler:
     def __init__(self, platform, path=None, cmd_txt=None):
         assert platform in ['satp1', 'satp2', 'satp3', 'lat'], (
             f"{platform} is not an implemented platform, choose from satp1, "
-             "satp2, or satp3"
+             "satp2, satp3, or lat"
         )
-    
+
         match platform:
             case "satp1":
                 from schedlib.policies.satp1 import make_config
