@@ -547,8 +547,6 @@ class BuildOpSimple:
         else:
             state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
 
-        print('state_start: ', state.curr_time)
-
         # if iter == 0 and not causal:
         #     _, pre_dur, _ = self._apply_ops(state, pre_ops, block=block)
         #     min_time = max(state.curr_time, block.t0 - dt.timedelta(seconds=pre_dur))
@@ -562,15 +560,13 @@ class BuildOpSimple:
         #     state = state.replace(curr_time=t)
 
         # if iter == 0 and not causal:
-        #     test_state = state
-        #     _, pre_dur, _ = self._apply_ops(test_state, pre_ops, block=block)
         #     shift = 10
         #     #if prev_block is None:
         #     #    safet, move = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'], return_all=True)
         #     #elif state.curr_time == block.t0:
         #     #    safet, move = get_traj_ok_time_socs(state.az_now, block.az, state.el_now, block.alt, state.curr_time, self.plan_moves['sun_policy'], return_all=True)
         #     #else:
-        #     az_parking, alt_parking, t0_parking, t1_parking = get_parking(state.curr_time, max(block.t0),
+        #     az_parking, alt_parking, t0_parking, t1_parking = get_parking(state.curr_time, block.t0,
         #                                                                     state.el_now, self.plan_moves['sun_policy'])
 
         #     print('parking: ', az_parking, alt_parking, t0_parking, t1_parking )
@@ -613,11 +609,44 @@ class BuildOpSimple:
         #         safet, move = get_traj_ok_time_socs(az_parking, block.az, alt_parking, block.alt, state.curr_time, self.plan_moves['sun_policy'], return_all=True)
         #         print('state loop', state.curr_time)
 
+        #if iter == 0 and not causal:
+        # shift = 60
+        # safet, move = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'], return_all=True)
+        # print('sss: ',safet, move)
+        # while move is not None:
+        #     state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
+        #     safet, move = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'], return_all=True)
+
+        # print('zzz: ', state.curr_time)
+
         shift = 10
         safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
         while safet <= state.curr_time:
             state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+
+
+        # if iter == 0 and not causal:
+        #     state = state.replace(curr_time=max(constraint.t0, block.t0))
+        #     _, pre_dur, _ = self._apply_ops(state, pre_ops, block=block)
+
+        #     print('state_curr_time', state.curr_time, block.t0)
+
+        #     safet, move = get_traj_ok_time_socs(state.az_now, block.az, state.el_now, block.alt, state.curr_time, self.plan_moves['sun_policy'], return_all=True)
+
+        #     print('move', move)
+
+        #     shift = 10
+        #     t_start = state.curr_time
+        #     while move is not None and t_start > (state.curr_time - dt.timedelta(seconds=pre_dur)) and t_start > constraint.t0:
+        #         t_start = t_start - dt.timedelta(seconds=shift)
+        #         safet, move = get_traj_ok_time_socs(state.az_now, block.az, state.el_now, block.alt, t_start, self.plan_moves['sun_policy'], return_all=True)
+        #         print('tt_start', t_start)
+        #     else:
+        #         t_start = state.curr_time
+
+        #     print('t_start: ', t_start, block.t0)
+        #     state = state.replace(curr_time=t_start)
 
 
         initial_state = state
@@ -641,8 +670,6 @@ class BuildOpSimple:
         # -> overwrite block if we extended into the block
         # -> if we extended past the block, skip operation
 
-        print('before: ', state.curr_time, block.t0, block.t1, block)
-
         # did we extend into the block?
         if state.curr_time > block.t0:
             logger.debug(f"---> curr_time extended into block {block.name}")
@@ -661,8 +688,6 @@ class BuildOpSimple:
             logger.debug(f"---> gap is large enough for pre-block operations")
             state = state.replace(curr_time=block.t0)
             pre_block_name = "pre_block"
-
-        print('after: ', state.curr_time, block.t0, block.t1, block)
 
         logger.debug(f"--> post pre-block state: {u.pformat(state)}")
         logger.debug(f"--> post pre-block op_seq: {u.pformat(op_seq)}")
@@ -764,10 +789,6 @@ class BuildOpSimple:
                 block=block,
                 operations=post_ops)
             ]
-        # if block.name == "jupiter":
-        #     import sys
-        #     sys.exit()
-        print('-------------------------------------------')
 
         return state, op_seq
 
@@ -892,20 +913,32 @@ class PlanMoves:
 
             """
             if (block0.t1 >= block1.t0):
-                return []
+                t1, move = get_traj_ok_time_socs(block0.az, block1.az, block0.alt, block1.alt,
+                                  block0.t1, self.sun_policy, return_all=True)
+                if t1 >= block1.t0 and move:
+                    return []
             # Check the move
-            t1 = get_traj_ok_time_socs(block0.az, block1.az, block0.alt, block1.alt,
-                                  block0.t1, self.sun_policy)
+            t1, move = get_traj_ok_time_socs(block0.az, block1.az, block0.alt, block1.alt,
+                                  block0.t1, self.sun_policy, return_all=True)
 
-            if t1 >= block1.t0:
+            if t1 >= block1.t0 and move:
                 return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=block1.t0,
                            az=block1.az, alt=block1.alt)]
 
-            alt_range = block0.alt, self.sun_policy['min_el']
+            alt_range = self.el_limits[-1], self.sun_policy['min_el']
             n_alts = max(2, int(round(abs(alt_range[1] - alt_range[0]) / 4. + 1)))
 
+            step = 4
+            down = np.arange(block0.alt, self.sun_policy['min_el'] - step, -step)
+            down[-1] = self.sun_policy['min_el']
+
+            up = np.arange(block0.alt + step, self.el_limits[-1] + step, step)
+            up[-1] = self.el_limits[-1] 
+
+            alt_range = np.concatenate((down, up))
+
             for az in [180, block0.az, block1.az]:
-                for alt in np.linspace(alt_range[0], alt_range[1], n_alts):
+                for alt in  alt_range: #np.linspace(alt_range[0], alt_range[1], n_alts):
                     az_parking, alt_parking, t0_parking, t1_parking = get_parking(block0.t1, block1.t0,
                                                                                   block0.alt, self.sun_policy, az_parking=az, alt_parking=alt)
                     t1, move = get_traj_ok_time_socs(az_parking, block1.az, alt_parking, block1.alt,
@@ -922,7 +955,8 @@ class PlanMoves:
 
                     if move_away_by < t0_parking:
                         if move_away_by < block0.t1:
-                            raise ValueError("Sun-safe parking spot not accessible from prior scan.")
+                            continue
+                            #raise ValueError("Sun-safe parking spot not accessible from prior scan.")
                         else:
                             t0_parking = move_away_by + (move_away_by - block0.t1) / 2
 
@@ -932,20 +966,24 @@ class PlanMoves:
                     while t1_parking < block1.t0 + dt.timedelta(seconds=max_delay):
                         ok_until, move = get_traj_ok_time_socs(
                             az_parking, block1.az, alt_parking, block1.alt, t1_parking, self.sun_policy, return_all=True)
-                        if move is not None:#ok_until > block1.t0:
+                        if move and ok_until > block1.t0:
                             break
                         t1_parking = t1_parking + dt.timedelta(seconds=shift)
                     else:
-                        raise ValueError("Next scan not accessible from sun-safe parking spot.")
+                        continue
+                        #raise ValueError("Next scan not accessible from sun-safe parking spot.")
 
                     if t1_parking > block1.t0:
                         logger.warning("sun-safe parking delays move to next field by "
                                     f"{(t1_parking - block1.t0).total_seconds()} seconds")
 
-                    t1, move = get_traj_ok_time_socs(az_parking, block1.az, alt_parking, block1.alt,
+                    t0, move0 = get_traj_ok_time_socs(block0.az, az_parking, block0.alt, alt_parking,
+                                    t0_parking, self.sun_policy, return_all=True)
+
+                    t1, move1 = get_traj_ok_time_socs(az_parking, block1.az, alt_parking, block1.alt,
                                     t1_parking, self.sun_policy, return_all=True)
 
-                    if move is not None:
+                    if (move0 and move0['sun_time'] > 0) and (move1 and move1['sun_time'] > 0):
                         return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
                         az=az_parking, alt=alt_parking),
                         IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
@@ -953,6 +991,8 @@ class PlanMoves:
                         IR(name='gap', subtype=IRMode.Gap, t0=t1_parking, t1=block1.t0,
                         az=block1.az, alt=block1.alt),
                         ]
+            else:
+                raise ValueError('No sunsafe moves found')
 
         # go through the sequence and wrap az if falls outside limits
         logger.info(f"checking if az falls outside limits")
@@ -970,7 +1010,7 @@ class PlanMoves:
         logger.info(f"planning moves...")
         seq_ = [seq[0]]
         for i in range(1, len(seq)):
-            gaps = get_safe_gaps(seq[i-1], seq[i], is_end=(i==(len(seq)-1)))
+            gaps = get_safe_gaps_2(seq[i-1], seq[i], is_end=(i==(len(seq)-1)))
             seq_.extend(gaps)
             seq_.append(seq[i])
 
