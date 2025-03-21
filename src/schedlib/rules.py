@@ -412,6 +412,7 @@ class MakeCESourceScan(core.MappableRule):
     allow_partial: bool = False
     boresight_rot: Optional[float] = None
     az_branch: Optional[float] = None
+    source_direction: Optional[str] = None
 
     def apply_block(self, block: core.Block) -> core.Block: 
         if isinstance(block, src.SourceBlock):
@@ -419,6 +420,9 @@ class MakeCESourceScan(core.MappableRule):
             # so that it will be automatically calculated. Otherwise, we pass
             # in a zero v_az, which effectively has no drift.
             v_az = 0 if not self.drift else None
+            if self.source_direction is not None:
+                if self.source_direction != block.mode:
+                    return None
             return src.make_source_ces(block, array_info=self.array_info, 
                                        allow_partial=self.allow_partial,
                                        el_bore=self.el_bore, v_az=v_az,

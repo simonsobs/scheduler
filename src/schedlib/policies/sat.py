@@ -89,6 +89,7 @@ def make_cal_target(
     az_branch=None,
     az_speed=None,
     az_accel=None,
+    source_direction=None,
 ) -> CalTarget:
     array_focus = {
         0 : {
@@ -144,6 +145,7 @@ def make_cal_target(
         az_branch=az_branch,
         az_speed=az_speed,
         az_accel=az_accel,
+        source_direction=source_direction,
     )
 
 # ----------------------------------------------------
@@ -524,6 +526,7 @@ class SATPolicy(tel.TelPolicy):
                 boresight_rot=target.boresight_rot,
                 allow_partial=target.allow_partial,
                 az_branch=target.az_branch,
+                source_direction=target.source_direction,
             )
             source_scans = rule(blocks['calibration'][target.source])
 

@@ -110,6 +110,7 @@ class CalTarget:
     az_branch: Optional[float] = None
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
+    source_direction: Optional[str] = None
 
 def make_blocks(master_file, master_file_type):
     assert master_file_type in ['sat-cmb', 'lat-cmb']
