@@ -641,6 +641,7 @@ class LATPolicy(tel.TelPolicy):
                 boresight_rot=target.boresight_rot,
                 allow_partial=target.allow_partial,
                 az_branch=target.az_branch,
+                source_direction=target.source_direction,
             )
             source_scans = rule(blocks['calibration'][target.source])
 
