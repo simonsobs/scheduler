@@ -214,6 +214,7 @@ def make_cal_target(
     az_branch=None,
     az_speed=None,
     az_accel=None,
+    source_direction=None,
 ) -> CalTarget:
 
     ## focus = 'all' will concatenate all of the tubes
@@ -255,6 +256,7 @@ def make_cal_target(
         az_branch=az_branch,
         az_speed=az_speed,
         az_accel=az_accel,
+        source_direction=source_direction,
     )
 
 def make_operations(
@@ -639,6 +641,7 @@ class LATPolicy(tel.TelPolicy):
                 boresight_rot=target.boresight_rot,
                 allow_partial=target.allow_partial,
                 az_branch=target.az_branch,
+                source_direction=target.source_direction,
             )
             source_scans = rule(blocks['calibration'][target.source])
 
