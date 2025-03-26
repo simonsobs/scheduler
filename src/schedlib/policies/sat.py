@@ -327,7 +327,7 @@ class SATPolicy(tel.TelPolicy):
                 ), blocks
             )
         return super().apply_overrides(blocks)
-    
+
     @classmethod
     def from_config(cls, config: Union[Dict[str, Any], str]):
         """
@@ -570,6 +570,12 @@ class SATPolicy(tel.TelPolicy):
                 az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
                 tag=f"{cal_block.tag},{target.tag}"
             )
+
+            # override hwp direction
+            if self.hwp_override is not None:
+                cal_block = cal_block.replace(
+                    hwp_dir=self.hwp_override
+                )
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks
@@ -617,6 +623,24 @@ class SATPolicy(tel.TelPolicy):
             )
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
+
+        # add hwp direction to cal blocks
+        if self.hwp_override is None:
+            for i, block in enumerate(blocks):
+                if block.subtype=='cal' and block.hwp_dir is not None:
+                    # try next blocks
+                    for j in range(1, len(blocks)-i):
+                        if blocks[i+j].subtype=="cmb":
+                            blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
+                            break
+                    else:
+                        # try previous blocks
+                        for j in range(1, i+1):
+                            if blocks[i-j].subtype=="cmb":
+                                blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
+                                break
+                        else:
+                            raise ValueError(f"Cannot assign HWP direction to cal block {block}")
 
         # -----------------------------------------------------------------
         # step 5: verify
