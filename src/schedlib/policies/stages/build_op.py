@@ -35,6 +35,7 @@ def get_traj(az0, az1, el0, el1, wrap_north=False):
 
     return [az0, mid_az, az1], [el0, mid_el, el1]
 
+
 def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy):
     # Returns the timestamp until which the move from
     # (az0, alt0) to (az1, alt1) is sunsafe.
@@ -45,7 +46,12 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy):
         az1 = (az[:,None] + el[None,:]*0).ravel()
         el1 = (az[:,None]*0 + el[None,:]).ravel()
         az, el = az1, el1
+
     sun_safety = sun_tracker.check_trajectory(t=u.dt2ct(t0), az=az, el=el)
+    if (sun_safety['sun_time'] < sun_policy['min_sun_time']
+        or sun_safety['sun_dist_min'] < sun_policy['min_angle']):
+        return t0
+
     return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
 def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy):
@@ -66,8 +72,8 @@ def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy):
 
     if move is None:
         return t0
-    else:
-        return u.ct2dt(u.dt2ct(t0) + move['sun_time'])
+
+    return u.ct2dt(u.dt2ct(t0) + move['sun_time'])
 
 def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None):
     # gets a safe parking location for the time range and
@@ -841,10 +847,11 @@ class PlanMoves:
             gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
                                  is_end=(i==(len(seq)-1)), max_delay=0)
             if gaps is None:
-                 gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
-                                 is_end=(i==(len(seq)-1)), max_delay=1200)
+                # repeat with 20 minute delay
+                gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
+                                is_end=(i==(len(seq)-1)), max_delay=1200)
             if gaps is None:
-                raise ValueError("No sun-safe gap found")
+                raise ValueError("No sun-safe gap found between {seq[i-1]} and {seq[i]}")
             seq_.extend(gaps)
             seq_.append(seq[i])
 
@@ -864,7 +871,7 @@ class PlanMoves:
                 if parking is not None:
                     az_parking, alt_parking, t0_parking, t1_parking = parking
                 else:
-                    raise ValueError(f"Sun-safe parking spot not found.")
+                    raise ValueError(f"Sun-safe parking spot not found for {block}.")
 
                 move_away_by = get_traj_ok_time(
                     block.az, az_parking, block.alt, alt_parking, movet, self.sun_policy)
