@@ -31,7 +31,7 @@ class State(tel.State):
     """
     State relevant to LAT operation scheduling. Inherits other fields:
     (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`. And others from 
+    from the base State defined in `schedlib.commands`. And others from
     `tel.State`
 
     Parameters
@@ -115,15 +115,15 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
 def det_setup(
-    state, 
-    block, 
-    commands=None, 
-    apply_boresight_rot=False, 
-    iv_cadence=None, 
+    state,
+    block,
+    commands=None,
+    apply_boresight_rot=False,
+    iv_cadence=None,
     det_setup_duration=20*u.minute
 ):
     return tel.det_setup(
-        state, block, commands, apply_boresight_rot, 
+        state, block, commands, apply_boresight_rot,
         iv_cadence, det_setup_duration
     )
 
@@ -164,7 +164,7 @@ def stimulator(state):
     ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, force=False):
+def move_to(state, az, el, min_el=0, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
@@ -205,10 +205,10 @@ def make_geometry():
     }
 
 def make_cal_target(
-    source: str, 
-    corotator: float, 
-    elevation: float, 
-    focus: str, 
+    source: str,
+    corotator: float,
+    elevation: float,
+    focus: str,
     allow_partial=False,
     drift=True,
     az_branch=None,
@@ -340,7 +340,7 @@ def make_config(
     sun_policy = {
         'min_angle': 30,
         'min_sun_time': 1980,
-        'min_el': 30,
+        'min_el': 0,
     }
 
     if az_stow is None or el_stow is None:
@@ -357,7 +357,7 @@ def make_config(
     }
 
     el_range = {
-        'el_range': [30, 90]
+        'el_range': [0, 90]
     }
 
     config = {
@@ -466,40 +466,40 @@ class LATPolicy(tel.TelPolicy):
 
     @classmethod
     def from_defaults(
-        cls, 
-        master_file, 
-        state_file=None, 
-        az_speed=0.8, 
-        az_accel=1.5, 
+        cls,
+        master_file,
+        state_file=None,
+        az_speed=0.8,
+        az_accel=1.5,
         iv_cadence=4*u.hour,
-        bias_step_cadence=0.5*u.hour, 
+        bias_step_cadence=0.5*u.hour,
         max_cmb_scan_duration=1*u.hour,
-        cal_targets=None, 
-        az_stow=None, 
-        el_stow=None, 
+        cal_targets=None,
+        az_stow=None,
+        el_stow=None,
         elevations_under_90=False,
-        corotator_override=None, 
-        az_motion_override=False, 
-        remove_targets=(), 
+        corotator_override=None,
+        az_motion_override=False,
+        remove_targets=(),
         **op_cfg
     ):
         if cal_targets is None:
             cal_targets = []
 
         x = cls(**make_config(
-            master_file, 
-            state_file, 
-            az_speed, 
-            az_accel, 
+            master_file,
+            state_file,
+            az_speed,
+            az_accel,
             iv_cadence,
-            bias_step_cadence, 
+            bias_step_cadence,
             max_cmb_scan_duration,
             cal_targets,
             elevations_under_90=elevations_under_90,
-            az_stow=az_stow, 
+            az_stow=az_stow,
             el_stow=el_stow,
-            corotator_override=corotator_override, 
-            az_motion_override=az_motion_override, 
+            corotator_override=corotator_override,
+            az_motion_override=az_motion_override,
             remove_targets=remove_targets,
             **op_cfg
         ))
@@ -613,7 +613,7 @@ class LATPolicy(tel.TelPolicy):
 
             if isinstance(target, StimulatorTarget):
                 logger.info(f"-> planning stimulator scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='stimulator'), 
+                cal_blocks += core.seq_map(lambda b: b.replace(subtype='stimulator'),
                                            blocks['calibration']['stimulator'])
                 continue
 
@@ -733,6 +733,24 @@ class LATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # -----------------------------------------------------------------
+        # step 5: verify
+        # -----------------------------------------------------------------
+
+        # check if blocks are above min elevation
+        alt_limits = self.stages['build_op']['plan_moves']['el_limits']
+        for block in core.seq_flatten(blocks):
+            if hasattr(block, 'alt'):
+                assert block.alt >= alt_limits[0], (
+                f"Block {block} is below the minimum elevation "
+                f"of {alt_limits[0]} degrees."
+                )
+
+                assert block.alt < alt_limits[1], (
+                f"Block {block} is above the maximum elevation "
+                f"of {alt_limits[1]} degrees."
+                )
+
         return blocks
 
     def init_state(self, t0: dt.datetime) -> State:
@@ -756,10 +774,10 @@ class LATPolicy(tel.TelPolicy):
         )
 
     def seq2cmd(
-        self, 
-        seq, 
-        t0: dt.datetime, 
-        t1: dt.datetime, 
+        self,
+        seq,
+        t0: dt.datetime,
+        t1: dt.datetime,
         state: Optional[State] = None,
         return_state: bool = False,
     ) -> List[Any]:
