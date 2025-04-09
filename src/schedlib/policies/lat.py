@@ -182,26 +182,27 @@ def move_to(state, az, el, min_el=0, force=False):
 def make_geometry():
     # These are just the median of the wafers and an ~estimated radius
     # To be updated later
-    xi_offset = 0
+    xi_offset = 0.115
+    eta_offset = -0.573
     return {
-        "c1_ws0": {"center": [-0.3710+xi_offset, 0     ], "radius": 0.3,},
-        "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211], "radius": 0.3,},
-        "c1_ws2": {"center": [ 0.1815+xi_offset,-0.3211], "radius": 0.3,},
-        "i1_ws0": {"center": [-1.9112+xi_offset,-0.9052], "radius": 0.3,},
-        "i1_ws1": {"center": [-1.3584+xi_offset,-0.5704], "radius": 0.3,},
-        "i1_ws2": {"center": [-1.3587+xi_offset,-1.2133], "radius": 0.3,},
-        "i3_ws0": {"center": [ 1.1865+xi_offset,-0.8919], "radius": 0.3,},
-        "i3_ws1": {"center": [ 1.7326+xi_offset,-0.5705], "radius": 0.3,},
-        "i3_ws2": {"center": [ 1.7333+xi_offset,-1.2135], "radius": 0.3,},
-        "i4_ws0": {"center": [ 1.1732+xi_offset, 0.9052], "radius": 0.3,},
-        "i4_ws1": {"center": [ 1.7332+xi_offset, 1.2135], "radius": 0.3,},
-        "i4_ws2": {"center": [ 1.7326+xi_offset, 0.5705], "radius": 0.3,},
-        "i5_ws0": {"center": [-0.3655+xi_offset, 1.7833], "radius": 0.3,},
-        "i5_ws1": {"center": [ 0.1879+xi_offset, 2.1045], "radius": 0.3,},
-        "i5_ws2": {"center": [ 0.1867+xi_offset, 1.4620], "radius": 0.3,},
-        "i6_ws0": {"center": [-1.9082+xi_offset, 0.8920], "radius": 0.3,},
-        "i6_ws1": {"center": [-1.3577+xi_offset, 1.2133], "radius": 0.3,},
-        "i6_ws2": {"center": [-1.3584+xi_offset, 0.5854], "radius": 0.3,},
+        "c1_ws0": {"center": [-0.3710+xi_offset, 0+eta_offset], "radius": 0.3,},
+        "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211+eta_offset], "radius": 0.3,},
+        "c1_ws2": {"center": [ 0.1815+xi_offset,-0.3211+eta_offset], "radius": 0.3,},
+        "i1_ws0": {"center": [-1.9112+xi_offset,-0.9052+eta_offset], "radius": 0.3,},
+        "i1_ws1": {"center": [-1.3584+xi_offset,-0.5704+eta_offset], "radius": 0.3,},
+        "i1_ws2": {"center": [-1.3587+xi_offset,-1.2133+eta_offset], "radius": 0.3,},
+        "i3_ws0": {"center": [ 1.1865+xi_offset,-0.8919+eta_offset], "radius": 0.3,},
+        "i3_ws1": {"center": [ 1.7326+xi_offset,-0.5705+eta_offset], "radius": 0.3,},
+        "i3_ws2": {"center": [ 1.7333+xi_offset,-1.2135+eta_offset], "radius": 0.3,},
+        "i4_ws0": {"center": [ 1.1732+xi_offset, 0.9052+eta_offset], "radius": 0.3,},
+        "i4_ws1": {"center": [ 1.7332+xi_offset, 1.2135+eta_offset], "radius": 0.3,},
+        "i4_ws2": {"center": [ 1.7326+xi_offset, 0.5705+eta_offset], "radius": 0.3,},
+        "i5_ws0": {"center": [-0.3655+xi_offset, 1.7833+eta_offset], "radius": 0.3,},
+        "i5_ws1": {"center": [ 0.1879+xi_offset, 2.1045+eta_offset], "radius": 0.3,},
+        "i5_ws2": {"center": [ 0.1867+xi_offset, 1.4620+eta_offset], "radius": 0.3,},
+        "i6_ws0": {"center": [-1.9082+xi_offset, 0.8920+eta_offset], "radius": 0.3,},
+        "i6_ws1": {"center": [-1.3577+xi_offset, 1.2133+eta_offset], "radius": 0.3,},
+        "i6_ws2": {"center": [-1.3584+xi_offset, 0.5854+eta_offset], "radius": 0.3,},
     }
 
 def make_cal_target(
