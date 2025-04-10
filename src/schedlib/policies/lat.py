@@ -101,12 +101,18 @@ class SchedMode(tel.SchedMode):
 #      return state, 10, ["do something"]
 
 @cmd.operation(name="lat.preamble", duration=0)
-def preamble():
-    return tel.preamble()
+def preamble(open_shutter=False):
+    cmd = tel.preamble()
+    if open_shutter:
+        cmd += ["acu.set_shutter(action='open')"]
+    return cmd
 
 @cmd.operation(name='lat.wrap_up', duration=0)
-def wrap_up(state, block):
-    return tel.wrap_up(state, block)
+def wrap_up(state, block, close_shutter=False):
+    state, cmd = tel.wrap_up(state, block)
+    if close_shutter:
+        cmd += ["acu.set_shutter(action='close')"]
+    return state, cmd
 
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
 def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
@@ -266,12 +272,13 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
-    home_at_end=False,
+    open_shutter=False,
+    close_shutter=False,
     relock_cadence=24*u.hour
 ):
 
     pre_session_ops = [
-        { 'name': 'lat.preamble'        , 'sched_mode': SchedMode.PreSession},
+        { 'name': 'lat.preamble'        , 'sched_mode': SchedMode.PreSession, 'open_shutter': open_shutter},
         { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
         { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
     ]
@@ -304,7 +311,7 @@ def make_operations(
     ]
 
     post_session_ops = [
-        { 'name': 'lat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
+        { 'name': 'lat.wrap_up'   , 'sched_mode': SchedMode.PostSession, 'close_shutter': close_shutter},
     ]
 
     return pre_session_ops + cal_ops + cmb_ops + post_session_ops
