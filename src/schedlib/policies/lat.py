@@ -202,8 +202,6 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
             state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        print('zzz', block, block.corotator_angle)
-
         commands += [f"run.acu.set_boresight(target={block.corotator_angle})"]
         state = state.replace(corotator_now=block.corotator_angle)
         duration += COROTATOR_DURATION
@@ -488,7 +486,6 @@ class LATPolicy(tel.TelPolicy):
             )
 
         if self.corotator_override is not None:
-            print('cot override: ', self.corotator_override)
             blocks = core.seq_map(
                 lambda b: b.replace(
                     corotator_angle=self.corotator_override
