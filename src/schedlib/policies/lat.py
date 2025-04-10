@@ -120,69 +120,8 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(
-    state,
-    block,
-    commands=None,
-    apply_corotator_rot=False,
-    iv_cadence=None,
-    det_setup_duration=20*u.minute
-):
-    # when should det setup be done?
-    # -> should always be done if the block is a cal block
-    # -> should always be done if elevation has changed
-    # -> should always be done if det setup has not been done yet
-    # -> should be done at a regular interval if iv_cadence is not None
-    # -> should always be done if corotator angle has changed
-    doit = (block.subtype == 'cal')
-    doit = doit or (not state.is_det_setup) or (state.last_iv is None)
-    if not doit:
-        if state.last_iv_elevation is not None:
-            doit = doit or (
-                not np.isclose(state.last_iv_elevation, block.alt, atol=1)
-            )
-        if apply_corotator_rot and state.last_iv_boresight is not None:
-            doit = doit or (
-                not np.isclose(
-                    state.last_iv_boresight,
-                    block.boresight_angle,
-                    atol=1
-                )
-            )
-        if iv_cadence is not None:
-            time_since_last = (state.curr_time - state.last_iv).total_seconds()
-            doit = doit or (time_since_last > iv_cadence)
-
-    if doit:
-        if commands is None:
-            commands = [
-                "",
-                "################### Detector Setup######################",
-                "with disable_trace():",
-                "    run.initialize()",
-                "run.smurf.take_bgmap(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='res_check')",
-                "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
-                "run.smurf.bias_dets(concurrent=True)",
-                "time.sleep(180)",
-                "run.smurf.bias_step(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
-                "#################### Detector Setup Over ####################",
-                "",
-            ]
-        state = state.replace(
-            is_det_setup=True,
-            last_iv = state.curr_time,
-            last_bias_step=state.curr_time,
-            last_iv_elevation = block.alt,
-            last_iv_boresight = block.boresight_angle,
-            last_bias_step_elevation = block.alt,
-            last_bias_step_boresight = block.boresight_angle,
-        )
-        return state, det_setup_duration, commands
-    else:
-        return state, 0, []
+def det_setup(state, block, commands=None, apply_corotator_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_corotator_rot, iv_cadence, det_setup_duration)
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
