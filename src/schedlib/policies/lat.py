@@ -145,7 +145,7 @@ def det_setup(
             doit = doit or (
                 not np.isclose(
                     state.last_iv_boresight,
-                    state.get_boresight(),
+                    block.boresight_angle,
                     atol=1
                 )
             )
@@ -176,9 +176,9 @@ def det_setup(
             last_iv = state.curr_time,
             last_bias_step=state.curr_time,
             last_iv_elevation = block.alt,
-            last_iv_boresight = state.get_boresight(),
+            last_iv_boresight = block.boresight_angle,
             last_bias_step_elevation = block.alt,
-            last_bias_step_boresight = state.get_boresight(),
+            last_bias_step_boresight = block.boresight_angle,
         )
         return state, det_setup_duration, commands
     else:
