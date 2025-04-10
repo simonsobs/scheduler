@@ -22,7 +22,7 @@ from .tel import State, CalTarget, make_blocks
 
 logger = u.init_logger(__name__)
 
-BORESIGHT_DURATION = 1*u.minute
+COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
 @dataclass_json
@@ -124,14 +124,65 @@ def det_setup(
     state,
     block,
     commands=None,
-    apply_boresight_rot=False,
+    apply_corotator_rot=False,
     iv_cadence=None,
     det_setup_duration=20*u.minute
 ):
-    return tel.det_setup(
-        state, block, commands, apply_boresight_rot,
-        iv_cadence, det_setup_duration
-    )
+    # when should det setup be done?
+    # -> should always be done if the block is a cal block
+    # -> should always be done if elevation has changed
+    # -> should always be done if det setup has not been done yet
+    # -> should be done at a regular interval if iv_cadence is not None
+    # -> should always be done if corotator angle has changed
+    doit = (block.subtype == 'cal')
+    doit = doit or (not state.is_det_setup) or (state.last_iv is None)
+    if not doit:
+        if state.last_iv_elevation is not None:
+            doit = doit or (
+                not np.isclose(state.last_iv_elevation, block.alt, atol=1)
+            )
+        if apply_corotator_rot and state.last_iv_boresight is not None:
+            doit = doit or (
+                not np.isclose(
+                    state.last_iv_boresight,
+                    state.get_boresight(),
+                    atol=1
+                )
+            )
+        if iv_cadence is not None:
+            time_since_last = (state.curr_time - state.last_iv).total_seconds()
+            doit = doit or (time_since_last > iv_cadence)
+
+    if doit:
+        if commands is None:
+            commands = [
+                "",
+                "################### Detector Setup######################",
+                "with disable_trace():",
+                "    run.initialize()",
+                "run.smurf.take_bgmap(concurrent=True)",
+                "run.smurf.take_noise(concurrent=True, tag='res_check')",
+                "run.smurf.iv_curve(concurrent=True, ",
+                "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
+                "run.smurf.bias_dets(concurrent=True)",
+                "time.sleep(180)",
+                "run.smurf.bias_step(concurrent=True)",
+                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
+                "#################### Detector Setup Over ####################",
+                "",
+            ]
+        state = state.replace(
+            is_det_setup=True,
+            last_iv = state.curr_time,
+            last_bias_step=state.curr_time,
+            last_iv_elevation = block.alt,
+            last_iv_boresight = state.get_boresight(),
+            last_bias_step_elevation = block.alt,
+            last_bias_step_boresight = state.get_boresight(),
+        )
+        return state, det_setup_duration, commands
+    else:
+        return state, 0, []
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -141,22 +192,28 @@ def cmb_scan(state, block):
 def source_scan(state, block):
     return tel.source_scan(state, block)
 
-"""
-@cmd.operation(name='lat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True):
+
+@cmd.operation(name='lat.setup_corotator', return_duration=True)
+def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second):
     commands = []
     duration = 0
 
-    if apply_boresight_rot and (
-            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+    if apply_corotator_rot and (
+            state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        commands += [f"run.acu.set_boresight({block.boresight_angle})"]
-        state = state.replace(boresight_rot_now=block.boresight_angle)
-        duration += BORESIGHT_DURATION
+        print('zzz', block, block.corotator_angle)
+
+        commands += [f"run.acu.set_boresight(target={block.corotator_angle})"]
+        state = state.replace(corotator_now=block.corotator_angle)
+        duration += COROTATOR_DURATION
+
+        if cryo_stabilization_time > 0:
+            commands += [f"time.sleep({cryo_stabilization_time})"]
+            duration += cryo_stabilization_time
 
     return state, duration, commands
-"""
+
 
 # passthrough any arguments, to be used in any sched-mode
 @cmd.operation(name='lat.bias_step', return_duration=True)
@@ -272,6 +329,8 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
+    apply_corotator_rot=False,
+    cryo_stabilization_time=180*u.second,
     open_shutter=False,
     close_shutter=False,
     relock_cadence=24*u.hour
@@ -298,14 +357,14 @@ def make_operations(
         ]
 
     cal_ops += [
-        #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence },
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': False, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence},
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': False, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
@@ -420,7 +479,7 @@ class LATPolicy(tel.TelPolicy):
                 if b.alt > 90:
                     return b.replace(alt=180-b.alt, az=b.az-180)
                 return b
-            blocks = core.seq_map( fix_block, blocks)
+            blocks = core.seq_map(fix_block, blocks)
 
         if len(self.remove_targets) > 0:
             blocks = core.seq_filter_out(
@@ -429,6 +488,7 @@ class LATPolicy(tel.TelPolicy):
             )
 
         if self.corotator_override is not None:
+            print('cot override: ', self.corotator_override)
             blocks = core.seq_map(
                 lambda b: b.replace(
                     corotator_angle=self.corotator_override
@@ -693,6 +753,13 @@ class LATPolicy(tel.TelPolicy):
                 az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
                 tag=f"{cal_block.tag},{target.tag}"
             )
+
+            # override corotator angle
+            if self.corotator_override is not None:
+                cal_block = cal_block.replace(
+                    corotator_angle=self.corotator_override
+                )
+
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks
