@@ -356,13 +356,13 @@ def make_operations(
 
     cal_ops += [
         { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': False, 'iv_cadence':iv_cadence },
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
         { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': False, 'iv_cadence':iv_cadence},
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
