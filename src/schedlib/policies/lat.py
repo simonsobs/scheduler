@@ -104,7 +104,10 @@ class SchedMode(tel.SchedMode):
 def preamble(open_shutter=False):
     cmd = tel.preamble()
     if open_shutter:
-        cmd += ["acu.set_shutter(action='open')"]
+        cmd += ["acu.clear_faults()",
+                "acu.stop_and_clear()",
+                "acu.set_shutter(action='open')"
+            ]
     return cmd
 
 @cmd.operation(name='lat.wrap_up', duration=0)
