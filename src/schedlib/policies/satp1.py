@@ -368,12 +368,12 @@ class SATP1Policy(SATPolicy):
         }
 
         # get cal targets
-        if cfile is not None and not cal_targets:
-            self.cal_targets = parse_cal_targets_from_toast_sat(cfile)
+        if cfile is not None:
+            cal_targets = parse_cal_targets_from_toast_sat(cfile)
             # keep all cal targets within range
-            self.cal_targets[:] = [cal_target for cal_target in self.cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
 
-            for i, cal_target in enumerate(self.cal_targets):
+            for i, cal_target in enumerate(cal_targets):
                 candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
                 if candidates:
                     block = max(candidates, key=lambda x: x.t0)
@@ -384,11 +384,13 @@ class SATP1Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block")
 
-                self.cal_targets[i] = replace(self.cal_targets[i], boresight_rot=block.boresight_angle)
-                focus_str = array_focus[self.cal_targets[i].boresight_rot]
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                focus_str = array_focus[cal_targets[i].boresight_rot]
                 array_query = u.get_cycle_option(t0, list(focus_str.keys()))
-                self.cal_targets[i] = replace(self.cal_targets[i], array_query=focus_str[array_query])
-                self.cal_targets[i] = replace(self.cal_targets[i], tag=f"{focus_str[array_query]},{self.cal_targets[i].tag}")
+                cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
+                cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
+
+            self.cal_targets += cal_targets
 
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
