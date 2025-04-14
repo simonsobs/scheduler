@@ -376,9 +376,12 @@ class SATP3Policy(SATPolicy):
             candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
             if candidates:
                 block = max(candidates, key=lambda x: x.t0)
-            candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
-            if candidates:
-                block = min(candidates, key=lambda x: x.t0)
+            else:
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                if candidates:
+                    block = min(candidates, key=lambda x: x.t0)
+                else:
+                    raise ValueError("Cannot find nearby block")
 
             self.cal_targets[i] = replace(self.cal_targets[i], boresight_rot=block.boresight_angle)
             focus_str = array_focus[self.cal_targets[i].boresight_rot]
