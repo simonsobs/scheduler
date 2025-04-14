@@ -18,7 +18,7 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from .tel import CalTarget
+from ..instrument import CalTarget
 
 logger = u.init_logger(__name__)
 
@@ -42,7 +42,7 @@ class State(tel.State):
     """
     State relevant to SAT operation scheduling. Inherits other fields:
     (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`.And others from 
+    from the base State defined in `schedlib.commands`.And others from
     `tel.State`
 
     Parameters
@@ -80,10 +80,10 @@ class SchedMode(tel.SchedMode):
     Wiregrid = 'wiregrid'
 
 def make_cal_target(
-    source: str, 
-    boresight: float, 
-    elevation: float, 
-    focus: str, 
+    source: str,
+    boresight: float,
+    elevation: float,
+    focus: str,
     allow_partial=False,
     drift=True,
     az_branch=None,
@@ -318,7 +318,7 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
- 
+
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
             blocks = core.seq_map(
@@ -384,7 +384,7 @@ class SATPolicy(tel.TelPolicy):
 
         return blocks
 
-    def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+    def init_cmb_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
         Initialize the sequences for the scheduler to process.
 
@@ -414,33 +414,6 @@ class SATPolicy(tel.TelPolicy):
                     hwp_dir=self.hwp_override
                 ), blocks['baseline']
             )
-
-        # by default add calibration blocks specified in cal_targets if not already specified
-        for cal_target in self.cal_targets:
-            if isinstance(cal_target, CalTarget):
-                source = cal_target.source
-                if source not in blocks['calibration']:
-                    blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, WiregridTarget):
-                wiregrid_candidates = []
-                current_date = t0.date()
-                end_date = t1.date()
-
-                while current_date <= end_date:
-                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                    if t0 <= candidate_time <= t1:
-                        wiregrid_candidates.append(
-                            inst.StareBlock(
-                                name='wiregrid',
-                                t0=candidate_time,
-                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                                az=cal_target.az_target,
-                                alt=cal_target.el_target,
-                                subtype='wiregrid'
-                            )
-                        )
-                    current_date += dt.timedelta(days=1)
-                blocks['calibration']['wiregrid'] = wiregrid_candidates
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -498,7 +471,7 @@ class SATPolicy(tel.TelPolicy):
 
             if isinstance(target, WiregridTarget):
                 logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'), 
+                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
                                            blocks['calibration']['wiregrid'])
                 continue
 
@@ -697,10 +670,10 @@ class SATPolicy(tel.TelPolicy):
         )
 
     def seq2cmd(
-        self, 
-        seq, 
-        t0: dt.datetime, 
-        t1: dt.datetime, 
+        self,
+        seq,
+        t0: dt.datetime,
+        t1: dt.datetime,
         state: Optional[State] = None,
         return_state: bool = False,
     ) -> List[Any]:
@@ -740,6 +713,7 @@ class SATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
         cal_blocks += wiregrid_blocks
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
@@ -861,9 +835,9 @@ def simplify_hwp(op_seq):
         if (b_prev.name == 'sat.hwp_spin_up' and b_next.name == 'sat.hwp_spin_down') or \
            (b_prev.name == 'sat.hwp_spin_down' and b_next.name == 'sat.hwp_spin_up'):
             return seq_prev[:-1] + [cmd.OperationBlock(
-                name='wait-until', 
-                t0=b_prev.t0, 
-                t1=b_next.t1, 
+                name='wait-until',
+                t0=b_prev.t0,
+                t1=b_next.t1,
             )]
         else:
             return seq_prev+[b_next]

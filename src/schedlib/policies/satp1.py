@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import datetime as dt
 
 from typing import Optional
@@ -7,6 +7,7 @@ from typing import Optional
 from .. import source as src, utils as u
 from .sat import SATPolicy, State, SchedMode, WiregridTarget
 from .tel import make_blocks, CalTarget
+from ..instrument import parse_cal_targets_from_toast_sat
 
 logger = u.init_logger(__name__)
 
@@ -130,7 +131,7 @@ def make_cal_target(
 
 
 def make_operations(
-    az_speed, 
+    az_speed,
     az_accel,
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
@@ -299,6 +300,7 @@ class SATP1Policy(SATPolicy):
     @classmethod
     def from_defaults(cls,
         master_file,
+        cal_file=None,
         state_file=None,
         az_speed=0.8,
         az_accel=1.5,
@@ -339,6 +341,80 @@ class SATP1Policy(SATPolicy):
 
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
+
+    def init_cal_seq(self, cfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
+        array_focus = {
+            0 : {
+                'left' : 'ws3,ws2',
+                'middle' : 'ws0,ws1,ws4',
+                'right' : 'ws5,ws6',
+                'bottom': 'ws1,ws2,ws6',
+                #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+            },
+            45 : {
+                'left' : 'ws3,ws4',
+                'middle' : 'ws2,ws0,ws5',
+                'right' : 'ws1,ws6',
+                'bottom': 'ws1,ws2,ws3',
+                #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+            },
+            -45 : {
+                'left' : 'ws1,ws2',
+                'middle' : 'ws6,ws0,ws3',
+                'right' : 'ws4,ws5',
+                'bottom': 'ws1,ws6,ws5',
+                #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+            },
+        }
+
+        # get cal targets
+        if cfile is not None and not cal_targets:
+            self.cal_targets = parse_cal_targets_from_toast_sat(cfile)
+            # keep all cal targets within range
+            self.cal_targets[:] = [cal_target for cal_target in self.cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+
+            for i, cal_target in enumerate(self.cal_targets):
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
+                if candidates:
+                    block = max(candidates, key=lambda x: x.t0)
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                if candidates:
+                    block = min(candidates, key=lambda x: x.t0)
+
+                self.cal_targets[i] = replace(self.cal_targets[i], boresight_rot=block.boresight_angle)
+                focus_str = array_focus[self.cal_targets[i].boresight_rot]
+                array_query = u.get_cycle_option(t0, list(focus_str.keys()))
+                self.cal_targets[i] = replace(self.cal_targets[i], array_query=focus_str[array_query])
+                self.cal_targets[i] = replace(self.cal_targets[i], tag=f"{focus_str[array_query]},{self.cal_targets[i].tag}")
+
+        # by default add calibration blocks specified in cal_targets if not already specified
+        for cal_target in self.cal_targets:
+            if isinstance(cal_target, CalTarget):
+                source = cal_target.source
+                if source not in blocks['calibration']:
+                    blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
+            elif isinstance(cal_target, WiregridTarget):
+                wiregrid_candidates = []
+                current_date = t0.date()
+                end_date = t1.date()
+
+                while current_date <= end_date:
+                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
+                    if t0 <= candidate_time <= t1:
+                        wiregrid_candidates.append(
+                            inst.StareBlock(
+                                name='wiregrid',
+                                t0=candidate_time,
+                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
+                                az=cal_target.az_target,
+                                alt=cal_target.el_target,
+                                subtype='wiregrid'
+                            )
+                        )
+                    current_date += dt.timedelta(days=1)
+                blocks['calibration']['wiregrid'] = wiregrid_candidates
+
+        return blocks
 
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp1, if needed"""
