@@ -401,6 +401,15 @@ class SATP1Policy(SATPolicy):
 
             self.cal_targets += cal_targets
 
+            for target in self.cal_targets:
+                if target.source not in src.get_source_list():
+                   if target.ra is not None and target.dec is not None:
+                        src.add_fixed_source(
+                            name=target.source,
+                            ra=target.ra, dec=target.dec,
+                            ra_units='deg'
+                        )
+
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
             if isinstance(cal_target, CalTarget):

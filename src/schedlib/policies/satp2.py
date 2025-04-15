@@ -61,84 +61,6 @@ def make_geometry():
         },
     }
 
-def init_cal_seq(cfile, blocks, t0: dt.datetime, t1: dt.datetime):
-    array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-    }
-    # get cal targets
-    if cfile is not None:
-        cal_targets = parse_cal_targets_from_toast_sat(cfile)
-        # keep all cal targets within range
-        cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
-
-        for i, cal_target in enumerate(cal_targets):
-            candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-            if candidates:
-                block = max(candidates, key=lambda x: x.t0)
-            else:
-                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
-                if candidates:
-                    block = min(candidates, key=lambda x: x.t0)
-                else:
-                    raise ValueError("Cannot find nearby block")
-
-            cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-            focus_str = array_focus[cal_targets[i].boresight_rot]
-            array_query = u.get_cycle_option(t0, list(focus_str.keys()))
-            cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
-            cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
-
-        self.cal_targets += cal_targets
-
-    # by default add calibration blocks specified in cal_targets if not already specified
-    for cal_target in self.cal_targets:
-        if isinstance(cal_target, CalTarget):
-            source = cal_target.source
-            if source not in blocks['calibration']:
-                blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-        elif isinstance(cal_target, WiregridTarget):
-            wiregrid_candidates = []
-            current_date = t0.date()
-            end_date = t1.date()
-
-            while current_date <= end_date:
-                candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                if t0 <= candidate_time <= t1:
-                    wiregrid_candidates.append(
-                        inst.StareBlock(
-                            name='wiregrid',
-                            t0=candidate_time,
-                            t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                            az=cal_target.az_target,
-                            alt=cal_target.el_target,
-                            subtype='wiregrid'
-                        )
-                    )
-                current_date += dt.timedelta(days=1)
-            blocks['calibration']['wiregrid'] = wiregrid_candidates
-
-    return blocks
-
 def make_cal_target(
     source: str,
     boresight: float,
@@ -286,9 +208,6 @@ def make_config(
     hwp_override=None,
     brake_hwp=True,
     az_motion_override=False,
-    az_branch_override=None,
-    allow_partial_override=None,
-    drift_override=True,
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
@@ -392,6 +311,9 @@ class SATP2Policy(SATPolicy):
         hwp_override=None,
         brake_hwp=True,
         az_motion_override=False,
+        az_branch_override=None,
+        allow_partial_override=None,
+        drift_override=True,
         **op_cfg
     ):
         if cal_targets is None:
@@ -420,7 +342,7 @@ class SATP2Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seq(self, cfile, blocks, t0: dt.datetime, t1: dt.datetime):
+    def init_cal_seq(self, cfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
         array_focus = {
             0 : {
                 'left' : 'ws3,ws2',
@@ -444,30 +366,46 @@ class SATP2Policy(SATPolicy):
                 #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
             },
         }
+
         # get cal targets
         if cfile is not None:
-            self.cal_targets = parse_cal_targets_from_toast_sat(cfile)
-        # keep all cal targets within range
-        self.cal_targets[:] = [cal_target for cal_target in self.cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+            cal_targets = parse_cal_targets_from_toast_sat(cfile)
+            # keep all cal targets within range
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
 
-        for i, cal_target in enumerate(self.cal_targets):
-            candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-            if candidates:
-                block = max(candidates, key=lambda x: x.t0)
-            candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
-            if candidates:
-                block = min(candidates, key=lambda x: x.t0)
+            for i, cal_target in enumerate(cal_targets):
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
+                if candidates:
+                    block = max(candidates, key=lambda x: x.t0)
+                else:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                    if candidates:
+                        block = min(candidates, key=lambda x: x.t0)
+                    else:
+                        raise ValueError("Cannot find nearby block")
 
-            self.cal_targets[i] = replace(self.cal_targets[i], boresight_rot=block.boresight_angle)
-            focus_str = array_focus[self.cal_targets[i].boresight_rot]
-            array_query = u.get_cycle_option(t0, list(focus_str.keys()))
-            self.cal_targets[i] = replace(self.cal_targets[i],array_query=focus_str[array_query])
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                focus_str = array_focus[cal_targets[i].boresight_rot]
+                array_query = u.get_cycle_option(t0, list(focus_str.keys()))
+                cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
+                cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
 
-            if self.az_branch_override is not None:
-                cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+                if self.az_branch_override is not None:
+                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-            cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
-            cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+                cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
+                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+
+            self.cal_targets += cal_targets
+
+            for target in self.cal_targets:
+                if target.source not in src.get_source_list():
+                   if target.ra is not None and target.dec is not None:
+                        src.add_fixed_source(
+                            name=target.source,
+                            ra=target.ra, dec=target.dec,
+                            ra_units='deg'
+                        )
 
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:

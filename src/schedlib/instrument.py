@@ -17,6 +17,8 @@ class CalTarget:
     tag: str
     t0: dt.datetime = None
     t1: dt.datetime = None
+    ra: float = None
+    dec: float = None
     boresight_rot: float = 0
     allow_partial: bool = False
     drift: bool = True

@@ -357,7 +357,7 @@ class SATP3Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seq(self, cfile, blocks, t0: dt.datetime, t1: dt.datetime):
+    def init_cal_seq(self, cfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
         array_focus = {
             'left' : 'ws3,ws2',
             'middle' : 'ws0,ws1,ws4',
@@ -369,7 +369,7 @@ class SATP3Policy(SATPolicy):
             'bottombottom': 'ws1',
             #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
         }
-        # get cal targets
+       # get cal targets
         if cfile is not None:
             cal_targets = parse_cal_targets_from_toast_sat(cfile)
             # keep all cal targets within range
@@ -399,6 +399,15 @@ class SATP3Policy(SATPolicy):
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
+
+            for target in self.cal_targets:
+                if target.source not in src.get_source_list():
+                   if target.ra is not None and target.dec is not None:
+                        src.add_fixed_source(
+                            name=target.source,
+                            ra=target.ra, dec=target.dec,
+                            ra_units='deg'
+                        )
 
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
