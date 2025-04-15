@@ -100,7 +100,7 @@ class SchedMode:
     PostSession = 'post_session'
 
 def make_blocks(master_file, master_file_type):
-    assert master_file_type in ['sat-cmb', 'lat-cmb', 'sat-cal']
+    assert master_file_type in ['sat-cmb', 'lat-cmb']
     return {
         'baseline': {
             'cmb': {

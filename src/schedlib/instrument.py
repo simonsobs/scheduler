@@ -22,11 +22,18 @@ class CalTarget:
     boresight_rot: float = 0
     allow_partial: bool = False
     drift: bool = True
-    az_branch: Optional[float] = None
+    az_branch: Optional[float] = 180
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
     source_direction: Optional[str] = None
 
+@dataclass(frozen=True)
+class WiregridTarget:
+    name: str
+    t0: dt.datetime
+    t1: dt.datetime
+    tag: str
+    duration: float
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -393,6 +400,33 @@ def parse_cal_targets_from_toast_sat(ifile):
         cal_targets.append(cal_target)
 
     return cal_targets
+
+def parse_wiregrid_targets_from_file(ifile):
+    columns = ["start_utc", "stop_utc", "type", "uid",
+        "remark"
+    ]
+    # count the number of lines to skip
+    with open(ifile) as f:
+        for i, l in enumerate(f):
+            if l.startswith('#'):
+                continue
+            else:
+                break
+    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+    wiregrid_targets = []
+
+    for _, row in df.iterrows():
+        name = _escape_string(row['remark'].strip()).lower()
+        wiregrid_target = WiregridTarget(
+            name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
+            t0=u.str2datetime(row['start_utc']),
+            t1=u.str2datetime(row['stop_utc']),
+            duration=(u.str2datetime(row['stop_utc']) - u.str2datetime(row['start_utc'])).total_seconds(),
+            tag=_escape_string(row['uid'].strip()),
+        )
+        wiregrid_targets.append(wiregrid_target)
+
+    return wiregrid_targets
 
 def parse_sequence_from_toast_lat(ifile):
     """

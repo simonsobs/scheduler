@@ -5,9 +5,9 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, SchedMode, WiregridTarget
+from .sat import SATPolicy, State, SchedMode
 from .tel import make_blocks, CalTarget
-from ..instrument import parse_cal_targets_from_toast_sat
+from ..instrument import WiregridTarget, StareBlock, parse_cal_targets_from_toast_sat, parse_wiregrid_targets_from_file
 
 logger = u.init_logger(__name__)
 
@@ -211,6 +211,11 @@ def make_config(
     hwp_override=None,
     brake_hwp=True,
     az_motion_override=False,
+    az_branch_override=None,
+    allow_partial_override=True,
+    drift_override=True,
+    wiregrid_az=180,
+    wiregrid_el=48,
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
@@ -273,6 +278,11 @@ def make_config(
         'bias_step_cadence': bias_step_cadence,
         'min_hwp_el': min_hwp_el,
         'max_cmb_scan_duration': max_cmb_scan_duration,
+        'az_branch_override': az_branch_override,
+        'allow_partial_override': allow_partial_override,
+        'drift_override': drift_override,
+        'wiregrid_az': wiregrid_az,
+        'wiregrid_el': wiregrid_el,
         'stages': {
             'build_op': {
                 'plan_moves': {
@@ -300,7 +310,6 @@ class SATP1Policy(SATPolicy):
     @classmethod
     def from_defaults(cls,
         master_file,
-        cal_file=None,
         state_file=None,
         az_speed=0.8,
         az_accel=1.5,
@@ -316,8 +325,10 @@ class SATP1Policy(SATPolicy):
         brake_hwp=True,
         az_motion_override=False,
         az_branch_override=None,
-        allow_partial_override=None,
+        allow_partial_override=True,
         drift_override=True,
+        wiregrid_az=180,
+        wiregrid_el=48,
         **op_cfg
     ):
         if cal_targets is None:
@@ -338,6 +349,11 @@ class SATP1Policy(SATPolicy):
             hwp_override,
             brake_hwp,
             az_motion_override,
+            az_branch_override,
+            allow_partial_override,
+            drift_override,
+            wiregrid_az,
+            wiregrid_el,
             **op_cfg
         ))
         return x
@@ -345,7 +361,7 @@ class SATP1Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seq(self, cfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
+    def init_cal_seq(self, cfile, wgfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
         array_focus = {
             0 : {
                 'left' : 'ws3,ws2',
@@ -401,6 +417,9 @@ class SATP1Policy(SATPolicy):
 
             self.cal_targets += cal_targets
 
+            for cal_target in self.cal_targets:
+                print('zzz', cal_target)
+
             for target in self.cal_targets:
                 if target.source not in src.get_source_list():
                    if target.ra is not None and target.dec is not None:
@@ -410,6 +429,13 @@ class SATP1Policy(SATPolicy):
                             ra_units='deg'
                         )
 
+        if wgfile is not None:
+            wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
+            wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
+            self.cal_targets += wiregrid_candidates
+
+        wiregrid_candidates = []
+
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
             if isinstance(cal_target, CalTarget):
@@ -417,25 +443,26 @@ class SATP1Policy(SATPolicy):
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
             elif isinstance(cal_target, WiregridTarget):
-                wiregrid_candidates = []
-                current_date = t0.date()
-                end_date = t1.date()
+                # wiregrid_candidates = []
+                # current_date = t0.date()
+                # end_date = t1.date()
 
-                while current_date <= end_date:
-                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                    if t0 <= candidate_time <= t1:
-                        wiregrid_candidates.append(
-                            inst.StareBlock(
-                                name='wiregrid',
-                                t0=candidate_time,
-                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                                az=cal_target.az_target,
-                                alt=cal_target.el_target,
-                                subtype='wiregrid'
-                            )
-                        )
-                    current_date += dt.timedelta(days=1)
-                blocks['calibration']['wiregrid'] = wiregrid_candidates
+                # while current_date <= end_date:
+                #     candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
+                #     if t0 <= candidate_time <= t1:
+                wiregrid_candidates.append(
+                    StareBlock(
+                        name=cal_target.name,
+                        t0=cal_target.t0,
+                        t1=cal_target.t1,
+                        az=self.wiregrid_az,
+                        alt=self.wiregrid_el,
+                        tag=cal_target.tag,
+                        subtype='wiregrid',
+                    )
+                )
+                    # current_date += dt.timedelta(days=1)
+        blocks['calibration']['wiregrid'] = wiregrid_candidates
 
         return blocks
 

@@ -18,7 +18,7 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from ..instrument import CalTarget
+from ..instrument import CalTarget, WiregridTarget
 
 logger = u.init_logger(__name__)
 
@@ -60,13 +60,6 @@ class State(tel.State):
 
     def get_boresight(self):
         return self.boresight_rot_now
-
-@dataclass(frozen=True)
-class WiregridTarget:
-    hour: int
-    el_target: float
-    az_target: float = 180
-    duration: float = WIREGRID_DURATION
 
 class SchedMode(tel.SchedMode):
     """
@@ -273,11 +266,18 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
 def bias_step(state, block, bias_step_cadence=None):
     return tel.bias_step(state, block, bias_step_cadence)
 
-@cmd.operation(name='sat.wiregrid', duration=WIREGRID_DURATION)
-def wiregrid(state):
-    return state, [
-        "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
-    ]
+@cmd.operation(name='sat.wiregrid', return_duration=True)
+def wiregrid(state, block):
+    if block.name == 'wiregrid_gain':
+        return state, (block.t1 - state.curr_time).total_seconds(), [
+            "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
+        ]
+    elif block.name == 'wiregrid_time_const':
+        # wiregrid time const reverses the hwp direction
+        state = state.replace(hwp_dir=not state.hwp_dir)
+        return state, (block.t1 - state.curr_time).total_seconds(), [
+            "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
+            ]
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
@@ -318,6 +318,8 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
+    wiregrid_az: float = 180
+    wiregrid_el: float = 48
 
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
@@ -470,9 +472,9 @@ class SATPolicy(tel.TelPolicy):
             logger.info(f"-> planning calibration scans for {target}...")
 
             if isinstance(target, WiregridTarget):
-                logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
-                                           blocks['calibration']['wiregrid'])
+                # logger.info(f"-> planning wiregrid scans for {target}...")
+                # cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
+                #                            blocks['calibration']['wiregrid'])
                 continue
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
@@ -551,7 +553,7 @@ class SATPolicy(tel.TelPolicy):
                 )
             cal_blocks.append(cal_block)
 
-        blocks['calibration'] = cal_blocks
+        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 
@@ -576,7 +578,7 @@ class SATPolicy(tel.TelPolicy):
 
         # add proper subtypes
         blocks['calibration'] = core.seq_map(
-            lambda block: block.replace(subtype="cal") if block.name != 'wiregrid' else block,
+            lambda block: block.replace(subtype="cal") if block.subtype != 'wiregrid' else block,
             blocks['calibration']
         )
 
