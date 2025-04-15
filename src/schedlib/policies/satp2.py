@@ -463,6 +463,12 @@ class SATP2Policy(SATPolicy):
             array_query = u.get_cycle_option(t0, list(focus_str.keys()))
             self.cal_targets[i] = replace(self.cal_targets[i],array_query=focus_str[array_query])
 
+            if self.az_branch_override is not None:
+                cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+
+            cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
+            cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
             if isinstance(cal_target, CalTarget):

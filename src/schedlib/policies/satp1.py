@@ -394,11 +394,10 @@ class SATP1Policy(SATPolicy):
                 cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
 
                 if self.az_branch_override is not None:
-                    print('zzz ',self.az_branch_override)
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
                 cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
-
+                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
 
