@@ -637,7 +637,7 @@ class SATPolicy(tel.TelPolicy):
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
-                if block.subtype=='cal' and block.hwp_dir is not None:
+                if block.subtype=='cal' and block.hwp_dir is None:
                     candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 < block.t0]
                     if candidates:
                         cmb_block = max(candidates, key=lambda x: x.t0)
@@ -647,7 +647,7 @@ class SATPolicy(tel.TelPolicy):
                             cmb_block = min(candidates, key=lambda x: x.t0)
                         else:
                             raise ValueError(f"Cannot assign HWP direction to cal block {block}")
-                    blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
+                    blocks[i] = block.replace(hwp_dir=cmb_block.hwp_dir)
 
 
         # -----------------------------------------------------------------
