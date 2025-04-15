@@ -315,6 +315,9 @@ class SATP1Policy(SATPolicy):
         hwp_override=None,
         brake_hwp=True,
         az_motion_override=False,
+        az_branch_override=None,
+        allow_partial_override=None,
+        drift_override=True,
         **op_cfg
     ):
         if cal_targets is None:
@@ -389,6 +392,13 @@ class SATP1Policy(SATPolicy):
                 array_query = u.get_cycle_option(t0, list(focus_str.keys()))
                 cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
                 cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
+
+                if self.az_branch_override is not None:
+                    print('zzz ',self.az_branch_override)
+                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+
+                cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
+
 
             self.cal_targets += cal_targets
 

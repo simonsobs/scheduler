@@ -326,6 +326,9 @@ class SATP3Policy(SATPolicy):
         hwp_override=None,
         brake_hwp=True,
         az_motion_override=False,
+        az_branch_override=None,
+        allow_partial_override=None,
+        drift_override=True,
         **op_cfg
     ):
         if cal_targets is None:
