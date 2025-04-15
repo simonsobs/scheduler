@@ -193,6 +193,7 @@ def make_geometry():
     # To be updated later
     xi_offset = 0.0 #0.115
     eta_offset = 0.0 #-0.573
+    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
     return {
         "c1_ws0": {"center": [-0.3710+xi_offset, 0+eta_offset], "radius": 0.3,},
         "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211+eta_offset], "radius": 0.3,},
