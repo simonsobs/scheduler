@@ -374,17 +374,15 @@ class SATP3Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seq(self, cfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
+    def init_cal_seq(self, cfile, wgfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
         array_focus = {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'top': 'ws3,ws4,ws5',
-            'toptop': 'ws4',
-            'center': 'ws0',
-            'bottom': 'ws1,ws2,ws6',
-            'bottombottom': 'ws1',
-            #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
+            '0': 'ws0',
+            '1': 'ws1',
+            '2': 'ws2',
+            '3': 'ws3',
+            '4': 'ws4',
+            '5': 'ws5',
+            '6': 'ws6',
         }
         # get cal targets
         if cfile is not None:
@@ -403,8 +401,8 @@ class SATP3Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block")
 
-                cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-                focus_str = array_focus[cal_targets[i].boresight_rot]
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
+                focus_str = array_focus
                 array_query = u.get_cycle_option(t0, list(focus_str.keys()))
                 cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
                 cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
@@ -428,9 +426,8 @@ class SATP3Policy(SATPolicy):
 
         if wgfile is not None:
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
-        wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
-
-        self.cal_targets += wiregrid_candidates
+            wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
+            self.cal_targets += wiregrid_candidates
 
         wiregrid_candidates = []
 

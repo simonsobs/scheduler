@@ -426,9 +426,8 @@ class SATP2Policy(SATPolicy):
 
         if wgfile is not None:
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
-        wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
-
-        self.cal_targets += wiregrid_candidates
+            wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
+            self.cal_targets += wiregrid_candidates
 
         wiregrid_candidates = []
 

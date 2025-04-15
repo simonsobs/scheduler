@@ -268,16 +268,20 @@ def bias_step(state, block, bias_step_cadence=None):
 
 @cmd.operation(name='sat.wiregrid', return_duration=True)
 def wiregrid(state, block):
+    assert state.hwp_spinning == True, "hwp is not spinning"
     if block.name == 'wiregrid_gain':
         return state, (block.t1 - state.curr_time).total_seconds(), [
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
-    elif block.name == 'wiregrid_time_const':
-        # wiregrid time const reverses the hwp direction
-        state = state.replace(hwp_dir=not state.hwp_dir)
-        return state, (block.t1 - state.curr_time).total_seconds(), [
-            "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
-            ]
+    # elif block.name == 'wiregrid_time_const':
+    #     # wiregrid time const reverses the hwp direction
+    #     state = state.replace(hwp_dir=not state.hwp_dir)
+    #     return state, (block.t1 - state.curr_time).total_seconds(), [
+    #         f"# hwp spinning with forward={not state.hwp_dir}",
+    #         "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)",
+    #         f"# hwp spinning with forward={state.hwp_dir}"
+    #         ]
+    #     return state, 0, []
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
@@ -599,23 +603,38 @@ class SATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # # add hwp direction to cal blocks
+        # if self.hwp_override is None:
+        #     for i, block in enumerate(blocks):
+        #         if block.subtype=='cal' and block.hwp_dir is not None:
+        #             # try next blocks
+        #             for j in range(1, len(blocks)-i):
+        #                 if blocks[i+j].subtype=="cmb":
+        #                     blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
+        #                     break
+        #             else:
+        #                 # try previous blocks
+        #                 for j in range(1, i+1):
+        #                     if blocks[i-j].subtype=="cmb":
+        #                         blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
+        #                         break
+        #                 else:
+        #                     raise ValueError(f"Cannot assign HWP direction to cal block {block}")
+
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
-                if block.subtype=='cal' and block.hwp_dir is not None:
-                    # try next blocks
-                    for j in range(1, len(blocks)-i):
-                        if blocks[i+j].subtype=="cmb":
-                            blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
-                            break
+                candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 < cmb_block.t0]
+                if candidates:
+                    cmb_block = max(candidates, key=lambda x: x.t0)
+                else:
+                    candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 > cmb_block.t0]
+                    if candidates:
+                        cmb_block = min(candidates, key=lambda x: x.t0)
                     else:
-                        # try previous blocks
-                        for j in range(1, i+1):
-                            if blocks[i-j].subtype=="cmb":
-                                blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
-                                break
-                        else:
-                            raise ValueError(f"Cannot assign HWP direction to cal block {block}")
+                        raise ValueError(f"Cannot assign HWP direction to cal block {block}")
+                blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
+
 
         # -----------------------------------------------------------------
         # step 5: verify

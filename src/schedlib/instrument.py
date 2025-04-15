@@ -424,7 +424,9 @@ def parse_wiregrid_targets_from_file(ifile):
             duration=(u.str2datetime(row['stop_utc']) - u.str2datetime(row['start_utc'])).total_seconds(),
             tag=_escape_string(row['uid'].strip()),
         )
-        wiregrid_targets.append(wiregrid_target)
+        # temporarily disable wiregrid time const measurements
+        if wiregrid_target.name == 'wiregrid_gain':
+            wiregrid_targets.append(wiregrid_target)
 
     return wiregrid_targets
 
