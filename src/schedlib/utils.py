@@ -21,7 +21,7 @@ def get_cycle_option(t: Union[datetime, date], options: list[str], anchor: date 
         t = t.date()
     delta_days = (t - anchor).days
     index = delta_days % len(options)
-    return options[index]
+    return index
 
 def str2ctime(time_str):
     ctime = (pd.Timestamp(time_str).tz_localize(None) - pd.Timestamp("1970-01-01")) // pd.Timedelta('1s')
