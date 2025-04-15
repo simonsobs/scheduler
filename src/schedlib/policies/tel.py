@@ -417,6 +417,9 @@ class TelPolicy:
     wafer_sets: Dict[str, Any] = field(default_factory=dict)
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
+    az_branch_override: float = None
+    allow_partial_override: float = None
+    drift_override: bool = True
 
     def construct_seq(self, loader_cfg, t0, t1):
         if loader_cfg['type'] == 'source':
