@@ -4,7 +4,7 @@
 import numpy as np
 import yaml
 import os.path as op
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
 
 import datetime as dt
@@ -390,6 +390,50 @@ class SATPolicy(tel.TelPolicy):
 
         return blocks
 
+    def make_source_scans(self, target, blocks, sun_rule):
+        # digest array_query: it could be a fnmatch pattern matching the path
+            # in the geometry dict, or it could be looked up from a predefined
+            # wafer_set dict. Here we account for the latter case:
+            # look up predefined query in wafer_set
+            if target.array_query in self.wafer_sets:
+                array_query = self.wafer_sets[target.array_query]
+            else:
+                array_query = target.array_query
+
+            # build array geometry information based on the query
+            array_info = inst.array_info_from_query(self.geometries, array_query)
+            logger.debug(f"-> array_info: {array_info}")
+
+            # apply MakeCESourceScan rule to transform known observing windows into
+            # actual scan blocks
+            rule = ru.MakeCESourceScan(
+                array_info=array_info,
+                el_bore=target.el_bore,
+                drift=target.drift,
+                boresight_rot=target.boresight_rot,
+                allow_partial=target.allow_partial,
+                az_branch=target.az_branch,
+                source_direction=target.source_direction,
+            )
+            source_scans = rule(blocks['calibration'][target.source])
+
+            # sun check again: previous sun check ensure source is not too
+            # close to the sun, but our scan may still get close enough to
+            # the sun, in which case we will trim it or delete it depending
+            # on whether allow_partial is True
+            if target.allow_partial:
+                logger.info("-> allow_partial = True: trimming scan options by sun rule")
+                min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+                source_scans = min_dur_rule(sun_rule(source_scans))
+            else:
+                logger.info("-> allow_partial = False: filtering scan options by sun rule")
+                source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
+
+            # flatten and sort
+            source_scans = core.seq_sort(source_scans, flatten=True)
+
+            return source_scans
+
     def init_cmb_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
         Initialize the sequences for the scheduler to process.
@@ -483,50 +527,19 @@ class SATPolicy(tel.TelPolicy):
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-            # digest array_query: it could be a fnmatch pattern matching the path
-            # in the geometry dict, or it could be looked up from a predefined
-            # wafer_set dict. Here we account for the latter case:
-            # look up predefined query in wafer_set
-            if target.array_query in self.wafer_sets:
-                array_query = self.wafer_sets[target.array_query]
-            else:
-                array_query = target.array_query
-
-            # build array geometry information based on the query
-            array_info = inst.array_info_from_query(self.geometries, array_query)
-            logger.debug(f"-> array_info: {array_info}")
-
-            # apply MakeCESourceScan rule to transform known observing windows into
-            # actual scan blocks
-            rule = ru.MakeCESourceScan(
-                array_info=array_info,
-                el_bore=target.el_bore,
-                drift=target.drift,
-                boresight_rot=target.boresight_rot,
-                allow_partial=target.allow_partial,
-                az_branch=target.az_branch,
-                source_direction=target.source_direction,
-            )
-            source_scans = rule(blocks['calibration'][target.source])
-
-            # sun check again: previous sun check ensure source is not too
-            # close to the sun, but our scan may still get close enough to
-            # the sun, in which case we will trim it or delete it depending
-            # on whether allow_partial is True
-            if target.allow_partial:
-                logger.info("-> allow_partial = True: trimming scan options by sun rule")
-                min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-                source_scans = min_dur_rule(sun_rule(source_scans))
-            else:
-                logger.info("-> allow_partial = False: filtering scan options by sun rule")
-                source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
-
-            # flatten and sort
-            source_scans = core.seq_sort(source_scans, flatten=True)
+            source_scans = self.make_source_scans(target, blocks, sun_rule)
 
             if len(source_scans) == 0:
-                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                continue
+                if target.allow_partial == True:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                    continue
+                else:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying with allow_partial=True")
+                    target = replace(target, allow_partial=True)
+                    source_scans = self.make_source_scans(target, blocks, sun_rule)
+                    if len(source_scans) == 0:
+                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                        continue
 
             # which one can be added without conflicting with already planned calibration blocks?
             source_scans = core.seq_sort(
@@ -624,16 +637,17 @@ class SATPolicy(tel.TelPolicy):
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
-                candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 < cmb_block.t0]
-                if candidates:
-                    cmb_block = max(candidates, key=lambda x: x.t0)
-                else:
-                    candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 > cmb_block.t0]
+                if block.subtype=='cal' and block.hwp_dir is not None:
+                    candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 < block.t0]
                     if candidates:
-                        cmb_block = min(candidates, key=lambda x: x.t0)
+                        cmb_block = max(candidates, key=lambda x: x.t0)
                     else:
-                        raise ValueError(f"Cannot assign HWP direction to cal block {block}")
-                blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
+                        candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 > block.t0]
+                        if candidates:
+                            cmb_block = min(candidates, key=lambda x: x.t0)
+                        else:
+                            raise ValueError(f"Cannot assign HWP direction to cal block {block}")
+                    blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
 
 
         # -----------------------------------------------------------------

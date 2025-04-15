@@ -220,7 +220,7 @@ def make_config(
     brake_hwp=True,
     az_motion_override=False,
     az_branch_override=None,
-    allow_partial_override=True,
+    allow_partial_override=False,
     drift_override=True,
     wiregrid_az=180,
     wiregrid_el=48,
@@ -337,7 +337,7 @@ class SATP3Policy(SATPolicy):
         brake_hwp=True,
         az_motion_override=False,
         az_branch_override=None,
-        allow_partial_override=None,
+        allow_partial_override=False,
         drift_override=True,
         wiregrid_az=180,
         wiregrid_el=48,
@@ -424,6 +424,7 @@ class SATP3Policy(SATPolicy):
                             ra_units='deg'
                         )
 
+        # get wiregrid file
         if wgfile is not None:
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
             wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]

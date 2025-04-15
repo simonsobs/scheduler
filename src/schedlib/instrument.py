@@ -395,7 +395,7 @@ def parse_cal_targets_from_toast_sat(ifile):
             tag=_escape_string(row['uid'].strip()),
             source_direction=_escape_string(row['direction'].strip()).lower(),
             array_query=None,
-            allow_partial=True,
+            allow_partial=False,
         )
         cal_targets.append(cal_target)
 
