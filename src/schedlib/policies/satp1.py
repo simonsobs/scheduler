@@ -192,9 +192,11 @@ def make_operations(
         { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
     ]
 
-    wiregrid_ops = [
-        { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
-    ]
+    wiregrid_ops = []
+    if not disable_hwp:
+        wiregrid_ops += [
+            { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
+        ]
     return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 
 def make_config(
@@ -212,6 +214,7 @@ def make_config(
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
+    disable_hwp=False,
     az_motion_override=False,
     az_branch_override=None,
     allow_partial_override=False,
@@ -229,7 +232,7 @@ def make_config(
         az_speed, az_accel,
         iv_cadence, bias_step_cadence,
         det_setup_duration,
-        brake_hwp,
+        brake_hwp, disable_hwp,
         **op_cfg
     )
 
@@ -273,6 +276,7 @@ def make_config(
         'boresight_override': boresight_override,
         'hwp_override': hwp_override,
         'brake_hwp': brake_hwp,
+        'disable_hwp': disable_hwp,
         'az_motion_override': az_motion_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
@@ -325,6 +329,7 @@ class SATP1Policy(SATPolicy):
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
+        disable_hwp=False,
         az_motion_override=False,
         az_branch_override=None,
         allow_partial_override=False,
@@ -350,6 +355,7 @@ class SATP1Policy(SATPolicy):
             boresight_override,
             hwp_override,
             brake_hwp,
+            disable_hwp,
             az_motion_override,
             az_branch_override,
             allow_partial_override,
@@ -363,25 +369,49 @@ class SATP1Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seq(self, cfile, wgfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
+    def init_cal_seq(self, cfile, wgfile, cal_targets, blocks, t0, t1):
+        # source -> boresight -> allow_partial
         array_focus = {
-            0 : {
-                'left' : 'ws3,ws2',
-                'middle' : 'ws0,ws1,ws4',
-                'right' : 'ws5,ws6',
-                'bottom': 'ws1,ws2,ws6',
+            'jupiter': {
+                0 : {
+                    'ws6': True,
+                    'ws1,ws0': True,
+                    'ws2': True
+                },
+                -45 : {
+                    'ws6,ws0': True,
+                    'ws5': True,
+                },
+                45 : {
+                    'ws2,ws0': True,
+                    'ws3': True,
+                }
             },
-            45 : {
-                'left' : 'ws3,ws4',
-                'middle' : 'ws2,ws0,ws5',
-                'right' : 'ws1,ws6',
-                'bottom': 'ws1,ws2,ws3',
+            'taua': {
+                0 : {
+                    'ws6': True,
+                    'ws1,ws0': True,
+                    'ws2': True
+                },
+                -45 : {
+                    'ws6,ws0': True,
+                    'ws5': True,
+                },
+                45 : {
+                    'ws2,ws0': True,
+                    'ws3': True,
+                }
             },
-            -45 : {
-                'left' : 'ws1,ws2',
-                'middle' : 'ws6,ws0,ws3',
-                'right' : 'ws4,ws5',
-                'bottom': 'ws1,ws6,ws5',
+            'saturn': {
+                0 : {
+                    'ws0,ws4': False,
+                },
+                -45 : {
+                    'ws0,ws3': False,
+                },
+                45 : {
+                    'ws0,ws5': False,
+                }
             },
         }
 
@@ -391,6 +421,7 @@ class SATP1Policy(SATPolicy):
             # keep all cal targets within range
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
 
+            # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
                 candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
                 if candidates:
@@ -406,31 +437,28 @@ class SATP1Policy(SATPolicy):
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
                 else:
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
-                # focus_str = array_focus[cal_targets[i].boresight_rot]
-                # index = u.get_cycle_option(t0, list(focus_str.keys()))
-                # array_query = list(focus_str.keys())[index]
-                # cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
-                # cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
+
+                # ensure cal_target source is in array_focus
+                assert cal_targets[i].source in array_focus.keys()
+
+                # get wafers to observe based on date
+                focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
+                index = u.get_cycle_option(t0, list(focus_str.keys()))
+                array_query = list(focus_str.keys())[index]
+                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+                # update tags
+                cal_targets[i] = replace(cal_targets[i], tag=f"{array_query},{cal_targets[i].tag}")
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
+                cal_targets[i] = replace(cal_targets[i], allow_partial=focus_str[array_query])
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
 
-            for target in self.cal_targets:
-                if target.source not in src.get_source_list():
-                   if target.ra is not None and target.dec is not None:
-                        src.add_fixed_source(
-                            name=target.source,
-                            ra=target.ra, dec=target.dec,
-                            ra_units='deg'
-                        )
-
         # get wiregrid file
-        if wgfile is not None:
+        if wgfile is not None and not self.disable_hwp:
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
             wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
             self.cal_targets += wiregrid_candidates
@@ -444,13 +472,6 @@ class SATP1Policy(SATPolicy):
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
             elif isinstance(cal_target, WiregridTarget):
-                # wiregrid_candidates = []
-                # current_date = t0.date()
-                # end_date = t1.date()
-
-                # while current_date <= end_date:
-                #     candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                #     if t0 <= candidate_time <= t1:
                 wiregrid_candidates.append(
                     StareBlock(
                         name=cal_target.name,
@@ -462,7 +483,6 @@ class SATP1Policy(SATPolicy):
                         subtype='wiregrid',
                     )
                 )
-                    # current_date += dt.timedelta(days=1)
         blocks['calibration']['wiregrid'] = wiregrid_candidates
 
         if 'sun-avoidance' in self.rules:
@@ -477,81 +497,51 @@ class SATP1Policy(SATPolicy):
         cal_blocks = []
 
         for target in self.cal_targets:
-            if target.array_query is None:
-                loop_over_focus = True
-                focus_str = array_focus[target.boresight_rot]
-                start_index = u.get_cycle_option(t0, list(focus_str.keys()))
-                n_focus = len(list(focus_str.keys()))
-            else:
-                loop_over_focus = False
-                n_focus = 1
-            for i in range(n_focus):
-                if loop_over_focus:
-                    index = (start_index + i) % len(focus_str.keys())
-                    array_query = list(focus_str.keys())[index]
-                    logger.info(f"trying {focus_str[array_query]}")
-                    target = replace(target, array_query=focus_str[array_query])
-                    target = replace(target, tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
+            logger.info(f"-> planning calibration scans for {target}...")
 
-                logger.info(f"-> planning calibration scans for {target}...")
+            if isinstance(target, WiregridTarget):
+                continue
 
-                if isinstance(target, WiregridTarget):
-                    break
+            assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-                assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
+            source_scans = self.make_source_scans(target, blocks, sun_rule)
 
-                source_scans = self.make_source_scans(target, blocks, sun_rule)
+            if len(source_scans) == 0:
+                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                continue
 
-                if len(source_scans) == 0:
-                    if target.allow_partial == True or not loop_over_focus:
-                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                        continue
-                    else:
-                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying with allow_partial=True")
-                        target = replace(target, allow_partial=True)
-                        source_scans = self.make_source_scans(target, blocks, sun_rule)
-                        if len(source_scans) == 0:
-                            logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                            continue
+            # which one can be added without conflicting with already planned calibration blocks?
+            source_scans = core.seq_sort(
+                core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
+                flatten=True
+            )
 
-                # which one can be added without conflicting with already planned calibration blocks?
-                source_scans = core.seq_sort(
-                    core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
-                    flatten=True
-                )
+            if len(source_scans) == 0:
+                logger.warning(f"-> all scan options overlap with already planned source scans...")
+                continue
 
-                if len(source_scans) == 0:
-                    logger.warning(f"-> all scan options overlap with already planned source scans...")
-                    break
+            logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
 
-                logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
+            # add the first scan option
+            cal_block = source_scans[0]
 
-                # add the first scan option
-                cal_block = source_scans[0]
+            # update tag, speed, accel, etc
+            cal_block = cal_block.replace(
+                az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
+                az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
+                tag=f"{cal_block.tag},{target.tag}"
+            )
 
-                # update tag, speed, accel, etc
+            # override hwp direction
+            if self.hwp_override is not None:
                 cal_block = cal_block.replace(
-                    az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
-                    az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
-                    tag=f"{cal_block.tag},{target.tag}"
+                    hwp_dir=self.hwp_override
                 )
+            cal_blocks.append(cal_block)
 
-                # override hwp direction
-                if self.hwp_override is not None:
-                    cal_block = cal_block.replace(
-                        hwp_dir=self.hwp_override
-                    )
-                cal_blocks.append(cal_block)
-
-                # break if we've successfully found a target
-                break
-
-        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
+        blocks['calibration'] = cal_blocks
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
-
-        # check sun avoidance again
-        blocks['calibration'] = core.seq_flatten(sun_rule(blocks['calibration']))
 
         return blocks
 

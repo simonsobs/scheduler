@@ -313,13 +313,20 @@ class SATPolicy(tel.TelPolicy):
         and False is reverse.
     brake_hwp : bool
         a bool that specifies whether or not active braking should be used for the hwp.
+    disable_hwp : bool
+        a bool that specifies whether or not to disable the hwp entirely.
     min_hwp_el : float
         the minimum elevation a move command to go to without stopping the hwp first
     boresight_override : float
         the angle of boresight to use if not None
+    wiregrid_az : float
+        azimuth to use for wiregrid measurements
+    wiregrid_el : float
+        elevation to use for wiregrid measurements
     """
     hwp_override: Optional[bool] = None
     brake_hwp: Optional[bool] = True
+    disable_hwp: bool = False
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
     wiregrid_az: float = 180
@@ -444,106 +451,6 @@ class SATPolicy(tel.TelPolicy):
 
         return blocks
 
-    def init_cal_seq(self, cfile, wgfile, cal_targets, blocks, t0: dt.datetime, t1: dt.datetime):
-        array_focus = {
-            0 : {
-                'left' : 'ws3,ws2',
-                'middle' : 'ws0,ws1,ws4',
-                'right' : 'ws5,ws6',
-                'bottom': 'ws1,ws2,ws6',
-            },
-            45 : {
-                'left' : 'ws3,ws4',
-                'middle' : 'ws2,ws0,ws5',
-                'right' : 'ws1,ws6',
-                'bottom': 'ws1,ws2,ws3',
-            },
-            -45 : {
-                'left' : 'ws1,ws2',
-                'middle' : 'ws6,ws0,ws3',
-                'right' : 'ws4,ws5',
-                'bottom': 'ws1,ws6,ws5',
-            },
-        }
-
-        # get cal targets
-        if cfile is not None:
-            cal_targets = parse_cal_targets_from_toast_sat(cfile)
-            # keep all cal targets within range
-            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
-
-            for i, cal_target in enumerate(cal_targets):
-                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-                if candidates:
-                    block = max(candidates, key=lambda x: x.t0)
-                else:
-                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
-                    if candidates:
-                        block = min(candidates, key=lambda x: x.t0)
-                    else:
-                        raise ValueError("Cannot find nearby block")
-
-                cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-                focus_str = array_focus[cal_targets[i].boresight_rot]
-                array_query = u.get_cycle_option(t0, list(focus_str.keys()))
-                cal_targets[i] = replace(cal_targets[i], array_query=focus_str[array_query])
-                cal_targets[i] = replace(cal_targets[i], tag=f"{focus_str[array_query]},{cal_targets[i].tag}")
-
-                if self.az_branch_override is not None:
-                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
-
-                cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
-                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
-
-            self.cal_targets += cal_targets
-
-            for target in self.cal_targets:
-                if target.source not in src.get_source_list():
-                   if target.ra is not None and target.dec is not None:
-                        src.add_fixed_source(
-                            name=target.source,
-                            ra=target.ra, dec=target.dec,
-                            ra_units='deg'
-                        )
-
-        # get wiregrid file
-        if wgfile is not None:
-            wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
-            wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
-            self.cal_targets += wiregrid_candidates
-
-        wiregrid_candidates = []
-
-        # by default add calibration blocks specified in cal_targets if not already specified
-        for cal_target in self.cal_targets:
-            if isinstance(cal_target, CalTarget):
-                source = cal_target.source
-                if source not in blocks['calibration']:
-                    blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, WiregridTarget):
-                # wiregrid_candidates = []
-                # current_date = t0.date()
-                # end_date = t1.date()
-
-                # while current_date <= end_date:
-                #     candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                #     if t0 <= candidate_time <= t1:
-                wiregrid_candidates.append(
-                    StareBlock(
-                        name=cal_target.name,
-                        t0=cal_target.t0,
-                        t1=cal_target.t1,
-                        az=self.wiregrid_az,
-                        alt=self.wiregrid_el,
-                        tag=cal_target.tag,
-                        subtype='wiregrid',
-                    )
-                )
-                    # current_date += dt.timedelta(days=1)
-        blocks['calibration']['wiregrid'] = wiregrid_candidates
-
-        return blocks
-
     def apply(self, blocks: core.BlocksTree) -> core.BlocksTree:
         """
         Applies a set of observing rules to the a tree of blocks such as modifying
@@ -599,24 +506,6 @@ class SATPolicy(tel.TelPolicy):
             )
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
-
-        # # add hwp direction to cal blocks
-        # if self.hwp_override is None:
-        #     for i, block in enumerate(blocks):
-        #         if block.subtype=='cal' and block.hwp_dir is None:
-        #             # try next blocks
-        #             for j in range(1, len(blocks)-i):
-        #                 if blocks[i+j].subtype=="cmb":
-        #                     blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
-        #                     break
-        #             else:
-        #                 # try previous blocks
-        #                 for j in range(1, i+1):
-        #                     if blocks[i-j].subtype=="cmb":
-        #                         blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
-        #                         break
-        #                 else:
-        #                     raise ValueError(f"Cannot assign HWP direction to cal block {block}")
 
         # add hwp direction to cal blocks
         if self.hwp_override is None:
