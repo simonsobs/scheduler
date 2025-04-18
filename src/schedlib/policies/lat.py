@@ -25,6 +25,11 @@ logger = u.init_logger(__name__)
 COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
+def boresight_to_corotator(el, boresight):
+    return el - 60 + boresight
+def corotator_to_boresight(el, corotator):
+    return -1*(el - 60 - corotator)
+
 @dataclass_json
 @dataclass(frozen=True)
 class State(tel.State):
@@ -42,7 +47,7 @@ class State(tel.State):
     corotator_now: float = 0
 
     def get_boresight(self):
-        return -1*(self.el_now - 60 - self.corotator_now)
+        return corotator_to_boresight(self.el_now, self.corotator_now)
 
 @dataclass(frozen=True)
 class StimulatorTarget:
@@ -144,7 +149,12 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
             state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        commands += [f"run.acu.set_boresight(target={block.corotator_angle})"]
+        ## the ACU command is the one place where boresight=corotator
+        ## everywhere else (particularly for math) corotator != boresight
+        commands += [
+            f"# Set corotator angle to {block.corotator_angle} degrees",
+            f"run.acu.set_boresight(target={block.corotator_angle})",
+        ]
         state = state.replace(corotator_now=block.corotator_angle)
         duration += COROTATOR_DURATION
 
@@ -210,9 +220,9 @@ def make_geometry():
 
 def make_cal_target(
     source: str,
-    corotator: float,
     elevation: float,
     focus: str,
+    corotator: float=None,
     allow_partial=False,
     drift=True,
     az_branch=None,
@@ -230,9 +240,11 @@ def make_cal_target(
         'i5' : 'i5_ws0,i5_ws1,i5_ws2',
         'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
-
-    boresight = float(-1*(elevation - 60 - corotator))
     elevation = float(elevation)
+    if corotator is None:
+        corotator = elevation - 60
+    boresight = float(-1*(elevation - 60 - corotator))
+    
     focus = focus.lower()
 
     focus_str = None
@@ -431,6 +443,12 @@ class LATPolicy(tel.TelPolicy):
             blocks = core.seq_map(
                 lambda b: b.replace(
                     corotator_angle=self.corotator_override
+                ), blocks
+            )
+        else: ## run with co-rotator locked to elevation
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    corotator_angle=b.alt-60
                 ), blocks
             )
 
@@ -693,11 +711,12 @@ class LATPolicy(tel.TelPolicy):
                 tag=f"{cal_block.tag},{target.tag}"
             )
 
-            # override corotator angle
-            if self.corotator_override is not None:
-                cal_block = cal_block.replace(
-                    corotator_angle=self.corotator_override
+            # set corotator correctly in blocks
+            cal_block = cal_block.replace(
+                corotator_angle=boresight_to_corotator(
+                    cal_block.alt, cal_block.boresight_angle
                 )
+            )
 
             cal_blocks.append(cal_block)
 
