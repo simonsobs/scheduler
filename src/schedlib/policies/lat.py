@@ -242,8 +242,8 @@ def make_cal_target(
     }
     elevation = float(elevation)
     if corotator is None:
-        corotator = elevation - 60
-    boresight = float(-1*(elevation - 60 - corotator))
+        corotator = boresight_to_corotator(elevation,0)
+    boresight = corotator_to_boresight(elevation,float(corotator))
     
     focus = focus.lower()
 
@@ -448,7 +448,7 @@ class LATPolicy(tel.TelPolicy):
         else: ## run with co-rotator locked to elevation
             blocks = core.seq_map(
                 lambda b: b.replace(
-                    corotator_angle=b.alt-60
+                    corotator_angle=boresight_to_corotator(b.alt,0)
                 ), blocks
             )
 
