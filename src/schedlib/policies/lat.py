@@ -195,8 +195,9 @@ def move_to(state, az, el, min_el=0, force=False):
 def make_geometry():
     # These are just the median of the wafers and an ~estimated radius
     # To be updated later
-    xi_offset = 0.115
-    eta_offset = -0.573
+    xi_offset = 0.0 #0.115
+    eta_offset = 0.0 #-0.573
+    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
     return {
         "c1_ws0": {"center": [-0.3710+xi_offset, 0+eta_offset], "radius": 0.3,},
         "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211+eta_offset], "radius": 0.3,},
@@ -427,11 +428,21 @@ class LATPolicy(tel.TelPolicy):
     def apply_overrides(self, blocks):
 
         if self.elevations_under_90:
+            """
+            as of 20250419, reference plans indication boresight180 scans
+            ONLY by listing the elevation as 180-el on sky. 
+            """
             def fix_block(b):
                 if b.alt > 90:
-                    return b.replace(alt=180-b.alt, az=b.az-180)
+                    return b.replace(alt=180-b.alt)
                 return b
-            blocks = core.seq_map(fix_block, blocks)
+            blocks = core.seq_map( fix_block, blocks)
+        else:
+            raise NotImplementedError(
+                "scheduler not implemented for boresight180 scans yet"
+                " schedules must be generated with elevations_under_90"
+                " set to True"
+            )
 
         if len(self.remove_targets) > 0:
             blocks = core.seq_filter_out(
