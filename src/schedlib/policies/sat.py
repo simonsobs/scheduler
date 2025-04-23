@@ -25,7 +25,6 @@ logger = u.init_logger(__name__)
 HWP_SPIN_UP = 7*u.minute
 HWP_SPIN_DOWN = 15*u.minute
 BORESIGHT_DURATION = 1*u.minute
-WIREGRID_DURATION = 15*u.minute
 
 COMMANDS_HWP_BRAKE = [
     "run.hwp.stop(active=True)",
@@ -281,7 +280,6 @@ def wiregrid(state, block):
     #         "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)",
     #         f"# hwp spinning with forward={state.hwp_dir}"
     #         ]
-    #     return state, 0, []
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
@@ -366,47 +364,49 @@ class SATPolicy(tel.TelPolicy):
 
     def make_source_scans(self, target, blocks, sun_rule):
         # digest array_query: it could be a fnmatch pattern matching the path
-            # in the geometry dict, or it could be looked up from a predefined
-            # wafer_set dict. Here we account for the latter case:
-            # look up predefined query in wafer_set
-            if target.array_query in self.wafer_sets:
-                array_query = self.wafer_sets[target.array_query]
-            else:
-                array_query = target.array_query
+        # in the geometry dict, or it could be looked up from a predefined
+        # wafer_set dict. Here we account for the latter case:
+        # look up predefined query in wafer_set
+        if target.array_query in self.wafer_sets:
+            array_query = self.wafer_sets[target.array_query]
+        else:
+            array_query = target.array_query
 
-            # build array geometry information based on the query
-            array_info = inst.array_info_from_query(self.geometries, array_query)
-            logger.debug(f"-> array_info: {array_info}")
+        # build array geometry information based on the query
+        array_info = inst.array_info_from_query(self.geometries, array_query)
+        logger.debug(f"-> array_info: {array_info}")
 
-            # apply MakeCESourceScan rule to transform known observing windows into
-            # actual scan blocks
-            rule = ru.MakeCESourceScan(
-                array_info=array_info,
-                el_bore=target.el_bore,
-                drift=target.drift,
-                boresight_rot=target.boresight_rot,
-                allow_partial=target.allow_partial,
-                az_branch=target.az_branch,
-                source_direction=target.source_direction,
-            )
-            source_scans = rule(blocks['calibration'][target.source])
+        print('ttt: ', target)
 
-            # sun check again: previous sun check ensure source is not too
-            # close to the sun, but our scan may still get close enough to
-            # the sun, in which case we will trim it or delete it depending
-            # on whether allow_partial is True
-            if target.allow_partial:
-                logger.info("-> allow_partial = True: trimming scan options by sun rule")
-                min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-                source_scans = min_dur_rule(sun_rule(source_scans))
-            else:
-                logger.info("-> allow_partial = False: filtering scan options by sun rule")
-                source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
+        # apply MakeCESourceScan rule to transform known observing windows into
+        # actual scan blocks
+        rule = ru.MakeCESourceScan(
+            array_info=array_info,
+            el_bore=target.el_bore,
+            drift=target.drift,
+            boresight_rot=target.boresight_rot,
+            allow_partial=target.allow_partial,
+            az_branch=target.az_branch,
+            source_direction=target.source_direction,
+        )
+        source_scans = rule(blocks['calibration'][target.source])
 
-            # flatten and sort
-            source_scans = core.seq_sort(source_scans, flatten=True)
+        # sun check again: previous sun check ensure source is not too
+        # close to the sun, but our scan may still get close enough to
+        # the sun, in which case we will trim it or delete it depending
+        # on whether allow_partial is True
+        if target.allow_partial:
+            logger.info("-> allow_partial = True: trimming scan options by sun rule")
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            source_scans = min_dur_rule(sun_rule(source_scans))
+        else:
+            logger.info("-> allow_partial = False: filtering scan options by sun rule")
+            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
 
-            return source_scans
+        # flatten and sort
+        source_scans = core.seq_sort(source_scans, flatten=True)
+
+        return source_scans
 
     def init_cmb_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
@@ -463,9 +463,8 @@ class SATPolicy(tel.TelPolicy):
 
         Returns
         -------
-        BlocksTree
+        blocks : BlocksTree
             New blocks tree after applying the specified observing rules.
-
         """
 
         # min duration rule
@@ -726,8 +725,8 @@ class SATPolicy(tel.TelPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, duration=WIREGRID_DURATION, **kwargs):
-        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target, duration=duration))
+    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, **kwargs):
+        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target))
 
 # ------------------------
 # utilities

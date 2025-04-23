@@ -217,7 +217,7 @@ def make_config(
     disable_hwp=False,
     az_motion_override=False,
     az_branch_override=None,
-    allow_partial_override=False,
+    allow_partial_override=None,
     drift_override=True,
     wiregrid_az=180,
     wiregrid_el=48,
@@ -332,7 +332,7 @@ class SATP1Policy(SATPolicy):
         disable_hwp=False,
         az_motion_override=False,
         az_branch_override=None,
-        allow_partial_override=False,
+        allow_partial_override=None,
         drift_override=True,
         wiregrid_az=180,
         wiregrid_el=48,
@@ -418,8 +418,9 @@ class SATP1Policy(SATPolicy):
         # get cal targets
         if cfile is not None:
             cal_targets = parse_cal_targets_from_toast_sat(cfile)
-            # keep all cal targets within range
+            # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.source=="jupiter"] #in array_focus.keys()]
 
             # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
@@ -431,7 +432,7 @@ class SATP1Policy(SATPolicy):
                     if candidates:
                         block = min(candidates, key=lambda x: x.t0)
                     else:
-                        raise ValueError("Cannot find nearby block")
+                        raise ValueError("Cannot find nearby block for cal target")
 
                 if self.boresight_override is None:
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
@@ -441,7 +442,7 @@ class SATP1Policy(SATPolicy):
                 # ensure cal_target source is in array_focus
                 assert cal_targets[i].source in array_focus.keys()
 
-                # get wafers to observe based on date
+                # get wafers to observe based on source name and boresight
                 focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
                 index = u.get_cycle_option(t0, list(focus_str.keys()))
                 array_query = list(focus_str.keys())[index]
@@ -452,7 +453,10 @@ class SATP1Policy(SATPolicy):
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                cal_targets[i] = replace(cal_targets[i], allow_partial=focus_str[array_query])
+                if self.allow_partial_override is None:
+                    cal_targets[i] = replace(cal_targets[i], allow_partial=focus_str[array_query])
+                else:
+                    cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
@@ -460,6 +464,7 @@ class SATP1Policy(SATPolicy):
         # get wiregrid file
         if wgfile is not None and not self.disable_hwp:
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
+            # since we don't restrict the wiregrid observations, make sure they end before t1
             wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
             self.cal_targets += wiregrid_candidates
 
@@ -507,8 +512,17 @@ class SATP1Policy(SATPolicy):
             source_scans = self.make_source_scans(target, blocks, sun_rule)
 
             if len(source_scans) == 0:
-                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                continue
+                if target.allow_partial == True:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                    continue
+                else:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
+                    target = replace(target,allow_partial=True)
+                    source_scans = self.make_source_scans(target, blocks, sun_rule)
+
+                    if len(source_scans) == 0:
+                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                        continue
 
             # which one can be added without conflicting with already planned calibration blocks?
             source_scans = core.seq_sort(

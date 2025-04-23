@@ -225,7 +225,7 @@ def make_config(
     disable_hwp=False,
     az_motion_override=False,
     az_branch_override=None,
-    allow_partial_override=False,
+    allow_partial_override=None,
     drift_override=True,
     wiregrid_az=180,
     wiregrid_el=48,
@@ -345,7 +345,7 @@ class SATP3Policy(SATPolicy):
         disable_hwp=False,
         az_motion_override=False,
         az_branch_override=None,
-        allow_partial_override=False,
+        allow_partial_override=None,
         drift_override=True,
         wiregrid_az=180,
         wiregrid_el=48,
@@ -429,7 +429,10 @@ class SATP3Policy(SATPolicy):
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                cal_targets[i] = replace(cal_targets[i], allow_partial=focus_str[array_query])
+                if self.allow_partial_override is None:
+                    cal_targets[i] = replace(cal_targets[i], allow_partial=focus_str[array_query])
+                else:
+                    cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets

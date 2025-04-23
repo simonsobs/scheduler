@@ -33,7 +33,6 @@ class WiregridTarget:
     t0: dt.datetime
     t1: dt.datetime
     tag: str
-    duration: float
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -421,7 +420,6 @@ def parse_wiregrid_targets_from_file(ifile):
             name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            duration=(u.str2datetime(row['stop_utc']) - u.str2datetime(row['start_utc'])).total_seconds(),
             tag=_escape_string(row['uid'].strip()),
         )
         # temporarily disable wiregrid time const measurements
