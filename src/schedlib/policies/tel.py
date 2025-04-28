@@ -223,11 +223,11 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
         return state, 0, []
 
 def det_setup(
-        state, 
-        block, 
-        commands=None, 
-        apply_boresight_rot=True, 
-        iv_cadence=None, 
+        state,
+        block,
+        commands=None,
+        apply_boresight_rot=True,
+        iv_cadence=None,
         det_setup_duration=20*u.minute
     ):
     # when should det setup be done?
@@ -288,20 +288,21 @@ def det_setup(
 
 def cmb_scan(state, block):
     if (
-        block.az_speed != state.az_speed_now or 
+        block.az_speed != state.az_speed_now or
         block.az_accel != state.az_accel_now
     ):
         commands = [
             f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
         ]
         state = state.replace(
-            az_speed_now=block.az_speed, 
+            az_speed_now=block.az_speed,
             az_accel_now=block.az_accel
         )
     else:
         commands = []
 
     commands.extend([
+        f"# scan duration = {(block.t1 - state.curr_time)}",
         "run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat()}',",
@@ -317,14 +318,14 @@ def source_scan(state, block):
     if block is None:
         return state, 0, ["# too late, don't scan"]
     if (
-        block.az_speed != state.az_speed_now or 
+        block.az_speed != state.az_speed_now or
         block.az_accel != state.az_accel_now
     ):
         commands = [
             f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
         ]
         state = state.replace(
-            az_speed_now=block.az_speed, 
+            az_speed_now=block.az_speed,
             az_accel_now=block.az_accel
         )
     else:
@@ -340,6 +341,7 @@ def source_scan(state, block):
         f"print('Waiting until {block.t0} to start scan')",
         f"run.wait_until('{block.t0.isoformat()}')",
         "",
+        f"# scan duration = {(block.t1 - state.curr_time)}",
         "run.seq.scan(",
         f"    description='{block.name}', ",
         f"    stop_time='{block.t1.isoformat()}', ",
@@ -436,19 +438,19 @@ class TelPolicy:
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
         elif loader_cfg['type'] == 'sat-cmb':
             blocks = inst.parse_sequence_from_toast_sat(
-                loader_cfg['file'], 
+                loader_cfg['file'],
             )
             blocks = self.apply_overrides(blocks)
             return blocks
         elif loader_cfg['type'] == 'lat-cmb':
             blocks = inst.parse_sequence_from_toast_lat(
-                loader_cfg['file'], 
+                loader_cfg['file'],
             )
             blocks = self.apply_overrides(blocks)
             return blocks
         else:
             raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
-    
+
     def apply_overrides(self, blocks):
         # these overrides get applied AFTER the telescope specific overrides
         if self.az_motion_override:
