@@ -906,7 +906,8 @@ class LATPolicy(tel.TelPolicy):
 
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                     t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
@@ -935,7 +936,8 @@ class LATPolicy(tel.TelPolicy):
             alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                    t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
