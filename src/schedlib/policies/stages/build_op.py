@@ -886,7 +886,8 @@ class PlanMoves:
                         t0_parking = move_away_by + (move_away_by - movet) / 2
 
                 seq_.append(IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
-                        az=az_parking, alt=alt_parking))
+                        az=az_parking, alt=alt_parking,
+                        az_offset=block.az_offset, alt_offset=block.alt_offset))
 
         # Replace gaps with Wait, Move, Wait.
         seq_, seq = [], seq_
