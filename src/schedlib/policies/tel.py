@@ -223,11 +223,11 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
         return state, 0, []
 
 def det_setup(
-        state, 
-        block, 
-        commands=None, 
-        apply_boresight_rot=True, 
-        iv_cadence=None, 
+        state,
+        block,
+        commands=None,
+        apply_boresight_rot=True,
+        iv_cadence=None,
         det_setup_duration=20*u.minute
     ):
     # when should det setup be done?
@@ -288,14 +288,14 @@ def det_setup(
 
 def cmb_scan(state, block):
     if (
-        block.az_speed != state.az_speed_now or 
+        block.az_speed != state.az_speed_now or
         block.az_accel != state.az_accel_now
     ):
         commands = [
             f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
         ]
         state = state.replace(
-            az_speed_now=block.az_speed, 
+            az_speed_now=block.az_speed,
             az_accel_now=block.az_accel
         )
     else:
@@ -317,14 +317,14 @@ def source_scan(state, block):
     if block is None:
         return state, 0, ["# too late, don't scan"]
     if (
-        block.az_speed != state.az_speed_now or 
+        block.az_speed != state.az_speed_now or
         block.az_accel != state.az_accel_now
     ):
         commands = [
             f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
         ]
         state = state.replace(
-            az_speed_now=block.az_speed, 
+            az_speed_now=block.az_speed,
             az_accel_now=block.az_accel
         )
     else:
@@ -332,7 +332,7 @@ def source_scan(state, block):
 
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
-        f"run.acu.move_to_target(az={round(block.az,3)}, el={round(block.alt,3)},",
+        f"run.acu.move_to_target(az={round(block.az + block.az_offset,3)}, el={round(block.alt + block.alt_offset,3)},",
         f"    start_time='{block.t0.isoformat()}',",
         f"    stop_time='{block.t1.isoformat()}',",
         f"    drift={round(block.az_drift,5)})",
@@ -423,6 +423,8 @@ class TelPolicy:
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
+    az_offset: float = 0.
+    el_offset: float = 0.
     iv_cadence : float = 4 * u.hour
     bias_step_cadence : float = 0.5 * u.hour
     max_cmb_scan_duration : float = 1 * u.hour
@@ -436,19 +438,19 @@ class TelPolicy:
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
         elif loader_cfg['type'] == 'sat-cmb':
             blocks = inst.parse_sequence_from_toast_sat(
-                loader_cfg['file'], 
+                loader_cfg['file'],
             )
             blocks = self.apply_overrides(blocks)
             return blocks
         elif loader_cfg['type'] == 'lat-cmb':
             blocks = inst.parse_sequence_from_toast_lat(
-                loader_cfg['file'], 
+                loader_cfg['file'],
             )
             blocks = self.apply_overrides(blocks)
             return blocks
         else:
             raise ValueError(f"unknown sequence type: {loader_cfg['type']}")
-    
+
     def apply_overrides(self, blocks):
         # these overrides get applied AFTER the telescope specific overrides
         if self.az_motion_override:

@@ -48,7 +48,7 @@ class State(tel.State):
     """
     State relevant to SAT operation scheduling. Inherits other fields:
     (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`.And others from 
+    from the base State defined in `schedlib.commands`.And others from
     `tel.State`
 
     Parameters
@@ -86,10 +86,10 @@ class SchedMode(tel.SchedMode):
     Wiregrid = 'wiregrid'
 
 def make_cal_target(
-    source: str, 
-    boresight: float, 
-    elevation: float, 
-    focus: str, 
+    source: str,
+    boresight: float,
+    elevation: float,
+    focus: str,
     allow_partial=False,
     drift=True,
     az_branch=None,
@@ -289,7 +289,7 @@ def wiregrid(state):
     ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
@@ -301,7 +301,7 @@ def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
     cmd += [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+        f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
     ]
     state = state.replace(az_now=az, el_now=el)
 
@@ -327,7 +327,7 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
- 
+
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
             blocks = core.seq_map(
@@ -507,7 +507,7 @@ class SATPolicy(tel.TelPolicy):
 
             if isinstance(target, WiregridTarget):
                 logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'), 
+                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
                                            blocks['calibration']['wiregrid'])
                 continue
 
@@ -633,6 +633,15 @@ class SATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # add az and el offsets (not used in calculations)
+        blocks = core.seq_map(
+            lambda block: block.replace(
+                az_offset=self.az_offset,
+                alt_offset=self.el_offset,
+            ),
+            blocks
+        )
+
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
@@ -706,10 +715,10 @@ class SATPolicy(tel.TelPolicy):
         )
 
     def seq2cmd(
-        self, 
-        seq, 
-        t0: dt.datetime, 
-        t1: dt.datetime, 
+        self,
+        seq,
+        t0: dt.datetime,
+        t1: dt.datetime,
         state: Optional[State] = None,
         return_state: bool = False,
     ) -> List[Any]:
@@ -870,9 +879,9 @@ def simplify_hwp(op_seq):
         if (b_prev.name == 'sat.hwp_spin_up' and b_next.name == 'sat.hwp_spin_down') or \
            (b_prev.name == 'sat.hwp_spin_down' and b_next.name == 'sat.hwp_spin_up'):
             return seq_prev[:-1] + [cmd.OperationBlock(
-                name='wait-until', 
-                t0=b_prev.t0, 
-                t1=b_next.t1, 
+                name='wait-until',
+                t0=b_prev.t0,
+                t1=b_next.t1,
             )]
         else:
             return seq_prev+[b_next]

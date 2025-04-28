@@ -173,12 +173,12 @@ def stimulator(state):
     ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=0, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
     cmd = [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+        f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
     ]
     state = state.replace(az_now=az, el_now=el)
 
@@ -333,6 +333,8 @@ def make_config(
     remove_targets=[],
     az_stow=None,
     el_stow=None,
+    az_offset=0.,
+    el_offset=0.,
     corotator_override=None,
     az_motion_override=False,
     **op_cfg
@@ -392,6 +394,8 @@ def make_config(
         'remove_targets': remove_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
+        'az_offset': az_offset,
+        'el_offset': el_offset,
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'max_cmb_scan_duration': max_cmb_scan_duration,
@@ -422,7 +426,7 @@ class LATPolicy(tel.TelPolicy):
         if self.elevations_under_90:
             """
             as of 20250419, reference plans indication boresight180 scans
-            ONLY by listing the elevation as 180-el on sky. 
+            ONLY by listing the elevation as 180-el on sky.
             """
             def fix_block(b):
                 if b.alt > 90:
@@ -499,6 +503,8 @@ class LATPolicy(tel.TelPolicy):
         cal_targets=None,
         az_stow=None,
         el_stow=None,
+        az_offset=0.,
+        el_offset=0.,
         elevations_under_90=False,
         corotator_override=None,
         az_motion_override=False,
@@ -520,6 +526,8 @@ class LATPolicy(tel.TelPolicy):
             elevations_under_90=elevations_under_90,
             az_stow=az_stow,
             el_stow=el_stow,
+            az_offset=az_offset,
+            el_offset=el_offset,
             corotator_override=corotator_override,
             az_motion_override=az_motion_override,
             remove_targets=remove_targets,
@@ -754,6 +762,15 @@ class LATPolicy(tel.TelPolicy):
             )
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
+
+        # add az and el offsets (not used in calculations)
+        blocks = core.seq_map(
+            lambda block: block.replace(
+                az_offset=self.az_offset,
+                alt_offset=self.el_offset,
+            ),
+            blocks
+        )
 
         # -----------------------------------------------------------------
         # step 5: verify
