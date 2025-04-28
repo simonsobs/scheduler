@@ -420,13 +420,9 @@ class LATPolicy(tel.TelPolicy):
     def apply_overrides(self, blocks):
 
         if self.elevations_under_90:
-            """
-            as of 20250419, reference plans indication boresight180 scans
-            ONLY by listing the elevation as 180-el on sky. 
-            """
             def fix_block(b):
                 if b.alt > 90:
-                    return b.replace(alt=180-b.alt)
+                    return b.replace(alt=180-b.alt, az=b.az-180)
                 return b
             blocks = core.seq_map( fix_block, blocks)
         else:
