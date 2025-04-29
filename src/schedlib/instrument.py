@@ -19,7 +19,7 @@ class CalTarget:
     t1: dt.datetime = None
     ra: float = None
     dec: float = None
-    boresight_rot: float = 0
+    boresight_rot: float = None
     allow_partial: bool = False
     drift: bool = True
     az_branch: Optional[float] = 180

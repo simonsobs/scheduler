@@ -386,7 +386,7 @@ class SATP3Policy(SATPolicy):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None):
-        # source -> boresight -> allow_partial
+        # source -> wafer -> allow_partial
         array_focus = {
                 'ws0': False,
                 'ws1': False,
@@ -415,10 +415,10 @@ class SATP3Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block")
 
-                if self.boresight_override is None:
-                    cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-                else:
-                    cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
+                # if self.boresight_override is None:
+                #     cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                # else:
+                #     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
 
                 # get wafers to observe based on date
                 focus_str = array_focus
