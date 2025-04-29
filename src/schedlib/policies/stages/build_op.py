@@ -194,7 +194,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     az=block1.az, alt=block1.alt),
                     ]
 
-# some additional auxilary command classes that will be mixed 
+# some additional auxilary command classes that will be mixed
 # into the IR to represent some intermediate operations. They
 # don't need to contain all the fields of a regular IR
 @dataclass(frozen=True)
@@ -241,9 +241,9 @@ class IR(core.Block):
         trimming effect on drift scans. It is not necessary here as we are
         merely solving for different unwraps for drift scan.
 
-        We allow the option of changing the block or block.subtype here because 
+        We allow the option of changing the block or block.subtype here because
         sometimes we need to run a master schedule but mark things as
-        calibration. Most important example: drone calibration campaigns 
+        calibration. Most important example: drone calibration campaigns
         """
         if self.block is not None and 'block' not in kwargs:
             block_kwargs = {k: v for k, v in kwargs.items() if k in ['t0', 't1', 'az', 'alt', 'subtype']}
@@ -485,7 +485,7 @@ class BuildOpSimple:
 
         # 2. lift the IRs back to the original data structure
         trimmed_blocks = core.seq_sort(
-            core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir), 
+            core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir),
             flatten=True
         )
         # match input blocks with trimmed blocks: since we are trimming the blocks
@@ -626,11 +626,6 @@ class BuildOpSimple:
             The sequence of operations planned for the block.
 
         """
-        # if we already pass the block or our constraint, nothing to do
-        if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
-            logger.info(f"--> skipping block {block.name} because it's already past")
-            return state, []
-
         # fast forward to within the constrained time block
         # state = state.replace(curr_time=min(constraint.t0, block.t0))
         # - during causal planning: fast forward state is allowed
@@ -640,6 +635,12 @@ class BuildOpSimple:
             state = state.replace(curr_time=max(constraint.t0, state.curr_time))
         else:
             state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
+
+         # if we already pass the block or our constraint, nothing to do
+        if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
+            print(state.curr_time, block.t0, block.t1, constraint.t0, constraint.t1)
+            logger.info(f"--> skipping block {block.name} because it's already past")
+            return state, []
 
         shift = 10
         safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
