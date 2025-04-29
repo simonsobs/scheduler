@@ -636,9 +636,8 @@ class BuildOpSimple:
         else:
             state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
 
-         # if we already pass the block or our constraint, nothing to do
+        # if we already pass the block or our constraint, nothing to do
         if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
-            print(state.curr_time, block.t0, block.t1, constraint.t0, constraint.t1)
             logger.info(f"--> skipping block {block.name} because it's already past")
             return state, []
 
