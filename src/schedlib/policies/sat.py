@@ -69,6 +69,7 @@ class SchedMode(tel.SchedMode):
     Wiregrid : str
         'wiregrid'; Wiregrid observations scheduled between block.t0 and block.t1
     """
+    PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
 
 def make_cal_target(
@@ -376,8 +377,6 @@ class SATPolicy(tel.TelPolicy):
         array_info = inst.array_info_from_query(self.geometries, array_query)
         logger.debug(f"-> array_info: {array_info}")
 
-        print('ttt: ', target)
-
         # apply MakeCESourceScan rule to transform known observing windows into
         # actual scan blocks
         rule = ru.MakeCESourceScan(
@@ -466,6 +465,85 @@ class SATPolicy(tel.TelPolicy):
         blocks : BlocksTree
             New blocks tree after applying the specified observing rules.
         """
+
+        # -----------------------------------------------------------------
+        # step 1: preliminary sun avoidance
+        #   - get rid of source observing windows too close to the sun
+        #   - likely won't affect scan blocks because master schedule already
+        #     takes care of this
+        # -----------------------------------------------------------------
+        if 'sun-avoidance' in self.rules:
+            logger.info(f"applying sun avoidance rule: {self.rules['sun-avoidance']}")
+            sun_rule = SunAvoidance(**self.rules['sun-avoidance'])
+            blocks = sun_rule(blocks)
+        else:
+            logger.error("no sun avoidance rule specified!")
+            raise ValueError("Sun rule is required!")
+
+        # -----------------------------------------------------------------
+        # step 2: plan calibration scans
+        #   - refer to each target specified in cal_targets
+        #   - same source can be observed multiple times with different
+        #     array configurations (i.e. using array_query)
+        # -----------------------------------------------------------------
+        logger.info("planning calibration scans...")
+        cal_blocks = []
+
+        for target in self.cal_targets:
+            logger.info(f"-> planning calibration scans for {target}...")
+
+            if isinstance(target, WiregridTarget):
+                continue
+
+            assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
+
+            source_scans = self.make_source_scans(target, blocks, sun_rule)
+
+            if len(source_scans) == 0:
+                if target.allow_partial == True:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                    continue
+                else:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
+                    target = replace(target, allow_partial=True)
+                    source_scans = self.make_source_scans(target, blocks, sun_rule)
+
+                    if len(source_scans) == 0:
+                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                        continue
+
+            # which one can be added without conflicting with already planned calibration blocks?
+            source_scans = core.seq_sort(
+                core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
+                flatten=True
+            )
+
+            if len(source_scans) == 0:
+                logger.warning(f"-> all scan options overlap with already planned source scans...")
+                continue
+
+            logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
+
+            # add the first scan option
+            cal_block = source_scans[0]
+
+            # update tag, speed, accel, etc
+            cal_block = cal_block.replace(
+                az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
+                az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
+                tag=f"{cal_block.tag},{target.tag}"
+            )
+
+            # override hwp direction
+            if self.hwp_override is not None:
+                cal_block = cal_block.replace(
+                    hwp_dir=self.hwp_override
+                )
+            cal_blocks.append(cal_block)
+
+        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
+
+        logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 
         # min duration rule
         if 'min-duration' in self.rules:
@@ -638,6 +716,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_post = [op for op in self.operations if op['sched_mode'] == SchedMode.PostObs]
         pre_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PreSession]
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
+        wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
 
         def map_block(block):
@@ -663,10 +742,10 @@ class SATPolicy(tel.TelPolicy):
                 return {
                     'name': block.name,
                     'block': block,
-                    'pre': [],
+                    'pre': wiregrid_pre,
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': block.priority
+                    'priority': -1
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -682,7 +761,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 0,
+            'priority': -1,
             'pinned': True  # remain unchanged during multi-pass
         }
 
@@ -712,7 +791,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 0,
+            'priority': -1,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]

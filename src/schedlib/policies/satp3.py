@@ -203,6 +203,8 @@ def make_operations(
     wiregrid_ops = []
     if not disable_hwp:
         wiregrid_ops += [
+            { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreWiregrid, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,},
+            { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreWiregrid, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
             { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
         ]
     return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
@@ -383,7 +385,7 @@ class SATP3Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seq(self, cfile, wgfile, cal_targets, blocks, t0, t1):
+    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None):
         # source -> boresight -> allow_partial
         array_focus = {
                 'ws0': False,
@@ -413,14 +415,14 @@ class SATP3Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block")
 
-                # if self.boresight_override is None:
-                #     cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-                # else:
-                #     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
+                if self.boresight_override is None:
+                    cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                else:
+                    cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
 
                 # get wafers to observe based on date
                 focus_str = array_focus
-                index = u.get_cycle_option(t0, list(focus_str.keys()))
+                index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
                 array_query = list(focus_str.keys())[index]
                 cal_targets[i] = replace(cal_targets[i], array_query=array_query)
                 # update tags
@@ -464,73 +466,6 @@ class SATP3Policy(SATPolicy):
                     )
                 )
         blocks['calibration']['wiregrid'] = wiregrid_candidates
-
-        if 'sun-avoidance' in self.rules:
-            logger.info(f"applying sun avoidance rule: {self.rules['sun-avoidance']}")
-            sun_rule = SunAvoidance(**self.rules['sun-avoidance'])
-            blocks = sun_rule(blocks)
-        else:
-            logger.error("no sun avoidance rule specified!")
-            raise ValueError("Sun rule is required!")
-
-        logger.info("planning calibration scans...")
-        cal_blocks = []
-
-        for target in self.cal_targets:
-            logger.info(f"-> planning calibration scans for {target}...")
-
-            if isinstance(target, WiregridTarget):
-                continue
-
-            assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
-
-            source_scans = self.make_source_scans(target, blocks, sun_rule)
-
-            if len(source_scans) == 0:
-                if target.allow_partial == True:
-                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                    continue
-                else:
-                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
-                    target = replace(target,allow_partial=True)
-                    source_scans = self.make_source_scans(target, blocks, sun_rule)
-
-                    if len(source_scans) == 0:
-                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                        continue
-
-            # which one can be added without conflicting with already planned calibration blocks?
-            source_scans = core.seq_sort(
-                core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
-                flatten=True
-            )
-
-            if len(source_scans) == 0:
-                logger.warning(f"-> all scan options overlap with already planned source scans...")
-                continue
-
-            logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
-
-            # add the first scan option
-            cal_block = source_scans[0]
-
-            # update tag, speed, accel, etc
-            cal_block = cal_block.replace(
-                az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
-                az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
-                tag=f"{cal_block.tag},{target.tag}"
-            )
-
-            # override hwp direction
-            if self.hwp_override is not None:
-                cal_block = cal_block.replace(
-                    hwp_dir=self.hwp_override
-                )
-            cal_blocks.append(cal_block)
-
-        blocks['calibration'] = cal_blocks
-
-        logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 
         return blocks
 
