@@ -415,11 +415,6 @@ class SATP3Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block")
 
-                # if self.boresight_override is None:
-                #     cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-                # else:
-                #     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
-
                 # get wafers to observe based on date
                 focus_str = array_focus
                 index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
