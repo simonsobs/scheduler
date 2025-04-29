@@ -12,7 +12,7 @@ from . import core, utils as u
 @dataclass(frozen=True)
 class CalTarget:
     source: str
-    array_query: str
+    array_query: Union(str, list)
     el_bore: float
     tag: str
     t0: dt.datetime = None
@@ -20,9 +20,9 @@ class CalTarget:
     ra: float = None
     dec: float = None
     boresight_rot: float = None
-    allow_partial: bool = False
+    allow_partial: Union(bool, list) = False
     drift: bool = True
-    az_branch: Optional[float] = 180
+    az_branch: Optional[float] = None
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
     source_direction: Optional[str] = None

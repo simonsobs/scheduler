@@ -219,7 +219,7 @@ def make_config(
     disable_hwp=False,
     az_motion_override=False,
     az_branch_override=None,
-    allow_partial_override=None,
+    allow_partial_override=False,
     drift_override=True,
     wiregrid_az=180,
     wiregrid_el=48,
@@ -334,7 +334,7 @@ class SATP1Policy(SATPolicy):
         disable_hwp=False,
         az_motion_override=False,
         az_branch_override=None,
-        allow_partial_override=None,
+        allow_partial_override=False,
         drift_override=True,
         wiregrid_az=180,
         wiregrid_el=48,
@@ -445,18 +445,17 @@ class SATP1Policy(SATPolicy):
                 # get wafers to observe based on source name and boresight
                 focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
                 index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
-                array_query = list(focus_str.keys())[index]
+                # order list so current date's array_query is tried first
+                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
+                #array_query = list(focus_str.keys())[index]
                 cal_targets[i] = replace(cal_targets[i], array_query=array_query)
-                # update tags
-                cal_targets[i] = replace(cal_targets[i], tag=f"{array_query},{cal_targets[i].tag}")
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                if self.allow_partial_override is None:
-                    cal_targets[i] = replace(cal_targets[i], allow_partial=focus_str[array_query])
-                else:
-                    cal_targets[i] = replace(cal_targets[i], allow_partial=self.allow_partial_override)
+                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
+                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
+
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets

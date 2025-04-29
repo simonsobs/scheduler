@@ -501,49 +501,68 @@ class SATPolicy(tel.TelPolicy):
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-            source_scans = self.make_source_scans(target, blocks, sun_rule)
+            # get list of possible array queries
+            if isinstance(target.array_query, list):
+                array_queries = target.array_query.copy()
+            else:
+                array_queries = [target.array_query]
 
-            if len(source_scans) == 0:
-                if target.allow_partial == True:
-                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                    continue
-                else:
-                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
-                    target = replace(target, allow_partial=True)
-                    source_scans = self.make_source_scans(target, blocks, sun_rule)
+            # get list of allow_partials
+            if isinstance(target.allow_partial, list):
+                allow_partial = target.allow_partial.copy()
+            else:
+                allow_partial = [target.allow_partial]
+
+            # loop over array queries and try to find a source
+            for array_query in array_queries:
+                logger.info(f"trying array_query={array_query}")
+                target = replace(target, array_query=array_query)
+                target = replace(target, allow_partial=allow_partial)
+
+                source_scans = self.make_source_scans(target, blocks, sun_rule)
+
+                if len(source_scans) == 0:
+                    # try allow_partial=True if overriding
+                    if target.allow_partial == False and self.allow_parital_override == True:
+                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
+                        target = replace(target, allow_partial=True)
+                        source_scans = self.make_source_scans(target, blocks, sun_rule)
 
                     if len(source_scans) == 0:
                         logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
                         continue
 
-            # which one can be added without conflicting with already planned calibration blocks?
-            source_scans = core.seq_sort(
-                core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
-                flatten=True
-            )
-
-            if len(source_scans) == 0:
-                logger.warning(f"-> all scan options overlap with already planned source scans...")
-                continue
-
-            logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
-
-            # add the first scan option
-            cal_block = source_scans[0]
-
-            # update tag, speed, accel, etc
-            cal_block = cal_block.replace(
-                az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
-                az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
-                tag=f"{cal_block.tag},{target.tag}"
-            )
-
-            # override hwp direction
-            if self.hwp_override is not None:
-                cal_block = cal_block.replace(
-                    hwp_dir=self.hwp_override
+                # which one can be added without conflicting with already planned calibration blocks?
+                source_scans = core.seq_sort(
+                    core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
+                    flatten=True
                 )
-            cal_blocks.append(cal_block)
+
+                if len(source_scans) == 0:
+                    logger.warning(f"-> all scan options overlap with already planned source scans...")
+                    continue
+
+                logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
+
+                # add the first scan option
+                cal_block = source_scans[0]
+
+                # update tag, speed, accel, etc
+                cal_block = cal_block.replace(
+                    az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
+                    az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
+                    tag=f"{array_query},{cal_block.tag},{target.tag}"
+                )
+
+                # override hwp direction
+                if self.hwp_override is not None:
+                    cal_block = cal_block.replace(
+                        hwp_dir=self.hwp_override
+                    )
+                cal_blocks.append(cal_block)
+
+                # don't test other array queries if we have one that works
+                break
 
         blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
 
