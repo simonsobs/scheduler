@@ -302,6 +302,7 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
+        f"# scan duration = {(block.t1 - state.curr_time)}",
         "run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat()}',",
@@ -340,6 +341,7 @@ def source_scan(state, block):
         f"print('Waiting until {block.t0} to start scan')",
         f"run.wait_until('{block.t0.isoformat()}')",
         "",
+        f"# scan duration = {(block.t1 - state.curr_time)}",
         "run.seq.scan(",
         f"    description='{block.name}', ",
         f"    stop_time='{block.t1.isoformat()}', ",
