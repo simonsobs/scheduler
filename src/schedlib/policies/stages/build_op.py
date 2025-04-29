@@ -194,7 +194,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     az=block1.az, alt=block1.alt),
                     ]
 
-# some additional auxilary command classes that will be mixed 
+# some additional auxilary command classes that will be mixed
 # into the IR to represent some intermediate operations. They
 # don't need to contain all the fields of a regular IR
 @dataclass(frozen=True)
@@ -241,9 +241,9 @@ class IR(core.Block):
         trimming effect on drift scans. It is not necessary here as we are
         merely solving for different unwraps for drift scan.
 
-        We allow the option of changing the block or block.subtype here because 
+        We allow the option of changing the block or block.subtype here because
         sometimes we need to run a master schedule but mark things as
-        calibration. Most important example: drone calibration campaigns 
+        calibration. Most important example: drone calibration campaigns
         """
         if self.block is not None and 'block' not in kwargs:
             block_kwargs = {k: v for k, v in kwargs.items() if k in ['t0', 't1', 'az', 'alt', 'subtype']}
@@ -485,7 +485,7 @@ class BuildOpSimple:
 
         # 2. lift the IRs back to the original data structure
         trimmed_blocks = core.seq_sort(
-            core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir), 
+            core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir),
             flatten=True
         )
         # match input blocks with trimmed blocks: since we are trimming the blocks
@@ -797,7 +797,13 @@ class BuildOpSimple:
                 if ir.block.name in ['pre-session', 'post-session']:
                     state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt, block=ir.block)
                 else:
-                    op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t0}]
+                    if ir.subtype == IRMode.PreBlock:
+                        wait_time = ir.t0
+                    elif ir.subtype == IRMode.InBlock:
+                        wait_time = ir.block.t0
+                    else:
+                         wait_time = ir.block.t1
+                    op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': wait_time}]
                     state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
                     state, _, op_blocks_cmd = self._apply_ops(state, ir.operations, block=ir.block)
                     op_blocks = op_blocks_wait + op_blocks_cmd
