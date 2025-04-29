@@ -48,7 +48,7 @@ class State(tel.State):
     """
     State relevant to SAT operation scheduling. Inherits other fields:
     (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
-    from the base State defined in `schedlib.commands`.And others from 
+    from the base State defined in `schedlib.commands`.And others from
     `tel.State`
 
     Parameters
@@ -86,10 +86,10 @@ class SchedMode(tel.SchedMode):
     Wiregrid = 'wiregrid'
 
 def make_cal_target(
-    source: str, 
-    boresight: float, 
-    elevation: float, 
-    focus: str, 
+    source: str,
+    boresight: float,
+    elevation: float,
+    focus: str,
     allow_partial=False,
     drift=True,
     az_branch=None,
@@ -259,7 +259,7 @@ def source_scan(state, block):
     return tel.source_scan(state, block)
 
 @cmd.operation(name='sat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
+def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo_stabilization_time=0):
     commands = []
     duration = 0
 
@@ -274,6 +274,10 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
         commands += [f"run.acu.set_boresight({block.boresight_angle})"]
         state = state.replace(boresight_rot_now=block.boresight_angle)
         duration += BORESIGHT_DURATION
+
+        if cryo_stabilization_time > 0:
+            commands += [f"time.sleep({cryo_stabilization_time})"]
+            duration += cryo_stabilization_time
 
     return state, duration, commands
 
@@ -327,7 +331,7 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
- 
+
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
             blocks = core.seq_map(
@@ -506,7 +510,7 @@ class SATPolicy(tel.TelPolicy):
 
             if isinstance(target, WiregridTarget):
                 logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'), 
+                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
                                            blocks['calibration']['wiregrid'])
                 continue
 
@@ -705,10 +709,10 @@ class SATPolicy(tel.TelPolicy):
         )
 
     def seq2cmd(
-        self, 
-        seq, 
-        t0: dt.datetime, 
-        t1: dt.datetime, 
+        self,
+        seq,
+        t0: dt.datetime,
+        t1: dt.datetime,
         state: Optional[State] = None,
         return_state: bool = False,
     ) -> List[Any]:
@@ -869,9 +873,9 @@ def simplify_hwp(op_seq):
         if (b_prev.name == 'sat.hwp_spin_up' and b_next.name == 'sat.hwp_spin_down') or \
            (b_prev.name == 'sat.hwp_spin_down' and b_next.name == 'sat.hwp_spin_up'):
             return seq_prev[:-1] + [cmd.OperationBlock(
-                name='wait-until', 
-                t0=b_prev.t0, 
-                t1=b_next.t1, 
+                name='wait-until',
+                t0=b_prev.t0,
+                t1=b_next.t1,
             )]
         else:
             return seq_prev+[b_next]

@@ -145,6 +145,7 @@ def make_operations(
     brake_hwp=True,
     disable_hwp=False,
     apply_boresight_rot=False,
+    cryo_stabilization_time=0*u.second,
     hwp_cfg=None,
     home_at_end=False,
     relock_cadence=24*u.hour
