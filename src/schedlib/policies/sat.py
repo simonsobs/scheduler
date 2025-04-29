@@ -259,7 +259,7 @@ def source_scan(state, block):
     return tel.source_scan(state, block)
 
 @cmd.operation(name='sat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo_stabilization_time=0):
+def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo_stabilization_time=0*u.second):
     commands = []
     duration = 0
 
