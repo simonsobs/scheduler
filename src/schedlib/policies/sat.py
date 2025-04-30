@@ -377,10 +377,6 @@ class SATPolicy(tel.TelPolicy):
         array_info = inst.array_info_from_query(self.geometries, array_query)
         logger.debug(f"-> array_info: {array_info}")
 
-        # initial min duration rule to remove edge cases of very short scans
-        min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-        blocks['calibration']['taua'] = min_dur_rule(blocks['calibration']['taua'])
-
         # apply MakeCESourceScan rule to transform known observing windows into
         # actual scan blocks
         rule = ru.MakeCESourceScan(
@@ -483,6 +479,12 @@ class SATPolicy(tel.TelPolicy):
         else:
             logger.error("no sun avoidance rule specified!")
             raise ValueError("Sun rule is required!")
+
+        # min duration rule
+        if 'min-duration' in self.rules:
+            # initial min duration rule to remove edge cases of very short scans
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            blocks['calibration'] = min_dur_rule(blocks['calibration'])
 
         # -----------------------------------------------------------------
         # step 2: plan calibration scans
