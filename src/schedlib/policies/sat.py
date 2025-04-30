@@ -610,7 +610,7 @@ class SATPolicy(tel.TelPolicy):
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
-                if block.subtype=='cal' and block.hwp_dir is None:
+                if (block.subtype=='cal' or block.subtype=='wiregrid') and block.hwp_dir is None:
                     candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 < block.t0]
                     if candidates:
                         cmb_block = max(candidates, key=lambda x: x.t0)

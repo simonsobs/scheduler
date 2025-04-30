@@ -486,6 +486,7 @@ class SATP2Policy(SATPolicy):
                         alt=self.wiregrid_el,
                         tag=cal_target.tag,
                         subtype='wiregrid',
+                        hwp_dir=self.hwp_override if self.hwp_override is not None else None
                     )
                 )
         blocks['calibration']['wiregrid'] = wiregrid_candidates
