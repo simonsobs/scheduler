@@ -282,7 +282,7 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
-    apply_corotator_rot=False,
+    apply_corotator_rot=True,
     cryo_stabilization_time=180*u.second,
     open_shutter=False,
     close_shutter=False,

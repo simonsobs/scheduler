@@ -302,8 +302,8 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        f"# scan duration = {(block.t1 - state.curr_time)}",
-        "run.seq.scan(",
+        f"# duration = {(block.t1 - state.curr_time)}",
+        f"run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat()}',",
         f"    width={round(block.throw,3)}, az_drift=0,",
