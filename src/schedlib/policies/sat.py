@@ -259,7 +259,7 @@ def source_scan(state, block):
     return tel.source_scan(state, block)
 
 @cmd.operation(name='sat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
+def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo_stabilization_time=0*u.second):
     commands = []
     duration = 0
 
@@ -274,6 +274,10 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
         commands += [f"run.acu.set_boresight({block.boresight_angle})"]
         state = state.replace(boresight_rot_now=block.boresight_angle)
         duration += BORESIGHT_DURATION
+
+        if cryo_stabilization_time > 0:
+            commands += [f"time.sleep({cryo_stabilization_time})"]
+            duration += cryo_stabilization_time
 
     return state, duration, commands
 
