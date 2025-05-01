@@ -82,7 +82,6 @@ def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None):
     # is safe for the duration of t0 to t1.
     if alt_parking is None:
         alt_range = alt0, sun_policy['min_el']
-        print(alt_range)
         n_alts = max(2, int(round(abs(alt_range[1] - alt_range[0]) / 4. + 1)))
         trial_alts = np.linspace(alt_range[0], alt_range[1], n_alts)
     else:
@@ -123,7 +122,8 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
 
     if t1 > block1.t0 and (block0.t1 < block1.t0):
         return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=block1.t0,
-                    az=block1.az, alt=block1.alt)]
+                    az=block1.az, alt=block1.alt,
+                    az_offset=block1.az_offset, alt_offset=block1.alt_offset)]
 
     # elevations to check. search in order of cur_el -> min_el then from cur_el -> max_el
     alt_step = 4
@@ -174,24 +174,15 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                 logger.warning("sun-safe parking delays move to next field by "
                             f"{(t1_parking - block1.t0).total_seconds()} seconds")
 
-            # move_to_gap = get_traj_ok_time_socs(
-            #     block0.az, az_parking, block0.alt, alt_parking, block0.t1, sun_policy)
-            # logger.info(f"move to gap: {move_to_gap}")
-
-            # at_gap = get_traj_ok_time_socs(
-            #     az_parking, az_parking, alt_parking, alt_parking, t0_parking, sun_policy)
-            # logger.info(f"at gap: {at_gap}")
-
-            # move_from_gap = get_traj_ok_time_socs(
-            #     az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy)
-            # logger.info(f"move from gap: {move_from_gap}")
-
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
-                    az=az_parking, alt=alt_parking),
+                    az=az_parking, alt=alt_parking,
+                    az_offset=block0.az_offset, alt_offset=block0.alt_offset),
                     IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
-                    az=az_parking, alt=alt_parking),
+                    az=az_parking, alt=alt_parking,
+                    az_offset=block1.az_offset, alt_offset=block1.alt_offset),
                     IR(name='gap', subtype=IRMode.Gap, t0=t1_parking, t1=block1.t0,
-                    az=block1.az, alt=block1.alt),
+                    az=block1.az, alt=block1.alt,
+                    az_offset=block1.az_offset, alt_offset=block1.alt_offset),
                     ]
 
 # some additional auxilary command classes that will be mixed
@@ -204,6 +195,8 @@ class Aux: pass
 class MoveTo(Aux):
     az: float
     alt: float
+    az_offset: float = 0.
+    alt_offset: float = 0.
     subtype: str = "aux"
     def __repr__(self):
         return f"# move to az={self.az:.2f}"
@@ -213,6 +206,8 @@ class WaitUntil(Aux):
     t1: dt.datetime
     az: float
     alt: float
+    az_offset: float = 0.
+    alt_offset: float = 0.
     subtype: str = "aux"
     def __repr__(self):
         return f"# wait until {self.t1} at az = {self.az:.2f}"
@@ -229,6 +224,8 @@ class IR(core.Block):
     alt: float
     block: Optional[core.Block] = field(default=None, hash=False, repr=False)
     operations: List[Dict[str, Any]] = field(default_factory=list, hash=False, repr=False)
+    az_offset: float = 0.
+    alt_offset: float = 0.
 
     def __repr__(self):
         az = f"{self.az:>7.2f}" if self.az is not None else f"{'None':>7}"
@@ -626,11 +623,6 @@ class BuildOpSimple:
             The sequence of operations planned for the block.
 
         """
-        # if we already pass the block or our constraint, nothing to do
-        if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
-            logger.info(f"--> skipping block {block.name} because it's already past")
-            return state, []
-
         # fast forward to within the constrained time block
         # state = state.replace(curr_time=min(constraint.t0, block.t0))
         # - during causal planning: fast forward state is allowed
@@ -640,6 +632,11 @@ class BuildOpSimple:
             state = state.replace(curr_time=max(constraint.t0, state.curr_time))
         else:
             state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
+
+        # if we already pass the block or our constraint, nothing to do
+        if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
+            logger.info(f"--> skipping block {block.name} because it's already past")
+            return state, []
 
         shift = 10
         safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
@@ -749,6 +746,8 @@ class BuildOpSimple:
                 t1=block.t0,
                 az=block.az,
                 alt=block.alt,
+                az_offset=block.az_offset,
+                alt_offset=block.alt_offset,
                 block=block,
                 operations=pre_ops),
             ]
@@ -760,6 +759,8 @@ class BuildOpSimple:
                 t1=block.t1,
                 az=block.az,
                 alt=block.alt,
+                az_offset=block.az_offset,
+                alt_offset=block.alt_offset,
                 block=block,
                 operations=in_ops),
             ]
@@ -771,6 +772,8 @@ class BuildOpSimple:
                 t1=block.t1+dt.timedelta(seconds=post_dur),
                 az=block.az,
                 alt=block.alt,
+                az_offset=block.az_offset,
+                alt_offset=block.alt_offset,
                 block=block,
                 operations=post_ops)
             ]
@@ -785,8 +788,9 @@ class BuildOpSimple:
                 op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': ir.t1}]
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif isinstance(ir, MoveTo):
-                # aux move_to should be enforced
-                op_cfgs = [{'name': 'move_to', 'sched_mode': IRMode.Aux, 'az': ir.az, 'el': ir.alt, 'force': True}]
+                # aux move_to should be enforced'
+                op_cfgs = [{'name': 'move_to', 'sched_mode': IRMode.Aux, 'az': ir.az, 'el': ir.alt,
+                            'az_offset': ir.az_offset, 'el_offset': ir.alt_offset, 'force': True}]
                 # add min hwp elevation if present
                 if hasattr(self.policy_config, 'min_hwp_el'):
                     op_cfgs[0]['min_el'] = self.policy_config.min_hwp_el
@@ -868,7 +872,7 @@ class PlanMoves:
             # if current position is safe until end of schedule
             if safet >= t_end:
                 seq_.extend([IR(name='gap', subtype=IRMode.Gap, t0=block.t1, t1=t_end,
-                    az=block.az, alt=block.alt)])
+                    az=block.az, alt=block.alt, az_offset=block.az_offset, alt_offset=block.alt_offset)])
             else:
                 movet = block.t1 #max(safet, block.t1)
                 buffer_t = dt.timedelta(seconds=min(300, int((t_end - movet).total_seconds() / 2)))
@@ -888,7 +892,8 @@ class PlanMoves:
                         t0_parking = move_away_by + (move_away_by - movet) / 2
 
                 seq_.append(IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
-                        az=az_parking, alt=alt_parking))
+                        az=az_parking, alt=alt_parking,
+                        az_offset=block.az_offset, alt_offset=block.alt_offset))
 
         # Replace gaps with Wait, Move, Wait.
         seq_, seq = [], seq_
@@ -907,18 +912,18 @@ class PlanMoves:
                 # important to be in that place for that time period.
                 seq_ += [
                     WaitUntil(t1=b.t0, az=b.az, alt=b.alt),
-                    MoveTo(az=b.az, alt=b.alt),
+                    MoveTo(az=b.az, alt=b.alt, az_offset=b.az_offset, alt_offset=b.alt_offset),
                     WaitUntil(t1=b.t1, az=b.az, alt=b.alt)]
                 last_az, last_alt = b.az, b.alt
             else:
                 if (last_az is None
                     or np.round(b.az - last_az, 3) != 0
                     or np.round(b.alt - last_alt, 3) != 0):
-                    seq_ += [MoveTo(az=b.az, alt=b.alt)]
+                    seq_ += [MoveTo(az=b.az, alt=b.alt, az_offset=b.az_offset, alt_offset=b.alt_offset)]
                     last_az, last_alt = b.az, b.alt
                 else:
                     if (b.block != seq[i-1].block) & (i>0):
-                        seq_ += [MoveTo(az=b.az, alt=b.alt)]
+                        seq_ += [MoveTo(az=b.az, alt=b.alt, az_offset=b.az_offset, alt_offset=b.alt_offset)]
                 seq_ += [b]
 
         return seq_
