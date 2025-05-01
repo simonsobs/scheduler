@@ -167,7 +167,7 @@ def preamble():
 
 def wrap_up(state, block):
     return state, [
-         f"run.wait_until('{block.t1.isoformat()}')",
+         f"run.wait_until('{block.t1.isoformat(timespec='seconds')}')",
         "acu.stop_and_clear()"
     ]
 
@@ -213,7 +213,7 @@ def det_setup(
         state,
         block,
         commands=None,
-        apply_boresight_rot=True,
+        apply_rot=True,
         iv_cadence=None,
         det_setup_duration=20*u.minute
     ):
@@ -222,7 +222,7 @@ def det_setup(
     # -> should always be done if elevation has changed
     # -> should always be done if det setup has not been done yet
     # -> should be done at a regular interval if iv_cadence is not None
-    # -> should always be done if boresight rotation has changed
+    # -> should always be done if boresight or corotator angle has changed
     doit = (block.subtype == 'cal')
     doit = doit or (not state.is_det_setup) or (state.last_iv is None)
     if not doit:
@@ -230,7 +230,7 @@ def det_setup(
             doit = doit or (
                 not np.isclose(state.last_iv_elevation, block.alt, atol=1)
             )
-        if apply_boresight_rot and state.last_iv_boresight is not None:
+        if apply_rot and state.last_iv_boresight is not None:
             doit = doit or (
                 not np.isclose(
                     state.last_iv_boresight,
@@ -289,9 +289,10 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        "run.seq.scan(",
+        f"# scan duration = {dt.timedelta(seconds=round((block.t1 - state.curr_time).total_seconds()))}",
+        f"run.seq.scan(",
         f"    description='{block.name}',",
-        f"    stop_time='{block.t1.isoformat()}',",
+        f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    width={round(block.throw,3)}, az_drift=0,",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
@@ -319,17 +320,18 @@ def source_scan(state, block):
 
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
-        f"run.acu.move_to_target(az={round(block.az,3)}, el={round(block.alt,3)},",
-        f"    start_time='{block.t0.isoformat()}',",
-        f"    stop_time='{block.t1.isoformat()}',",
+        f"run.acu.move_to_target(az={round(block.az + block.az_offset,3)}, el={round(block.alt + block.alt_offset,3)},",
+        f"    start_time='{block.t0.isoformat(timespec='seconds')}',",
+        f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    drift={round(block.az_drift,5)})",
         "",
-        f"print('Waiting until {block.t0} to start scan')",
-        f"run.wait_until('{block.t0.isoformat()}')",
+        f"print('Waiting until {block.t0.isoformat(timespec='seconds')} to start scan')",
+        f"run.wait_until('{block.t0.isoformat(timespec='seconds')}')",
         "",
+        f"# scan duration = {dt.timedelta(seconds=round((block.t1 - state.curr_time).total_seconds()))}",
         "run.seq.scan(",
         f"    description='{block.name}', ",
-        f"    stop_time='{block.t1.isoformat()}', ",
+        f"    stop_time='{block.t1.isoformat(timespec='seconds')}', ",
         f"    width={round(block.throw,3)}, ",
         f"    az_drift={round(block.az_drift,5)}, ",
         f"    subtype='{block.subtype}',",
@@ -410,6 +412,8 @@ class TelPolicy:
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
+    az_offset: float = 0.
+    el_offset: float = 0.
     iv_cadence : float = 4 * u.hour
     bias_step_cadence : float = 0.5 * u.hour
     max_cmb_scan_duration : float = 1 * u.hour

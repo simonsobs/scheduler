@@ -13,12 +13,12 @@ logger = u.init_logger(__name__)
 ## Code to check sun safety
 
 class SunCrawler:
-    def __init__(self, platform, path=None, cmd_txt=None):
+    def __init__(self, platform, path=None, cmd_txt=None, az_offset=0., el_offset=0.):
         assert platform in ['satp1', 'satp2', 'satp3', 'lat'], (
             f"{platform} is not an implemented platform, choose from satp1, "
              "satp2, or satp3"
         )
-    
+
         match platform:
             case "satp1":
                 from schedlib.policies.satp1 import make_config
@@ -36,6 +36,9 @@ class SunCrawler:
             iv_cadence=None, bias_step_cadence=None,
             max_cmb_scan_duration=None, cal_targets=None,
         )['rules']['sun-avoidance']
+
+        self.az_offset = az_offset
+        self.el_offset = el_offset
 
         if not path is None:
             self.from_cmds = False
@@ -75,16 +78,16 @@ class SunCrawler:
 
     def _move_to_parse(self, l):
         try:
-            az = float(l.split('az=')[1].split(',')[0])
+            az = float(l.split('az=')[1].split(',')[0]) - self.az_offset
         except IndexError:
             print('Bad input!', l)
             az = None
 
         try:
-            el = float(l.split('el=')[1].rstrip(',\n').rstrip(')\n'))
+            el = float(l.split('el=')[1].rstrip(',\n').rstrip(')\n')) - self.el_offset
         except IndexError:
             try:
-                el = float(l.split(',')[1].rstrip(',\n').rstrip(')\n'))
+                el = float(l.split(',')[1].rstrip(',\n').rstrip(')\n')) - self.el_offset
             except IndexError:
                 print('Bad input!', l)
                 el = None
@@ -265,7 +268,7 @@ class SunCrawler:
             if 'az = ' in l:
                 az = float(l.split('az = ')[1].split('+')[0])
                 try:
-                    self.next_az = az
+                    self.next_az = az  - self.az_offset
                 except AttributeError:
                     self.next_az = 0.
                     self.next_az = az
@@ -302,7 +305,7 @@ class SunCrawler:
                 'Move info (min sun dist, min sun time, min el, max el):'
             )
             logger.error('\n'.join([', '.join(map(str, [m['sun_dist_min'], m['sun_time'], min(m['moves'].get_traj(res=1.0)[1]), max(m['moves'].get_traj(res=1.0)[1])])) for m in moves]))
-        raise(e)            
+        raise(e)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

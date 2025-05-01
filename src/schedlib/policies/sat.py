@@ -27,12 +27,18 @@ HWP_SPIN_DOWN = 15*u.minute
 BORESIGHT_DURATION = 1*u.minute
 
 COMMANDS_HWP_BRAKE = [
+    "run.smurf.stream('on', subtype='cal', tag='hwp_spin_down')",
     "run.hwp.stop(active=True)",
     "sup.disable_driver_board()",
+    "run.smurf.stream('off')",
+    "",
 ]
 COMMANDS_HWP_STOP = [
+    "run.smurf.stream('on', subtype='cal', tag='hwp_spin_down')",
     "run.hwp.stop(active=False)",
     "sup.disable_driver_board()",
+    "run.smurf.stream('off')",
+    "",
 ]
 
 @dataclass_json
@@ -214,8 +220,11 @@ def hwp_spin_up(state, block, disable_hwp=False, brake_hwp=True):
 
     freq = 2 if hwp_dir else -2
     return state, duration + HWP_SPIN_UP, cmds + [
+        "run.smurf.stream('on', subtype='cal', tag='hwp_spin_up')",
         "sup.enable_driver_board()",
         f"run.hwp.set_freq(freq={freq})",
+        "run.smurf.stream('off')",
+        "",
     ]
 
 @cmd.operation(name='sat.hwp_spin_down', return_duration=True)
@@ -243,7 +252,7 @@ def source_scan(state, block):
     return tel.source_scan(state, block)
 
 @cmd.operation(name='sat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
+def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo_stabilization_time=0*u.second):
     commands = []
     duration = 0
 
@@ -258,6 +267,10 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True):
         commands += [f"run.acu.set_boresight({block.boresight_angle})"]
         state = state.replace(boresight_rot_now=block.boresight_angle)
         duration += BORESIGHT_DURATION
+
+        if cryo_stabilization_time > 0:
+            commands += [f"time.sleep({cryo_stabilization_time})"]
+            duration += cryo_stabilization_time
 
     return state, duration, commands
 
@@ -283,7 +296,7 @@ def wiregrid(state, block):
     #         ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
@@ -295,7 +308,7 @@ def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
     cmd += [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+        f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
     ]
     state = state.replace(az_now=az, el_now=el)
 
@@ -336,6 +349,13 @@ class SATPolicy(tel.TelPolicy):
             blocks = core.seq_map(
                 lambda b: b.replace(
                     boresight_angle=self.boresight_override
+                ), blocks
+            )
+        # override hwp direction
+        if self.hwp_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    hwp_dir=self.hwp_override
                 ), blocks
             )
         return super().apply_overrides(blocks)
@@ -429,14 +449,6 @@ class SATPolicy(tel.TelPolicy):
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
-
-        # override hwp direction
-        if self.hwp_override is not None:
-            blocks['baseline'] = core.seq_map(
-                lambda b: b.replace(
-                    hwp_dir=self.hwp_override
-                ), blocks['baseline']
-            )
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -608,6 +620,15 @@ class SATPolicy(tel.TelPolicy):
             )
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
+
+        # add az and el offsets (not used in calculations)
+        blocks = core.seq_map(
+            lambda block: block.replace(
+                az_offset=self.az_offset,
+                alt_offset=self.el_offset,
+            ),
+            blocks
+        )
 
         # add hwp direction to cal blocks
         if self.hwp_override is None:
@@ -782,7 +803,8 @@ class SATPolicy(tel.TelPolicy):
 
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                     t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
@@ -812,7 +834,8 @@ class SATPolicy(tel.TelPolicy):
             alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                    t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],

@@ -71,6 +71,8 @@ class ScanBlock(core.NamedBlock):
     az_drift: float = 0. # deg / s
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
+    az_offset: float = 0. # deg
+    alt_offset: float = 0. # deg
     boresight_angle: Optional[float] = None # deg
     corotator_angle: Optional[float] = None # deg
     hwp_dir: Optional[bool] = None

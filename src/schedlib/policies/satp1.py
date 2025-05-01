@@ -141,6 +141,7 @@ def make_operations(
     brake_hwp=True,
     disable_hwp=False,
     apply_boresight_rot=True,
+    cryo_stabilization_time=0*u.second,
     hwp_cfg=None,
     home_at_end=False,
     relock_cadence=24*u.hour,
@@ -168,7 +169,7 @@ def make_operations(
         ]
 
     cal_ops += [
-        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp},
+        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp, 'cryo_stabilization_time': cryo_stabilization_time},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
@@ -176,7 +177,7 @@ def make_operations(
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp},
+        { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp, 'cryo_stabilization_time': cryo_stabilization_time},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
@@ -213,6 +214,8 @@ def make_config(
     min_hwp_el=None,
     az_stow=None,
     el_stow=None,
+    az_offset=0.,
+    el_offset=0.,
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
@@ -282,6 +285,8 @@ def make_config(
         'az_motion_override': az_motion_override,
         'az_speed': az_speed,
         'az_accel': az_accel,
+        'az_offset': az_offset,
+        'el_offset': el_offset,
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'min_hwp_el': min_hwp_el,
@@ -328,6 +333,8 @@ class SATP1Policy(SATPolicy):
         min_hwp_el=48,
         az_stow=None,
         el_stow=None,
+        az_offset=0.,
+        el_offset=0.,
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
@@ -354,6 +361,8 @@ class SATP1Policy(SATPolicy):
             min_hwp_el,
             az_stow,
             el_stow,
+            az_offset,
+            el_offset,
             boresight_override,
             hwp_override,
             brake_hwp,
