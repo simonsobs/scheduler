@@ -196,6 +196,7 @@ def make_operations(
     wiregrid_ops = []
     if not disable_hwp:
         wiregrid_ops += [
+            { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp, 'cryo_stabilization_time': cryo_stabilization_time},
             { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreWiregrid, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,},
             { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreWiregrid, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
             { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
