@@ -475,6 +475,23 @@ class SATP1Policy(SATPolicy):
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
             # since we don't restrict the wiregrid observations, make sure they end before t1
             wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
+
+            for i, wiregrid_candidate in enumerate(wiregrid_candidates):
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < wiregrid_candidate.t0]
+                if candidates:
+                    block = max(candidates, key=lambda x: x.t0)
+                else:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > wiregrid_candidate.t0]
+                    if candidates:
+                        block = min(candidates, key=lambda x: x.t0)
+                    else:
+                        raise ValueError("Cannot find nearby block for cal target")
+
+            if self.boresight_override is None:
+                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=block.boresight_angle)
+            else:
+                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=self.boresight_override)
+
             self.cal_targets += wiregrid_candidates
 
         wiregrid_candidates = []
@@ -495,7 +512,8 @@ class SATP1Policy(SATPolicy):
                         alt=self.wiregrid_el,
                         tag=cal_target.tag,
                         subtype='wiregrid',
-                        hwp_dir=self.hwp_override if self.hwp_override is not None else None
+                        hwp_dir=self.hwp_override if self.hwp_override is not None else None,
+                        boresight_angle=cal_target.boresight_rot
                     )
                 )
         blocks['calibration']['wiregrid'] = wiregrid_candidates

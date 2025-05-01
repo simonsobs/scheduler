@@ -33,6 +33,7 @@ class WiregridTarget:
     t0: dt.datetime
     t1: dt.datetime
     tag: str
+    boresight_rot: float = None
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -353,8 +354,7 @@ def parse_sequence_from_toast_sat(ifile):
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
-        name = _escape_string(row['patch'].strip())
-        if name.lower() != "no observations":
+        if row['type'] != "None":
             block = ScanBlock(
                 name=_escape_string(row['patch'].strip()),
                 t0=u.str2datetime(row['start_utc']),

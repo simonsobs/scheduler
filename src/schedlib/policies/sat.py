@@ -647,7 +647,6 @@ class SATPolicy(tel.TelPolicy):
                             raise ValueError(f"Cannot assign HWP direction to cal block {block}")
                     blocks[i] = block.replace(hwp_dir=cmb_block.hwp_dir)
 
-
         # -----------------------------------------------------------------
         # step 5: verify
         # -----------------------------------------------------------------
