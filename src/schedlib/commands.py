@@ -333,13 +333,13 @@ def make_op(name, *args, **kwargs):
 @operation(name='wait_until', return_duration=True)
 def wait_until(state, t1: dt.datetime):
     return state, max((t1-state.curr_time).total_seconds(), 0), [
-        f"run.wait_until('{t1.isoformat()}')"
+        f"run.wait_until('{t1.isoformat(timespec='seconds')}')"
     ]
 
 @operation(name='start_time')
 def start_time(state):
     return state, [
-        f"run.wait_until('{state.curr_time.isoformat()}', tolerance=3600)"
+        f"run.wait_until('{state.curr_time.isoformat(timespec='seconds')}', tolerance=3600)"
     ]
 
 @operation(name='set_scan_params', duration=0)

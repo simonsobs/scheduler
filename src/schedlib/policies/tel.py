@@ -180,7 +180,7 @@ def preamble():
 
 def wrap_up(state, block):
     return state, [
-         f"run.wait_until('{block.t1.isoformat()}')",
+         f"run.wait_until('{block.t1.isoformat(timespec='seconds')}')",
         "acu.stop_and_clear()"
     ]
 
@@ -302,10 +302,10 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        f"# duration = {(block.t1 - state.curr_time)}",
+        f"# scan duration = {dt.timedelta(seconds=round((block.t1 - state.curr_time).total_seconds()))}",
         f"run.seq.scan(",
         f"    description='{block.name}',",
-        f"    stop_time='{block.t1.isoformat()}',",
+        f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    width={round(block.throw,3)}, az_drift=0,",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
@@ -334,17 +334,17 @@ def source_scan(state, block):
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
         f"run.acu.move_to_target(az={round(block.az + block.az_offset,3)}, el={round(block.alt + block.alt_offset,3)},",
-        f"    start_time='{block.t0.isoformat()}',",
-        f"    stop_time='{block.t1.isoformat()}',",
+        f"    start_time='{block.t0.isoformat(timespec='seconds')}',",
+        f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    drift={round(block.az_drift,5)})",
         "",
-        f"print('Waiting until {block.t0} to start scan')",
-        f"run.wait_until('{block.t0.isoformat()}')",
+        f"print('Waiting until {block.t0.isoformat(timespec='seconds')} to start scan')",
+        f"run.wait_until('{block.t0.isoformat(timespec='seconds')}')",
         "",
-        f"# scan duration = {(block.t1 - state.curr_time)}",
+        f"# scan duration = {dt.timedelta(seconds=round((block.t1 - state.curr_time).total_seconds()))}",
         "run.seq.scan(",
         f"    description='{block.name}', ",
-        f"    stop_time='{block.t1.isoformat()}', ",
+        f"    stop_time='{block.t1.isoformat(timespec='seconds')}', ",
         f"    width={round(block.throw,3)}, ",
         f"    az_drift={round(block.az_drift,5)}, ",
         f"    subtype='{block.subtype}',",
