@@ -335,6 +335,13 @@ class SATPolicy(tel.TelPolicy):
                     boresight_angle=self.boresight_override
                 ), blocks
             )
+        # override hwp direction
+        if self.hwp_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    hwp_dir=self.hwp_override
+                ), blocks
+            )
         return super().apply_overrides(blocks)
 
     @classmethod
@@ -415,14 +422,6 @@ class SATPolicy(tel.TelPolicy):
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
-
-        # override hwp direction
-        if self.hwp_override is not None:
-            blocks['baseline'] = core.seq_map(
-                lambda b: b.replace(
-                    hwp_dir=self.hwp_override
-                ), blocks['baseline']
-            )
 
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:

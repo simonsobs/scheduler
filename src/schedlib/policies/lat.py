@@ -22,8 +22,13 @@ from .tel import State, CalTarget, make_blocks
 
 logger = u.init_logger(__name__)
 
-BORESIGHT_DURATION = 1*u.minute
+COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
+
+def boresight_to_corotator(el, boresight):
+    return el - 60 + boresight
+def corotator_to_boresight(el, corotator):
+    return -1*(el - 60 - corotator)
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -42,7 +47,7 @@ class State(tel.State):
     corotator_now: float = 0
 
     def get_boresight(self):
-        return -1*(self.el_now - 60 - self.corotator_now)
+        return corotator_to_boresight(self.el_now, self.corotator_now)
 
 @dataclass(frozen=True)
 class StimulatorTarget:
@@ -123,18 +128,8 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(
-    state,
-    block,
-    commands=None,
-    apply_boresight_rot=False,
-    iv_cadence=None,
-    det_setup_duration=20*u.minute
-):
-    return tel.det_setup(
-        state, block, commands, apply_boresight_rot,
-        iv_cadence, det_setup_duration
-    )
+def det_setup(state, block, commands=None, apply_corotator_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_corotator_rot, iv_cadence, det_setup_duration)
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -144,22 +139,31 @@ def cmb_scan(state, block):
 def source_scan(state, block):
     return tel.source_scan(state, block)
 
-"""
-@cmd.operation(name='lat.setup_boresight', return_duration=True)
-def setup_boresight(state, block, apply_boresight_rot=True):
+
+@cmd.operation(name='lat.setup_corotator', return_duration=True)
+def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second):
     commands = []
     duration = 0
 
-    if apply_boresight_rot and (
-            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+    if apply_corotator_rot and (
+            state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        commands += [f"run.acu.set_boresight({block.boresight_angle})"]
-        state = state.replace(boresight_rot_now=block.boresight_angle)
-        duration += BORESIGHT_DURATION
+        ## the ACU command is the one place where boresight=corotator
+        ## everywhere else (particularly for math) corotator != boresight
+        commands += [
+            f"# Set corotator angle to {block.corotator_angle} degrees",
+            f"run.acu.set_boresight(target={block.corotator_angle})",
+        ]
+        state = state.replace(corotator_now=block.corotator_angle)
+        duration += COROTATOR_DURATION
+
+        if cryo_stabilization_time > 0:
+            commands += [f"time.sleep({cryo_stabilization_time})"]
+            duration += cryo_stabilization_time
 
     return state, duration, commands
-"""
+
 
 # passthrough any arguments, to be used in any sched-mode
 @cmd.operation(name='lat.bias_step', return_duration=True)
@@ -217,9 +221,9 @@ def make_geometry():
 
 def make_cal_target(
     source: str,
-    corotator: float,
     elevation: float,
     focus: str,
+    corotator: float=None,
     allow_partial=False,
     drift=True,
     az_branch=None,
@@ -237,9 +241,11 @@ def make_cal_target(
         'i5' : 'i5_ws0,i5_ws1,i5_ws2',
         'i6' : 'i6_ws0,i6_ws1,i6_ws2',
     }
-
-    boresight = float(-1*(elevation - 60 - corotator))
     elevation = float(elevation)
+    if corotator is None:
+        corotator = boresight_to_corotator(elevation,0)
+    boresight = corotator_to_boresight(elevation,float(corotator))
+    
     focus = focus.lower()
 
     focus_str = None
@@ -276,6 +282,8 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
+    apply_corotator_rot=True,
+    cryo_stabilization_time=180*u.second,
     open_shutter=False,
     close_shutter=False,
     relock_cadence=24*u.hour
@@ -302,14 +310,14 @@ def make_operations(
         ]
 
     cal_ops += [
-        #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, },
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence },
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        #{ 'name': 'lat.setup_boresight' , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, },
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': False, 'iv_cadence':iv_cadence},
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
@@ -442,6 +450,12 @@ class LATPolicy(tel.TelPolicy):
             blocks = core.seq_map(
                 lambda b: b.replace(
                     corotator_angle=self.corotator_override
+                ), blocks
+            )
+        else: ## run with co-rotator locked to elevation
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    corotator_angle=boresight_to_corotator(b.alt,0)
                 ), blocks
             )
 
@@ -703,6 +717,14 @@ class LATPolicy(tel.TelPolicy):
                 az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
                 tag=f"{cal_block.tag},{target.tag}"
             )
+
+            # set corotator correctly in blocks
+            cal_block = cal_block.replace(
+                corotator_angle=boresight_to_corotator(
+                    cal_block.alt, cal_block.boresight_angle
+                )
+            )
+
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks
