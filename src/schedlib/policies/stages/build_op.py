@@ -623,11 +623,6 @@ class BuildOpSimple:
             The sequence of operations planned for the block.
 
         """
-        # if we already pass the block or our constraint, nothing to do
-        if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
-            logger.info(f"--> skipping block {block.name} because it's already past")
-            return state, []
-
         # fast forward to within the constrained time block
         # state = state.replace(curr_time=min(constraint.t0, block.t0))
         # - during causal planning: fast forward state is allowed
@@ -637,6 +632,11 @@ class BuildOpSimple:
             state = state.replace(curr_time=max(constraint.t0, state.curr_time))
         else:
             state = state.replace(curr_time=constraint.t0) # min(constraint.t0, block.t0))
+
+        # if we already pass the block or our constraint, nothing to do
+        if state.curr_time >= block.t1 or state.curr_time >= constraint.t1:
+            logger.info(f"--> skipping block {block.name} because it's already past")
+            return state, []
 
         shift = 10
         safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
