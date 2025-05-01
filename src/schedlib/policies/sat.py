@@ -282,7 +282,7 @@ def bias_step(state, block, bias_step_cadence=None):
 @cmd.operation(name='sat.wiregrid', return_duration=True)
 def wiregrid(state, block, min_wiregrid_el=47.5):
     assert state.hwp_spinning == True, "hwp is not spinning"
-    assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {alt_limits[0]} degrees."
+    assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
 
     if block.name == 'wiregrid_gain':
         return state, (block.t1 - state.curr_time).total_seconds(), [
