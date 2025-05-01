@@ -177,12 +177,12 @@ def stimulator(state):
     ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=0, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
     cmd = [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+        f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
     ]
     state = state.replace(az_now=az, el_now=el)
 
@@ -282,7 +282,7 @@ def make_operations(
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
-    apply_corotator_rot=False,
+    apply_corotator_rot=True,
     cryo_stabilization_time=180*u.second,
     open_shutter=False,
     close_shutter=False,
@@ -341,6 +341,8 @@ def make_config(
     remove_targets=[],
     az_stow=None,
     el_stow=None,
+    az_offset=0.,
+    el_offset=0.,
     corotator_override=None,
     az_motion_override=False,
     **op_cfg
@@ -400,6 +402,8 @@ def make_config(
         'remove_targets': remove_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
+        'az_offset': az_offset,
+        'el_offset': el_offset,
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'max_cmb_scan_duration': max_cmb_scan_duration,
@@ -509,6 +513,8 @@ class LATPolicy(tel.TelPolicy):
         cal_targets=None,
         az_stow=None,
         el_stow=None,
+        az_offset=0.,
+        el_offset=0.,
         elevations_under_90=False,
         corotator_override=None,
         az_motion_override=False,
@@ -530,6 +536,8 @@ class LATPolicy(tel.TelPolicy):
             elevations_under_90=elevations_under_90,
             az_stow=az_stow,
             el_stow=el_stow,
+            az_offset=az_offset,
+            el_offset=el_offset,
             corotator_override=corotator_override,
             az_motion_override=az_motion_override,
             remove_targets=remove_targets,
@@ -773,6 +781,15 @@ class LATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # add az and el offsets (not used in calculations)
+        blocks = core.seq_map(
+            lambda block: block.replace(
+                az_offset=self.az_offset,
+                alt_offset=self.el_offset,
+            ),
+            blocks
+        )
+
         # -----------------------------------------------------------------
         # step 5: verify
         # -----------------------------------------------------------------
@@ -911,7 +928,8 @@ class LATPolicy(tel.TelPolicy):
 
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                     t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
@@ -940,7 +958,8 @@ class LATPolicy(tel.TelPolicy):
             alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                    t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],

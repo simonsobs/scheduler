@@ -302,8 +302,8 @@ def cmb_scan(state, block):
         commands = []
 
     commands.extend([
-        f"# scan duration = {(block.t1 - state.curr_time)}",
-        "run.seq.scan(",
+        f"# duration = {(block.t1 - state.curr_time)}",
+        f"run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat()}',",
         f"    width={round(block.throw,3)}, az_drift=0,",
@@ -333,7 +333,7 @@ def source_scan(state, block):
 
     state = state.replace(az_now=block.az, el_now=block.alt)
     commands.extend([
-        f"run.acu.move_to_target(az={round(block.az,3)}, el={round(block.alt,3)},",
+        f"run.acu.move_to_target(az={round(block.az + block.az_offset,3)}, el={round(block.alt + block.alt_offset,3)},",
         f"    start_time='{block.t0.isoformat()}',",
         f"    stop_time='{block.t1.isoformat()}',",
         f"    drift={round(block.az_drift,5)})",
@@ -425,6 +425,8 @@ class TelPolicy:
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
+    az_offset: float = 0.
+    el_offset: float = 0.
     iv_cadence : float = 4 * u.hour
     bias_step_cadence : float = 0.5 * u.hour
     max_cmb_scan_duration : float = 1 * u.hour

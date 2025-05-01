@@ -47,6 +47,8 @@ class ScanBlock(core.NamedBlock):
     az_drift: float = 0. # deg / s
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
+    az_offset: float = 0. # deg
+    alt_offset: float = 0. # deg
     boresight_angle: Optional[float] = None # deg
     corotator_angle: Optional[float] = None # deg
     hwp_dir: Optional[bool] = None
@@ -70,7 +72,7 @@ class ScanBlock(core.NamedBlock):
 
         Notes
         -----
-        Updating the t0 parameter will trigger the recalculation of azimuth (az) based on drift (az_drift) if it is not zero. 
+        Updating the t0 parameter will trigger the recalculation of azimuth (az) based on drift (az_drift) if it is not zero.
         If azimuth (az) is also provided in the kwargs, the consistency between azimuth and t0 will be checked.
 
         """
@@ -238,7 +240,7 @@ def get_spec(specs: SpecsTree, query: List[str], merge=True) -> Union[Spec, Spec
             res[k] = [min(l[k][0], r[k][0]), max(l[k][1], r[k][1])]
         return res
     all_matches = tu.tree_leaves(
-        tu.tree_map_with_path(lambda path, x: x if match_p(u.path2key(path)) else None, specs, is_leaf=is_leaf), 
+        tu.tree_map_with_path(lambda path, x: x if match_p(u.path2key(path)) else None, specs, is_leaf=is_leaf),
         is_leaf=is_leaf
     )  # None is not a leaf, so it will be filtered out
     if not merge: return all_matches
@@ -318,8 +320,8 @@ def parse_sequence_from_toast_sat(ifile):
     #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
     # columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
     #            "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
-    columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", 
-        "az_min", "az_max", "el", "speed", "accel", "#", "pass", 
+    columns = ["start_utc", "stop_utc", "hwp_dir", "rotation",
+        "az_min", "az_max", "el", "speed", "accel", "#", "pass",
         "sub", "uid", "patch"
     ]
 
@@ -375,7 +377,7 @@ def parse_sequence_from_toast_lat(ifile):
             else:
                 break
     df = pd.read_csv(
-        ifile, skiprows=i, delimiter="|", 
+        ifile, skiprows=i, delimiter="|",
         names=columns, comment='#'
     )
     blocks = []

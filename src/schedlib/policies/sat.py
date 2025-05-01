@@ -293,7 +293,7 @@ def wiregrid(state):
     ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
@@ -305,7 +305,7 @@ def move_to(state, az, el, min_el=48, brake_hwp=True, force=False):
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
     cmd += [
-        f"run.acu.move_to(az={round(az, 3)}, el={round(el, 3)})",
+        f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
     ]
     state = state.replace(az_now=az, el_now=el)
 
@@ -636,6 +636,15 @@ class SATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # add az and el offsets (not used in calculations)
+        blocks = core.seq_map(
+            lambda block: block.replace(
+                az_offset=self.az_offset,
+                alt_offset=self.el_offset,
+            ),
+            blocks
+        )
+
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
@@ -809,7 +818,8 @@ class SATPolicy(tel.TelPolicy):
 
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, t0=t0, t1=t0+dt.timedelta(seconds=1)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                     t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
@@ -839,7 +849,8 @@ class SATPolicy(tel.TelPolicy):
             alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, t0=t1-dt.timedelta(seconds=1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset, alt_offset=self.el_offset,
+                                    t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
