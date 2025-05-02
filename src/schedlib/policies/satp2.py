@@ -130,6 +130,7 @@ def make_cal_target(
         az_speed=az_speed,
         az_accel=az_accel,
         source_direction=source_direction,
+        from_table=False
     )
 
 def make_operations(

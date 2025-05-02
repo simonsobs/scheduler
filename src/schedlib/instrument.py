@@ -26,6 +26,7 @@ class CalTarget:
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
     source_direction: Optional[str] = None
+    from_table: bool = False
 
 @dataclass(frozen=True)
 class WiregridTarget:
@@ -397,6 +398,7 @@ def parse_cal_targets_from_toast_sat(ifile):
             source_direction=_escape_string(row['direction'].strip()).lower(),
             array_query=None,
             allow_partial=False,
+            from_table=True
         )
         cal_targets.append(cal_target)
 
