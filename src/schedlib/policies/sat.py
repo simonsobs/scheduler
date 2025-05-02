@@ -563,11 +563,16 @@ class SATPolicy(tel.TelPolicy):
                 # add the first scan option
                 cal_block = source_scans[0]
 
+                if array_query not in target.tag:
+                    tag = f"{cal_block.tag},{array_query},{target.tag}"
+                else:
+                    tag = f"{cal_block.tag},{target.tag}"
+
                 # update tag, speed, accel, etc
                 cal_block = cal_block.replace(
                     az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
                     az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
-                    tag=f"{array_query},{cal_block.tag},{target.tag}"
+                    tag=tag
                 )
 
                 # override hwp direction
