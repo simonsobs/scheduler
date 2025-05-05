@@ -331,10 +331,15 @@ def make_op(name, *args, **kwargs):
 
 # common operations
 @operation(name='wait_until', return_duration=True)
-def wait_until(state, t1: dt.datetime):
-    return state, max((t1-state.curr_time).total_seconds(), 0), [
-        f"run.wait_until('{t1.isoformat(timespec='seconds')}')"
-    ]
+def wait_until(state, t1: dt.datetime, tolerance: dt.timedelta=dt.timedelta(0*u.second)):
+    if tolerance.total_seconds() > 0:
+        return state, max((t1-state.curr_time).total_seconds(), 0), [
+            f"run.wait_until('{t1.isoformat(timespec='seconds')}', tolerance={tolerance.total_seconds()})"
+        ]
+    else:
+        return state, max((t1-state.curr_time).total_seconds(), 0), [
+            f"run.wait_until('{t1.isoformat(timespec='seconds')}')"
+        ]
 
 @operation(name='start_time')
 def start_time(state):
