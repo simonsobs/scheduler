@@ -362,8 +362,10 @@ def make_config(
     sun_policy = {
         'min_angle': 30,
         'min_sun_time': 1980,
-        'min_el': -90,
-        'max_el': 180
+        'min_el': 0,
+        'max_el': 180,
+        'min_az': -180+10,
+        'max_az': 360-10
     }
 
     if az_stow is None or el_stow is None:
@@ -380,7 +382,7 @@ def make_config(
     }
 
     el_range = {
-        'el_range': [0, 90]
+        'el_range': [0, 180]
     }
 
     config = {
