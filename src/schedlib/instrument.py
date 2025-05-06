@@ -433,7 +433,7 @@ def parse_cal_targets_from_toast_lat(ifile):
     for _, row in df.iterrows():
         patch_fields = _escape_string(row['patch'].strip()).lower().split(';')
 
-        match = re.match(r"([a-zA-Z0-9]+)_([a-zA-Z]+)", patch_fields[1])
+        match = re.match(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", patch_fields[1])
         tubes, wafers = match.groups()
         tubes = re.findall(r"[a-zA-Z]\d+", tubes)
 
