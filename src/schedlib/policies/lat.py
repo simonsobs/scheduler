@@ -26,9 +26,9 @@ COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
 def boresight_to_corotator(el, boresight):
-    return el - 60 + boresight
+    return np.round(el - 60 + boresight, 4)
 def corotator_to_boresight(el, corotator):
-    return -1*(el - 60 - corotator)
+    return np.round(-1*(el - 60 - corotator), 4)
 
 @dataclass_json
 @dataclass(frozen=True)
