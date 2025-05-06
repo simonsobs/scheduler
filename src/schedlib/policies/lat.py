@@ -634,7 +634,7 @@ class LATPolicy(tel.TelPolicy):
 
             for i, cal_target in enumerate(cal_targets):
                 if self.corotator_override is None:
-                    corotator = boresight_to_corotator(cal_target.el_bore,0)
+                    corotator = boresight_to_corotator(cal_target.el_bore, 0)
                 boresight = corotator_to_boresight(cal_target.el_bore, float(corotator))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
 
@@ -706,9 +706,6 @@ class LATPolicy(tel.TelPolicy):
             logger.info(f"-> planning calibration scans for {target}...")
 
             if isinstance(target, StimulatorTarget):
-                logger.info(f"-> planning stimulator scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='stimulator'),
-                                           blocks['calibration']['stimulator'])
                 continue
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
@@ -717,7 +714,7 @@ class LATPolicy(tel.TelPolicy):
 
             if len(source_scans) == 0:
                 # try allow_partial=True if overriding and cal target is from table
-                if (not target.allow_partial) and (not target.from_table) and self.allow_partial_override==True:
+                if (not target.allow_partial) and target.from_table and self.allow_partial_override==True:
                     logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
                     target = replace(target, allow_partial=True)
                     source_scans = self.make_source_scans(target, blocks, sun_rule)

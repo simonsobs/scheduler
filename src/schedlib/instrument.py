@@ -452,7 +452,7 @@ def parse_cal_targets_from_toast_lat(ifile):
             source=patch_fields[0],
             el_bore=row['el'],
             boresight_rot=None,
-            tag=None,#_escape_string(row['uid'].strip()),
+            tag=array_query,#_escape_string(row['uid'].strip()),
             source_direction=None,#_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
