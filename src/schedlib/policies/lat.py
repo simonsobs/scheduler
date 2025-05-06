@@ -245,7 +245,7 @@ def make_cal_target(
     if corotator is None:
         corotator = boresight_to_corotator(elevation,0)
     boresight = corotator_to_boresight(elevation,float(corotator))
-    
+
     focus = focus.lower()
 
     focus_str = None
@@ -362,7 +362,8 @@ def make_config(
     sun_policy = {
         'min_angle': 30,
         'min_sun_time': 1980,
-        'min_el': 0,
+        'min_el': -90,
+        'max_el': 180
     }
 
     if az_stow is None or el_stow is None:
