@@ -57,6 +57,9 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy):
 def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy):
     policy = avoidance.DEFAULT_POLICY
     policy['min_el'] = sun_policy['min_el']
+    policy['max_el'] = sun_policy['max_el']
+    policy['min_az'] = sun_policy['min_az']
+    policy['max_az'] = sun_policy['max_az']
     policy['min_sun_time'] = sun_policy['min_sun_time']
     policy['exclusion_radius'] = sun_policy['min_angle']
 

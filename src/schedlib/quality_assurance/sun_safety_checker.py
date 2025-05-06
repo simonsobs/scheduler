@@ -171,6 +171,9 @@ class SunCrawler:
     def _generate_sun_solution(self):
         self.policy = avoidance.DEFAULT_POLICY
         self.policy['min_el'] = self.configs['min_el']
+        self.policy['max_el'] = self.configs['max_el']
+        self.policy['min_az'] = self.configs['min_az']
+        self.policy['max_az'] = self.configs['max_az']
         self.policy['min_sun_time'] = self.configs['min_sun_time']
         self.policy['exclusion_radius'] = self.configs['min_angle']
 
