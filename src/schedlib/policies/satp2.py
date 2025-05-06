@@ -229,6 +229,7 @@ def make_config(
         'min_angle': 49,
         'min_sun_time': 1980,
         'min_el': 40,
+        'max_el': 90,
     }
 
     if az_stow is None or el_stow is None:
