@@ -4,7 +4,7 @@
 import numpy as np
 import yaml
 import os.path as op
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
 
 import datetime as dt
@@ -245,7 +245,7 @@ def make_cal_target(
     if corotator is None:
         corotator = boresight_to_corotator(elevation,0)
     boresight = corotator_to_boresight(elevation,float(corotator))
-    
+
     focus = focus.lower()
 
     focus_str = None
@@ -274,6 +274,7 @@ def make_cal_target(
         az_speed=az_speed,
         az_accel=az_accel,
         source_direction=source_direction,
+        from_table=False,
     )
 
 def make_operations(
@@ -345,6 +346,9 @@ def make_config(
     el_offset=0.,
     corotator_override=None,
     az_motion_override=False,
+    az_branch_override=None,
+    allow_partial_override=False,
+    drift_override=True,
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'lat-cmb')
@@ -407,6 +411,9 @@ def make_config(
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'max_cmb_scan_duration': max_cmb_scan_duration,
+        'az_branch_override': az_branch_override,
+        'allow_partial_override': allow_partial_override,
+        'drift_override': drift_override,
         'stages': {
             'build_op': {
                 'plan_moves': {
@@ -518,6 +525,9 @@ class LATPolicy(tel.TelPolicy):
         elevations_under_90=False,
         corotator_override=None,
         az_motion_override=False,
+        az_branch_override=None,
+        allow_partial_override=False,
+        drift_override=True,
         remove_targets=(),
         **op_cfg
     ):
@@ -540,13 +550,60 @@ class LATPolicy(tel.TelPolicy):
             el_offset=el_offset,
             corotator_override=corotator_override,
             az_motion_override=az_motion_override,
+            az_branch_override=az_branch_override,
+            allow_partial_override=allow_partial_override,
+            drift_override=drift_override,
             remove_targets=remove_targets,
             **op_cfg
         ))
 
         return x
 
-    def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+    def make_source_scans(self, target, blocks, sun_rule):
+        # digest array_query: it could be a fnmatch pattern matching the path
+        # in the geometry dict, or it could be looked up from a predefined
+        # wafer_set dict. Here we account for the latter case:
+        # look up predefined query in wafer_set
+        if target.array_query in self.wafer_sets:
+            array_query = self.wafer_sets[target.array_query]
+        else:
+            array_query = target.array_query
+
+        # build array geometry information based on the query
+        array_info = inst.array_info_from_query(self.geometries, array_query)
+        logger.debug(f"-> array_info: {array_info}")
+
+        # apply MakeCESourceScan rule to transform known observing windows into
+        # actual scan blocks
+        rule = ru.MakeCESourceScan(
+            array_info=array_info,
+            el_bore=target.el_bore,
+            drift=target.drift,
+            boresight_rot=target.boresight_rot,
+            allow_partial=target.allow_partial,
+            az_branch=target.az_branch,
+            source_direction=target.source_direction,
+        )
+        source_scans = rule(blocks['calibration'][target.source])
+
+        # sun check again: previous sun check ensure source is not too
+        # close to the sun, but our scan may still get close enough to
+        # the sun, in which case we will trim it or delete it depending
+        # on whether allow_partial is True
+        if target.allow_partial:
+            logger.info("-> allow_partial = True: trimming scan options by sun rule")
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            source_scans = min_dur_rule(sun_rule(source_scans))
+        else:
+            logger.info("-> allow_partial = False: filtering scan options by sun rule")
+            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
+
+        # flatten and sort
+        source_scans = core.seq_sort(source_scans, flatten=True)
+
+        return source_scans
+
+    def init_seqs(self, cfile: str, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
         Initialize the sequences for the scheduler to process.
 
@@ -570,32 +627,29 @@ class LATPolicy(tel.TelPolicy):
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
 
+        # get cal targets
+        if cfile is not None:
+            cal_targets = inst.parse_cal_targets_from_toast_lat(cfile)
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+
+            for i, cal_target in enumerate(cal_targets):
+                if self.corotator_override is None:
+                    corotator = boresight_to_corotator(cal_target.el_bore,0)
+                boresight = corotator_to_boresight(cal_target.el_bore, float(corotator))
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
+
+                if self.az_branch_override is not None:
+                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+
+            self.cal_targets += cal_targets
+
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
             if isinstance(cal_target, CalTarget):
                 source = cal_target.source
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, StimulatorTarget):
-                stimulator_candidates = []
-                current_date = t0.date()
-                end_date = t1.date()
-
-                while current_date <= end_date:
-                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                    if t0 <= candidate_time <= t1:
-                        stimulator_candidates.append(
-                            inst.StareBlock(
-                                name='stimulator',
-                                t0=candidate_time,
-                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                                az=cal_target.az_target,
-                                alt=cal_target.el_target,
-                                subtype='stimulator'
-                            )
-                        )
-                    current_date += dt.timedelta(days=1)
-                blocks['calibration']['stimulator'] = stimulator_candidates
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -659,50 +713,18 @@ class LATPolicy(tel.TelPolicy):
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-            # digest array_query: it could be a fnmatch pattern matching the path
-            # in the geometry dict, or it could be looked up from a predefined
-            # wafer_set dict. Here we account for the latter case:
-            # look up predefined query in wafer_set
-            if target.array_query in self.wafer_sets:
-                array_query = self.wafer_sets[target.array_query]
-            else:
-                array_query = target.array_query
-
-            # build array geometry information based on the query
-            array_info = inst.array_info_from_query(self.geometries, array_query)
-            logger.debug(f"-> array_info: {array_info}")
-
-            # apply MakeCESourceScan rule to transform known observing windows into
-            # actual scan blocks
-            rule = ru.MakeCESourceScan(
-                array_info=array_info,
-                el_bore=target.el_bore,
-                drift=target.drift,
-                boresight_rot=target.boresight_rot,
-                allow_partial=target.allow_partial,
-                az_branch=target.az_branch,
-                source_direction=target.source_direction,
-            )
-            source_scans = rule(blocks['calibration'][target.source])
-
-            # sun check again: previous sun check ensure source is not too
-            # close to the sun, but our scan may still get close enough to
-            # the sun, in which case we will trim it or delete it depending
-            # on whether allow_partial is True
-            if target.allow_partial:
-                logger.info("-> allow_partial = True: trimming scan options by sun rule")
-                min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-                source_scans = min_dur_rule(sun_rule(source_scans))
-            else:
-                logger.info("-> allow_partial = False: filtering scan options by sun rule")
-                source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
-
-            # flatten and sort
-            source_scans = core.seq_sort(source_scans, flatten=True)
+            source_scans = self.make_source_scans(target, blocks, sun_rule)
 
             if len(source_scans) == 0:
-                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                continue
+                # try allow_partial=True if overriding and cal target is from table
+                if (not target.allow_partial) and (not target.from_table) and self.allow_partial_override==True:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
+                    target = replace(target, allow_partial=True)
+                    source_scans = self.make_source_scans(target, blocks, sun_rule)
+
+                if len(source_scans) == 0:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                    continue
 
             # which one can be added without conflicting with already planned calibration blocks?
             source_scans = core.seq_sort(
@@ -919,7 +941,7 @@ class LATPolicy(tel.TelPolicy):
                     'pre': [],
                     'in': stimulator_in,
                     'post': [],
-                    'priority': 0
+                    'priority': -1
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -933,7 +955,7 @@ class LATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 0,
+            'priority': -1,
             'pinned': True  # remain unchanged during multi-pass
         }
         # move to stow position if specified, otherwise keep final position
@@ -963,7 +985,7 @@ class LATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 0,
+            'priority': -1,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
