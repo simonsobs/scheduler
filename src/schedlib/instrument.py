@@ -427,7 +427,7 @@ def parse_cal_targets_from_toast_lat(ifile):
                 continue
             else:
                 break
-    df = pd.read_csv(ifile, skiprows=i+2, delimiter="|", names=columns, comment='#')
+    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     cal_targets = []
 
     for _, row in df.iterrows():
@@ -446,6 +446,14 @@ def parse_cal_targets_from_toast_lat(ifile):
 
         array_query = ",".join(f"{tube}_{suffix}" for tube in tubes for suffix in suffixes)
 
+        azmean = np.mean(
+                 np.unwrap([row['az_min'], row['az_max']], period=360)
+             ) % 360
+        if azmean < 180:
+            direction = "rising"
+        else:
+            direction = "setting"
+
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
@@ -453,7 +461,7 @@ def parse_cal_targets_from_toast_lat(ifile):
             el_bore=row['el'],
             boresight_rot=None,
             tag=array_query,#_escape_string(row['uid'].strip()),
-            source_direction=None,#_escape_string(row['direction'].strip()).lower(),
+            source_direction=direction,#_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
             from_table=True
