@@ -540,7 +540,7 @@ class SATPolicy(tel.TelPolicy):
 
                 if len(source_scans) == 0:
                     # try allow_partial=True if overriding
-                    if target.allow_partial == False and self.allow_partial_override == True and not target.from_table:
+                    if (not target.allow_partial) and target.from_table and self.allow_partial_override==True:
                         logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
                         target = replace(target, allow_partial=True)
                         source_scans = self.make_source_scans(target, blocks, sun_rule)
@@ -812,7 +812,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cmb_pre,
                     'in': cmb_in,
                     'post': cmb_post,
-                    'priority': block.priority
+                    'priority': -1
                 }
             elif block.subtype == 'wiregrid':
                 return {
