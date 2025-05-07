@@ -34,7 +34,9 @@ class ScanBlock(core.NamedBlock):
     corotator_angle : float, optional
         Corotator angle in degrees (default is None)
     hwp_dir : bool, optional
-        HWP direction for SATs. Forward is True, backwards if False.
+        HWP direction for SATs. Counter-clockwise seen from sky
+        (positive frequency) is True, clockwise seen from sky
+        (negative frequency) is False.
         Default is None.
     subtype : str, optional
         Subtype of the scan block (default is an empty string).
