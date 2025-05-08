@@ -417,8 +417,8 @@ def parse_sequence_from_toast_lat(ifile):
     return blocks
 
 def parse_cal_targets_from_toast_lat(ifile):
-    columns = ["start_utc", "stop_utc", "rotation", "patch",
-        "az_min", "az_max", "el", "pass", "sub",
+    columns = ["start_utc", "stop_utc", "target", "el",
+        "az_min", "az_max", "uid",
     ]
     # count the number of lines to skip
     with open(ifile) as f:
@@ -431,9 +431,9 @@ def parse_cal_targets_from_toast_lat(ifile):
     cal_targets = []
 
     for _, row in df.iterrows():
-        patch_fields = _escape_string(row['patch'].strip()).lower().split(';')
+        target_fields = _escape_string(row['target'].strip()).lower().split(';')
 
-        match = re.match(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", patch_fields[1])
+        match = re.match(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", target_fields[1])
         tubes, wafers = match.groups()
         tubes = re.findall(r"[a-zA-Z]\d+", tubes)
 
@@ -457,10 +457,10 @@ def parse_cal_targets_from_toast_lat(ifile):
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            source=patch_fields[0],
+            source=target_fields[0],
             el_bore=row['el'],
             boresight_rot=None,
-            tag=array_query,#_escape_string(row['uid'].strip()),
+            tag=f"{array_query},{'uid-'+str(row['uid'])}",
             source_direction=direction,#_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,

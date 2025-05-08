@@ -633,6 +633,9 @@ class LATPolicy(tel.TelPolicy):
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
 
             for i, cal_target in enumerate(cal_targets):
+                if self.elevations_under_90 and cal_target.el_bore > 90:
+                    cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
+
                 if self.corotator_override is None:
                     corotator = boresight_to_corotator(cal_target.el_bore, 0)
                 boresight = corotator_to_boresight(cal_target.el_bore, float(corotator))
