@@ -410,7 +410,7 @@ def parse_sequence_from_toast_lat(ifile):
             priority=1, #row['#'],
             tag=_escape_string(
                 str(row['target']).strip()+","+
-                str(row['uid']).strip()
+                "uid-"+str(row['uid']).strip()
             ),
         )
         blocks.append(block)
@@ -460,7 +460,7 @@ def parse_cal_targets_from_toast_lat(ifile):
             source=target_fields[0],
             el_bore=row['el'],
             boresight_rot=None,
-            tag=f"{array_query},{'uid-'+str(row['uid'])}",
+            tag=f"{str(array_query).strip()},{'uid-'+str(row['uid']).strip()}",
             source_direction=direction,#_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
