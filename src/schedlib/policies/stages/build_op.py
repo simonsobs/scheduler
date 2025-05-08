@@ -138,7 +138,10 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
     alt_range = np.concatenate((alt_lower, alt_upper))
 
     # check 180, next, and current azimuths for parking
-    az_range = [180, block1.az, block0.az]
+    az_range = np.array([180, block1.az, block0.az])
+
+    _, idx = np.unique(az_range, return_index=True)
+    az_range = az_range[np.sort(idx)]
 
     for az_test in az_range:
         for alt_test in alt_range:

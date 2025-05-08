@@ -440,12 +440,6 @@ class LATPolicy(tel.TelPolicy):
                     return b.replace(alt=180-b.alt, az=b.az-180)
                 return b
             blocks = core.seq_map( fix_block, blocks)
-        else:
-            raise NotImplementedError(
-                "scheduler not implemented for boresight180 scans yet"
-                " schedules must be generated with elevations_under_90"
-                " set to True"
-            )
 
         if len(self.remove_targets) > 0:
             blocks = core.seq_filter_out(
