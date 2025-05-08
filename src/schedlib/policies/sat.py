@@ -18,7 +18,7 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from .tel import CalTarget
+from ..instrument import CalTarget
 
 logger = u.init_logger(__name__)
 
