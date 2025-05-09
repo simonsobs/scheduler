@@ -14,6 +14,7 @@ from .. import commands as cmd, instrument as inst, utils as u
 from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
+from ..instrument import CalTarget
 
 logger = u.init_logger(__name__)
 
@@ -97,20 +98,6 @@ class SchedMode:
     PostObs = 'post_obs'
     PreSession = 'pre_session'
     PostSession = 'post_session'
-
-@dataclass(frozen=True)
-class CalTarget:
-    source: str
-    array_query: str
-    el_bore: float
-    tag: str
-    boresight_rot: float = 0
-    allow_partial: bool = False
-    drift: bool = True
-    az_branch: Optional[float] = None
-    az_speed: Optional[float]= None
-    az_accel: Optional[float] = None
-    source_direction: Optional[str] = None
 
 def make_blocks(master_file, master_file_type):
     assert master_file_type in ['sat-cmb', 'lat-cmb']
@@ -434,6 +421,9 @@ class TelPolicy:
     wafer_sets: Dict[str, Any] = field(default_factory=dict)
     operations: List[Dict[str, Any]] = field(default_factory=list)
     stages: Dict[str, Any] = field(default_factory=dict)
+    az_branch_override: float = None
+    allow_partial_override: float = None
+    drift_override: bool = True
 
     def construct_seq(self, loader_cfg, t0, t1):
         if loader_cfg['type'] == 'source':
@@ -481,7 +471,15 @@ class TelPolicy:
 
         # split if 1 block with remainder > min duration
         if n_blocks == 1:
-            return core.block_split(block, block.t0 + max_dt)
+            blocks = core.block_split(block, block.t0 + max_dt)
+            for i, b in enumerate(blocks):
+                tags = b.tag.split(',')
+                for j, item in enumerate(tags):
+                    if item.startswith('uid'):
+                        tags[j] = item + '-pass-' + str(i)
+                        break
+                blocks[i] = blocks[i].replace(tag=",".join(tags))
+            return blocks#core.block_split(block, block.t0 + max_dt)
 
         blocks = []
         # calculate the offset for splitting
@@ -499,6 +497,14 @@ class TelPolicy:
         if remainder.total_seconds() > 0:
             split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
             blocks.append(split_blocks[0])
+
+        for i, b in enumerate(blocks):
+            tags = b.tag.split(',')
+            for j, item in enumerate(tags):
+                if item.startswith('uid'):
+                    tags[j] = item + '-pass-' + str(i)
+                    break
+            blocks[i] = blocks[i].replace(tag=",".join(tags))
 
         return blocks
 
