@@ -15,13 +15,13 @@ logger = u.init_logger(__name__)
 
 def make_geometry(xi_offset=0., eta_offset=0.):
     logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
-    ufm_mv12_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ufm_mv35_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ufm_mv23_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ufm_mv5_shift  = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ufm_mv27_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ufm_mv33_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ufm_mv17_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv12_shift = np.degrees([xi_offset, eta_offset])
+    ufm_mv35_shift = np.degrees([xi_offset, eta_offset])
+    ufm_mv23_shift = np.degrees([xi_offset, eta_offset])
+    ufm_mv5_shift  = np.degrees([xi_offset, eta_offset])
+    ufm_mv27_shift = np.degrees([xi_offset, eta_offset])
+    ufm_mv33_shift = np.degrees([xi_offset, eta_offset])
+    ufm_mv17_shift = np.degrees([xi_offset, eta_offset])
 
     d_xi = 10.9624
     d_eta_side = 6.46363

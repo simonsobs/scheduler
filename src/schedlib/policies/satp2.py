@@ -17,13 +17,13 @@ logger = u.init_logger(__name__)
 
 def make_geometry(xi_offset=0., eta_offset=0.):
     logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
-    ws0_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ws1_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ws2_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ws3_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ws4_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ws5_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
-    ws6_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws0_shift = np.degrees([xi_offset, eta_offset])
+    ws1_shift = np.degrees([xi_offset, eta_offset])
+    ws2_shift = np.degrees([xi_offset, eta_offset])
+    ws3_shift = np.degrees([xi_offset, eta_offset])
+    ws4_shift = np.degrees([xi_offset, eta_offset])
+    ws5_shift = np.degrees([xi_offset, eta_offset])
+    ws6_shift = np.degrees([xi_offset, eta_offset])
 
     ## default SAT optics offsets
     d_xi = 10.9624
