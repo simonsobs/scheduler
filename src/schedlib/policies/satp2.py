@@ -15,16 +15,17 @@ logger = u.init_logger(__name__)
 #         setup satp2 specific configs
 # ----------------------------------------------------
 
-def make_geometry():
-    ws0_shift = np.degrees([0, 0])
-    ws1_shift = np.degrees([0, 0])
-    ws2_shift = np.degrees([0, 0])
-    ws3_shift = np.degrees([0, 0])
-    ws4_shift = np.degrees([0, 0])
-    ws5_shift = np.degrees([0, 0])
-    ws6_shift = np.degrees([0, 0])
+def make_geometry(xi_offset=0., eta_offset=0.):
+    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
+    ws0_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws1_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws2_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws3_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws4_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws5_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ws6_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
 
-    ## default SAT optics offests
+    ## default SAT optics offsets
     d_xi = 10.9624
     d_eta_side = 6.46363
     d_eta_mid = 12.634
@@ -206,6 +207,8 @@ def make_config(
     el_stow=None,
     az_offset=0.,
     el_offset=0.,
+    xi_offset=0.,
+    eta_offset=0.,
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
@@ -213,7 +216,7 @@ def make_config(
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
-    geometries = make_geometry()
+    geometries = make_geometry(xi_offset, eta_offset)
 
     det_setup_duration = 20*u.minute
 
@@ -316,6 +319,8 @@ class SATP2Policy(SATPolicy):
         el_stow=None,
         az_offset=0.,
         el_offset=0.,
+        xi_offset=0.,
+        eta_offset=0.,
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
@@ -339,6 +344,8 @@ class SATP2Policy(SATPolicy):
             el_stow,
             az_offset,
             el_offset,
+            xi_offset,
+            eta_offset,
             boresight_override,
             hwp_override,
             brake_hwp,

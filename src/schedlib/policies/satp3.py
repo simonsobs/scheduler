@@ -13,14 +13,15 @@ logger = u.init_logger(__name__)
 #         setup satp3 specific configs
 # ----------------------------------------------------
 
-def make_geometry():
-    ufm_mv12_shift = np.degrees([0, 0])
-    ufm_mv35_shift = np.degrees([0, 0])
-    ufm_mv23_shift = np.degrees([0, 0])
-    ufm_mv5_shift  = np.degrees([0, 0])
-    ufm_mv27_shift = np.degrees([0, 0])
-    ufm_mv33_shift = np.degrees([0, 0])
-    ufm_mv17_shift = np.degrees([0, 0])
+def make_geometry(xi_offset=0., eta_offset=0.):
+    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
+    ufm_mv12_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv35_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv23_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv5_shift  = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv27_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv33_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
+    ufm_mv17_shift = np.degrees([0 + xi_offset, 0 + eta_offset])
 
     d_xi = 10.9624
     d_eta_side = 6.46363
@@ -215,6 +216,8 @@ def make_config(
     el_stow=None,
     az_offset=0.,
     el_offset=0.,
+    xi_offset=0.,
+    eta_offset=0.,
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
@@ -222,7 +225,7 @@ def make_config(
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
-    geometries = make_geometry()
+    geometries = make_geometry(xi_offset, eta_offset)
 
     det_setup_duration = 20*u.minute
 
@@ -329,6 +332,8 @@ class SATP3Policy(SATPolicy):
         el_stow=None,
         az_offset=0.,
         el_offset=0.,
+        xi_offset=0.,
+        eta_offset=0.,
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
@@ -351,6 +356,8 @@ class SATP3Policy(SATPolicy):
             el_stow,
             az_offset,
             el_offset,
+            xi_offset,
+            eta_offset,
             boresight_override,
             hwp_override,
             brake_hwp,
