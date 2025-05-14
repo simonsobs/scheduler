@@ -5,7 +5,7 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, SchedMode
+from .sat import SATPolicy, State, SchedMode, make_geometry
 from .tel import make_blocks, CalTarget
 
 logger = u.init_logger(__name__)
@@ -15,43 +15,6 @@ logger = u.init_logger(__name__)
 #         setup satp2 specific configs
 # ----------------------------------------------------
 
-def make_geometry(xi_offset=0., eta_offset=0.):
-    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
-    ## default SAT optics offsets
-    d_xi = 10.9624
-    d_eta_side = 6.46363
-    d_eta_mid = 12.634
-
-    return {
-        'ws3': {
-            'center': [-d_xi + xi_offset, d_eta_side + eta_offset],
-            'radius': 6,
-        },
-        'ws2': {
-            'center': [-d_xi + xi_offset, -d_eta_side + eta_offset],
-            'radius': 6,
-        },
-        'ws4': {
-            'center': [0 + xi_offset, d_eta_mid + eta_offset],
-            'radius': 6,
-        },
-        'ws0': {
-            'center': [0 + xi_offset, 0 + eta_offset],
-            'radius': 6,
-        },
-        'ws1': {
-            'center': [0 + xi_offset, -d_eta_mid + eta_offset],
-            'radius': 6,
-        },
-        'ws5': {
-            'center': [d_xi + xi_offset, d_eta_side + eta_offset],
-            'radius': 6,
-        },
-        'ws6': {
-            'center': [d_xi + xi_offset, -d_eta_side + eta_offset],
-            'radius': 6,
-        },
-    }
 
 def make_cal_target(
     source: str,
