@@ -7,7 +7,7 @@ from typing import Optional
 from ..thirdparty import SunAvoidance
 from .. import config as cfg, core, source as src, rules as ru
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, SchedMode
+from .sat import SATPolicy, State, SchedMode, make_geometry
 from .tel import make_blocks, CalTarget
 from ..instrument import WiregridTarget, StareBlock, parse_cal_targets_from_toast_sat, parse_wiregrid_targets_from_file
 
@@ -18,50 +18,6 @@ logger = u.init_logger(__name__)
 #         setup satp2 specific configs
 # ----------------------------------------------------
 
-def make_geometry():
-    ws0_shift = np.degrees([0, 0])
-    ws1_shift = np.degrees([0, 0])
-    ws2_shift = np.degrees([0, 0])
-    ws3_shift = np.degrees([0, 0])
-    ws4_shift = np.degrees([0, 0])
-    ws5_shift = np.degrees([0, 0])
-    ws6_shift = np.degrees([0, 0])
-
-    ## default SAT optics offests
-    d_xi = 10.9624
-    d_eta_side = 6.46363
-    d_eta_mid = 12.634
-
-    return {
-        'ws3': {
-            'center': [-d_xi+ws3_shift[0], d_eta_side+ws3_shift[1]],
-            'radius': 6,
-        },
-        'ws2': {
-            'center': [-d_xi+ws2_shift[0], -d_eta_side+ws2_shift[1]],
-            'radius': 6,
-        },
-        'ws4': {
-            'center': [0+ws4_shift[0], d_eta_mid+ws4_shift[1]],
-            'radius': 6,
-        },
-        'ws0': {
-            'center': [0+ws0_shift[0], 0+ws0_shift[1]],
-            'radius': 6,
-        },
-        'ws1': {
-            'center': [0+ws1_shift[0], -d_eta_mid+ws1_shift[1]],
-            'radius': 6,
-        },
-        'ws5': {
-            'center': [d_xi+ws5_shift[0], d_eta_side+ws5_shift[1]],
-            'radius': 6,
-        },
-        'ws6': {
-            'center': [d_xi+ws6_shift[0], -d_eta_side+ws6_shift[1]],
-            'radius': 6,
-        },
-    }
 
 def make_cal_target(
     source: str,
@@ -218,6 +174,8 @@ def make_config(
     el_stow=None,
     az_offset=0.,
     el_offset=0.,
+    xi_offset=0.,
+    eta_offset=0.,
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
@@ -231,7 +189,7 @@ def make_config(
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
-    geometries = make_geometry()
+    geometries = make_geometry(xi_offset, eta_offset)
 
     det_setup_duration = 20*u.minute
 
@@ -341,6 +299,8 @@ class SATP2Policy(SATPolicy):
         el_stow=None,
         az_offset=0.,
         el_offset=0.,
+        xi_offset=0.,
+        eta_offset=0.,
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
@@ -370,6 +330,8 @@ class SATP2Policy(SATPolicy):
             el_stow,
             az_offset,
             el_offset,
+            xi_offset,
+            eta_offset,
             boresight_override,
             hwp_override,
             brake_hwp,
