@@ -141,7 +141,7 @@ def source_scan(state, block):
 
 
 @cmd.operation(name='lat.setup_corotator', return_duration=True)
-def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second):
+def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second, corotator_offset=0.):
     commands = []
     duration = 0
 
@@ -152,8 +152,8 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
         commands += [
-            f"# Set corotator angle to {block.corotator_angle} degrees",
-            f"run.acu.set_boresight(target={block.corotator_angle})",
+            f"# Set corotator angle to {block.corotator_angle + corotator_offset} degrees",
+            f"run.acu.set_boresight(target={block.corotator_angle + corotator_offset})",
         ]
         state = state.replace(corotator_now=block.corotator_angle)
         duration += COROTATOR_DURATION
@@ -192,11 +192,7 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
 #         setup LAT specific configs
 # ----------------------------------------------------
 
-def make_geometry():
-    # These are just the median of the wafers and an ~estimated radius
-    # To be updated later
-    xi_offset = 0.0 #0.115
-    eta_offset = 0.0 #-0.573
+def make_geometry(xi_offset=0., eta_offset=0.):
     logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
     return {
         "c1_ws0": {"center": [-0.3710+xi_offset, 0+eta_offset], "radius": 0.3,},
@@ -285,6 +281,7 @@ def make_operations(
     det_setup_duration=20*u.minute,
     apply_corotator_rot=True,
     cryo_stabilization_time=180*u.second,
+    corotator_offset=0.,
     open_shutter=False,
     close_shutter=False,
     relock_cadence=24*u.hour
@@ -311,13 +308,15 @@ def make_operations(
         ]
 
     cal_ops += [
-        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot,
+        'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot,
+        'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
@@ -344,6 +343,8 @@ def make_config(
     el_stow=None,
     az_offset=0.,
     el_offset=0.,
+    xi_offset=0.,
+    eta_offset=0.,
     corotator_override=None,
     az_motion_override=False,
     az_branch_override=None,
@@ -352,7 +353,7 @@ def make_config(
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'lat-cmb')
-    geometries = make_geometry()
+    geometries = make_geometry(xi_offset, eta_offset)
 
     det_setup_duration = 20*u.minute
 
@@ -525,6 +526,8 @@ class LATPolicy(tel.TelPolicy):
         el_stow=None,
         az_offset=0.,
         el_offset=0.,
+        xi_offset=0.,
+        eta_offset=0.,
         elevations_under_90=False,
         corotator_override=None,
         az_motion_override=False,
@@ -551,6 +554,8 @@ class LATPolicy(tel.TelPolicy):
             el_stow=el_stow,
             az_offset=az_offset,
             el_offset=el_offset,
+            xi_offset=xi_offset,
+            eta_offset=eta_offset,
             corotator_override=corotator_override,
             az_motion_override=az_motion_override,
             az_branch_override=az_branch_override,
