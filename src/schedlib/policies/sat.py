@@ -803,7 +803,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': block.priority
+                    'priority': -1
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -812,7 +812,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cmb_pre,
                     'in': cmb_in,
                     'post': cmb_post,
-                    'priority': -1
+                    'priority': block.priority
                 }
             elif block.subtype == 'wiregrid':
                 return {
