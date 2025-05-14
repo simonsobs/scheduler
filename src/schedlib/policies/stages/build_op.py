@@ -57,6 +57,9 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy):
 def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy):
     policy = avoidance.DEFAULT_POLICY
     policy['min_el'] = sun_policy['min_el']
+    policy['max_el'] = sun_policy['max_el']
+    policy['min_az'] = sun_policy['min_az']
+    policy['max_az'] = sun_policy['max_az']
     policy['min_sun_time'] = sun_policy['min_sun_time']
     policy['exclusion_radius'] = sun_policy['min_angle']
 
@@ -801,13 +804,16 @@ class BuildOpSimple:
                 if ir.block.name in ['pre-session', 'post-session']:
                     state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt, block=ir.block)
                 else:
+                    tolerance=dt.timedelta(seconds=0)
                     if ir.subtype == IRMode.PreBlock:
                         wait_time = ir.t0
+                        # add a tolerance for wait commands during scan pre-blocks
+                        tolerance=dt.timedelta(seconds=1200)
                     elif ir.subtype == IRMode.InBlock:
                         wait_time = ir.block.t0
                     else:
                          wait_time = ir.block.t1
-                    op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': wait_time}]
+                    op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': wait_time, 'tolerance': tolerance}]
                     state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
                     state, _, op_blocks_cmd = self._apply_ops(state, ir.operations, block=ir.block)
                     op_blocks = op_blocks_wait + op_blocks_cmd

@@ -20,6 +20,7 @@ from .stages.build_op import get_parking
 from . import tel
 from ..instrument import CalTarget, WiregridTarget
 
+
 logger = u.init_logger(__name__)
 
 HWP_SPIN_UP = 7*u.minute
@@ -57,7 +58,9 @@ class State(tel.State):
     hwp_spinning : bool
         Whether the high-precision measurement wheel is spinning or not.
     hwp_dir : bool
-        Current direction of HWP.  True is forward, False is backwards.
+        Current direction of HWP. True is Counter-clockwise seen from sky
+        (positive frequency), False is clock wise seen from sky (negative
+        frequency).
     """
     boresight_rot_now: float = 0
     hwp_spinning: bool = False
@@ -212,7 +215,9 @@ def hwp_spin_up(state, block, disable_hwp=False, brake_hwp=True):
             duration += HWP_SPIN_DOWN
             cmds += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
         else:
-            return state, 0, [f"# hwp already spinning with forward={state.hwp_dir}"]
+            direction = "ccw (positive frequency)" if state.hwp_dir \
+                else "cw (negative frequency)"
+            return state, 0, [f"# hwp already spinning " + direction]
 
     hwp_dir = block.hwp_dir if block.hwp_dir is not None else state.hwp_dir
     state = state.replace(hwp_dir=hwp_dir)
