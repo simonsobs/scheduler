@@ -15,13 +15,13 @@ logger = u.init_logger(__name__)
 
 def make_geometry(xi_offset=0., eta_offset=0.):
     logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
-    ufm_mv12_shift = np.degrees([xi_offset, eta_offset])
-    ufm_mv35_shift = np.degrees([xi_offset, eta_offset])
-    ufm_mv23_shift = np.degrees([xi_offset, eta_offset])
-    ufm_mv5_shift  = np.degrees([xi_offset, eta_offset])
-    ufm_mv27_shift = np.degrees([xi_offset, eta_offset])
-    ufm_mv33_shift = np.degrees([xi_offset, eta_offset])
-    ufm_mv17_shift = np.degrees([xi_offset, eta_offset])
+    ws3_shift = np.degrees([xi_offset, eta_offset])
+    ws2_shift = np.degrees([xi_offset, eta_offset])
+    ws4_shift = np.degrees([xi_offset, eta_offset])
+    ws0_shift  = np.degrees([xi_offset, eta_offset])
+    ws1_shift = np.degrees([xi_offset, eta_offset])
+    ws5_shift = np.degrees([xi_offset, eta_offset])
+    ws6_shift = np.degrees([xi_offset, eta_offset])
 
     d_xi = 10.9624
     d_eta_side = 6.46363
@@ -29,31 +29,31 @@ def make_geometry(xi_offset=0., eta_offset=0.):
 
     return {
       'ws3': {
-        'center': [-d_xi+ufm_mv12_shift[0], d_eta_side+ufm_mv12_shift[1]],
+        'center': [-d_xi+ws3_shift[0], d_eta_side+ws3_shift[1]],
         'radius': 6,
       },
       'ws2': {
-        'center': [-d_xi+ufm_mv35_shift[0], -d_eta_side+ufm_mv35_shift[1]],
+        'center': [-d_xi+ws2_shift[0], -d_eta_side+ws2_shift[1]],
         'radius': 6,
       },
       'ws4': {
-        'center': [0+ufm_mv23_shift[0], d_eta_mid+ufm_mv23_shift[1]],
+        'center': [0+ws4_shift[0], d_eta_mid+ws4_shift[1]],
         'radius': 6,
       },
       'ws0': {
-        'center': [0+ufm_mv5_shift[0], 0+ufm_mv5_shift[1]],
+        'center': [0+ws0_shift[0], 0+ws0_shift[1]],
         'radius': 6,
       },
       'ws1': {
-        'center': [0+ufm_mv27_shift[0], -d_eta_mid+ufm_mv27_shift[1]],
+        'center': [0+ws1_shift[0], -d_eta_mid+ws1_shift[1]],
         'radius': 6,
       },
       'ws5': {
-        'center': [d_xi+ufm_mv33_shift[0], d_eta_side+ufm_mv33_shift[1]],
+        'center': [d_xi+ws5_shift[0], d_eta_side+ws5_shift[1]],
         'radius': 6,
       },
       'ws6': {
-        'center': [d_xi+ufm_mv17_shift[0], -d_eta_side+ufm_mv17_shift[1]],
+        'center': [d_xi+ws6_shift[0], -d_eta_side+ws6_shift[1]],
         'radius': 6,
       },
     }
