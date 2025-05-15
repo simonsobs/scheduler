@@ -9,7 +9,7 @@ from .. import config as cfg, core, source as src, rules as ru
 from .. import source as src, utils as u
 from .sat import SATPolicy, State, SchedMode, make_geometry
 from .tel import make_blocks, CalTarget
-from ..instrument import WiregridTarget, StareBlock, parse_cal_targets_from_toast_sat, parse_wiregrid_targets_from_file
+from ..instrument import WiregridTarget, StareBlock, parse_wiregrid_targets_from_file
 
 logger = u.init_logger(__name__)
 
@@ -349,95 +349,7 @@ class SATP2Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None):
-        # source -> boresight -> allow_partial
-        array_focus = {
-            'jupiter': {
-                0 : {
-                    'ws6': True,
-                    'ws1,ws0': True,
-                    'ws2': True
-                },
-                -45 : {
-                    'ws6,ws0': True,
-                    'ws5': True,
-                },
-                45 : {
-                    'ws2,ws0': True,
-                    'ws3': True,
-                }
-            },
-            'taua': {
-                0 : {
-                    'ws6': True,
-                    'ws1,ws0': True,
-                    'ws2': True
-                },
-                -45 : {
-                    'ws6,ws0': True,
-                    'ws5': True,
-                },
-                45 : {
-                    'ws2,ws0': True,
-                    'ws3': True,
-                }
-            },
-            'saturn': {
-                0 : {
-                    'ws0,ws4': False,
-                },
-                -45 : {
-                    'ws0,ws3': False,
-                },
-                45 : {
-                    'ws0,ws5': False,
-                }
-            },
-        }
-
-        # get cal targets
-        if cfile is not None:
-            cal_targets = parse_cal_targets_from_toast_sat(cfile)
-            # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
-            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
-            # ensure cal_target source is in array_focus
-            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.source in array_focus.keys()]
-
-            # find nearest cmb block either before or after the cal target
-            for i, cal_target in enumerate(cal_targets):
-                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-                if candidates:
-                    block = max(candidates, key=lambda x: x.t0)
-                else:
-                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
-                    if candidates:
-                        block = min(candidates, key=lambda x: x.t0)
-                    else:
-                        raise ValueError("Cannot find nearby block for cal target")
-
-                if self.boresight_override is None:
-                    cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
-                else:
-                    cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
-
-                # get wafers to observe based on source name and boresight
-                focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
-                index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
-                # order list so current date's array_query is tried first
-                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                #array_query = list(focus_str.keys())[index]
-                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
-
-                if self.az_branch_override is not None:
-                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
-
-                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
-
-                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
-
-            self.cal_targets += cal_targets
-
+    def init_cal_seqs(self, wgfile, blocks, t0, t1, anchor_time=None):
         # get wiregrid file
         if wgfile is not None and not self.disable_hwp:
             wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
@@ -454,10 +366,10 @@ class SATP2Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block for cal target")
 
-            if self.boresight_override is None:
-                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=block.boresight_angle)
-            else:
-                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=self.boresight_override)
+                if self.boresight_override is None:
+                    wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=block.boresight_angle)
+                else:
+                    wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=self.boresight_override)
 
             self.cal_targets += wiregrid_candidates
 

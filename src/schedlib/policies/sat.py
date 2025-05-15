@@ -562,98 +562,42 @@ class SATPolicy(tel.TelPolicy):
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-            # get list of possible array queries
-            if isinstance(target.array_query, list):
-                array_queries = target.array_query.copy()
-            else:
-                array_queries = [target.array_query]
+            source_scans = self.make_source_scans(target, blocks, sun_rule)
 
-            # get list of allow_partials
-            if isinstance(target.allow_partial, list):
-                allow_partial = target.allow_partial.copy()
-            else:
-                allow_partial = [target.allow_partial]
+            if len(source_scans) == 0:
+                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                continue
 
-            # loop over array queries and try to find a source
-            for array_query in array_queries:
-                logger.info(f"trying array_query={array_query}")
-                target = replace(target, array_query=array_query)
-                target = replace(target, allow_partial=allow_partial)
+            # which one can be added without conflicting with already planned calibration blocks?
+            source_scans = core.seq_sort(
+                core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
+                flatten=True
+            )
 
-                source_scans = self.make_source_scans(target, blocks, sun_rule)
+            if len(source_scans) == 0:
+                logger.warning(f"-> all scan options overlap with already planned source scans...")
+                continue
 
-                if len(source_scans) == 0:
-                    # try allow_partial=True if overriding
-                    if (not target.allow_partial) and target.from_table and self.allow_partial_override==True:
-                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
-                        target = replace(target, allow_partial=True)
-                        source_scans = self.make_source_scans(target, blocks, sun_rule)
+            logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
 
-                    if len(source_scans) == 0:
-                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                        continue
+            # add the first scan option
+            cal_block = source_scans[0]
 
-                # which one can be added without conflicting with already planned calibration blocks?
-                source_scans = core.seq_sort(
-                    core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
-                    flatten=True
-                )
+            # update tag, speed, accel, etc
+            cal_block = cal_block.replace(
+                az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
+                az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
+                tag=f"{cal_block.tag},{target.tag}"
+            )
 
-                if len(source_scans) == 0:
-                    logger.warning(f"-> all scan options overlap with already planned source scans...")
-                    continue
-
-                logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
-
-                # add the first scan option
-                cal_block = source_scans[0]
-
-                if array_query not in target.tag:
-                    tag = f"{cal_block.tag},{array_query},{target.tag}"
-                else:
-                    tag = f"{cal_block.tag},{target.tag}"
-
-                # update tag, speed, accel, etc
+            # override hwp direction
+            if self.hwp_override is not None:
                 cal_block = cal_block.replace(
-                    az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
-                    az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
-                    tag=tag
+                    hwp_dir=self.hwp_override
                 )
+            cal_blocks.append(cal_block)
 
-                # override hwp direction
-                if self.hwp_override is not None:
-                    cal_block = cal_block.replace(
-                        hwp_dir=self.hwp_override
-                    )
-
-                cal_blocks.append(cal_block)
-                saved_cal_targets.append(target)
-
-                # don't test other array queries if we have one that works
-                break
-
-        unique_cal_blocks = []
-        for i, cal_block in enumerate(cal_blocks):
-            if not saved_cal_targets[i].from_table:
-                unique_cal_blocks.append(cal_block)
-            else:
-                # whether to keep rising or setting blocks for current week
-                rising = cal_block.t0.isocalendar()[1] % 2 == 0
-                other_cal_blocks = [other_cal_block for j, other_cal_block in enumerate(cal_blocks) if j!=i]
-                other_saved_cal_targets = [other_saved_cal_target for j, other_saved_cal_target in enumerate(saved_cal_targets) if j!=i]
-
-                # if any blocks has same source and array query
-                if any(other_cal_block.name==cal_block.name for other_cal_block in other_cal_blocks) and \
-                    any(other_saved_cal_target.array_query==saved_cal_targets[i].array_query for other_saved_cal_target in other_saved_cal_targets):
-                    # add if source direction matches week's direction (if not it will be skipped)
-                    if (saved_cal_targets[i].source_direction == "rising" and rising) or \
-                    (saved_cal_targets[i].source_direction == "setting" and not rising):
-                        unique_cal_blocks.append(cal_block)
-                # if no other similar blocks schedule it
-                else:
-                    unique_cal_blocks.append(cal_block)
-
-        blocks['calibration'] = unique_cal_blocks + blocks['calibration']['wiregrid']
+        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 

@@ -376,37 +376,6 @@ def parse_sequence_from_toast_sat(ifile):
             blocks.append(block)
     return blocks
 
-def parse_cal_targets_from_toast_sat(ifile):
-    columns = ["start_utc", "stop_utc", "target", "direction",
-        "ra", "dec", "el", "uid"
-    ]
-    # count the number of lines to skip
-    with open(ifile) as f:
-        for i, l in enumerate(f):
-            if l.startswith('#'):
-                continue
-            else:
-                break
-    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
-    cal_targets = []
-
-    for _, row in df.iterrows():
-        cal_target = CalTarget(
-            t0=u.str2datetime(row['start_utc']),
-            t1=u.str2datetime(row['stop_utc']),
-            source=_escape_string(row['target'].strip()).lower(),
-            el_bore=row['el'],
-            boresight_rot=None,
-            tag=_escape_string(row['uid'].strip()),
-            source_direction=_escape_string(row['direction'].strip()).lower(),
-            array_query=None,
-            allow_partial=False,
-            from_table=True
-        )
-        cal_targets.append(cal_target)
-
-    return cal_targets
-
 def parse_wiregrid_targets_from_file(ifile):
     columns = ["start_utc", "stop_utc", "type", "uid",
         "remark"
