@@ -386,7 +386,7 @@ def parse_sequence_from_toast_lat(ifile):
     """
 
     columns = [
-        "start_utc", "stop_utc", "target", "el", "az_min", "az_max", "uid"
+        "start_utc", "stop_utc", "target", "direction", "el", "az_min", "az_max", "uid"
     ]
     # count the number of lines to skip
     with open(ifile) as f:
@@ -412,14 +412,14 @@ def parse_sequence_from_toast_lat(ifile):
             priority=1, #row['#'],
             tag=_escape_string(
                 str(row['target']).strip()+","+
-                "uid-"+str(row['uid']).strip()
+                "uid-"+str(int(row['uid'])).strip()
             ),
         )
         blocks.append(block)
     return blocks
 
 def parse_cal_targets_from_toast_lat(ifile):
-    columns = ["start_utc", "stop_utc", "target", "el",
+    columns = ["start_utc", "stop_utc", "target", "direction", "el",
         "az_min", "az_max", "uid",
     ]
     # count the number of lines to skip
@@ -448,22 +448,14 @@ def parse_cal_targets_from_toast_lat(ifile):
 
         array_query = ",".join(f"{tube}_{suffix}" for tube in tubes for suffix in suffixes)
 
-        azmean = np.mean(
-                 np.unwrap([row['az_min'], row['az_max']], period=360)
-             ) % 360
-        if azmean < 180:
-            direction = "rising"
-        else:
-            direction = "setting"
-
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
             source=target_fields[0],
             el_bore=row['el'],
             boresight_rot=None,
-            tag=f"{str(array_query).strip()},{'uid-'+str(row['uid']).strip()}",
-            source_direction=direction,#_escape_string(row['direction'].strip()).lower(),
+            tag=f"{str(array_query).strip()},{'uid-'+str(int(row['uid'])).strip()}",
+            source_direction=_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
             from_table=True
