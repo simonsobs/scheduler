@@ -5,7 +5,7 @@ import datetime as dt
 from typing import Optional
 
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, SchedMode, WiregridTarget
+from .sat import SATPolicy, State, SchedMode, WiregridTarget, make_geometry
 from .tel import make_blocks, CalTarget
 
 logger = u.init_logger(__name__)
@@ -14,50 +14,6 @@ logger = u.init_logger(__name__)
 # ----------------------------------------------------
 #         setup satp1 specific configs
 # ----------------------------------------------------
-
-def make_geometry():
-    ufm_mv19_shift = np.degrees([-0.01583734, 0.00073145])
-    ufm_mv15_shift = np.degrees([-0.01687046, -0.00117139])
-    ufm_mv7_shift = np.degrees([-1.7275653e-02, -2.0664736e-06])
-    ufm_mv9_shift = np.degrees([-0.01418133,  0.00820128])
-    ufm_mv18_shift = np.degrees([-0.01625605,  0.00198077])
-    ufm_mv22_shift = np.degrees([-0.0186627,  -0.00299793])
-    ufm_mv29_shift = np.degrees([-0.01480562,  0.00117084])
-
-    d_xi = 10.9624
-    d_eta_side = 6.46363
-    d_eta_mid = 12.634
-
-    return {
-        'ws3': {
-            'center': [-d_xi+ufm_mv29_shift[0], d_eta_side+ufm_mv29_shift[1]],
-            'radius': 6,
-        },
-        'ws2': {
-            'center': [-d_xi+ufm_mv22_shift[0], -d_eta_side+ufm_mv22_shift[1]],
-            'radius': 6,
-        },
-        'ws4': {
-            'center': [0+ufm_mv7_shift[0], d_eta_mid+ufm_mv7_shift[1]],
-            'radius': 6,
-        },
-        'ws0': {
-            'center': [0+ufm_mv19_shift[0], 0+ufm_mv19_shift[1]],
-            'radius': 6,
-        },
-        'ws1': {
-            'center': [0+ufm_mv18_shift[0], -d_eta_mid+ufm_mv18_shift[1]],
-            'radius': 6,
-        },
-        'ws5': {
-            'center': [d_xi+ufm_mv9_shift[0], d_eta_side+ufm_mv9_shift[1]],
-            'radius': 6,
-        },
-        'ws6': {
-            'center': [d_xi+ufm_mv15_shift[0], -d_eta_side+ufm_mv15_shift[1]],
-            'radius': 6,
-        },
-    }
 
 def make_cal_target(
     source: str,
@@ -209,6 +165,8 @@ def make_config(
     el_stow=None,
     az_offset=0.,
     el_offset=0.,
+    xi_offset=0.,
+    eta_offset=0.,
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
@@ -216,7 +174,7 @@ def make_config(
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
-    geometries = make_geometry()
+    geometries = make_geometry(xi_offset, eta_offset)
 
     det_setup_duration = 20*u.minute
 
@@ -319,6 +277,8 @@ class SATP1Policy(SATPolicy):
         el_stow=None,
         az_offset=0.,
         el_offset=0.,
+        xi_offset=0.,
+        eta_offset=0.,
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
@@ -341,6 +301,8 @@ class SATP1Policy(SATPolicy):
             el_stow,
             az_offset,
             el_offset,
+            xi_offset,
+            eta_offset,
             boresight_override,
             hwp_override,
             brake_hwp,

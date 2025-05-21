@@ -4,7 +4,7 @@
 import numpy as np
 import yaml
 import os.path as op
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
 
 import datetime as dt
@@ -26,9 +26,9 @@ COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
 def boresight_to_corotator(el, boresight):
-    return el - 60 + boresight
+    return np.round(el - 60 + boresight, 4)
 def corotator_to_boresight(el, corotator):
-    return -1*(el - 60 - corotator)
+    return np.round(-1*(el - 60 - corotator), 4)
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ def source_scan(state, block):
 
 
 @cmd.operation(name='lat.setup_corotator', return_duration=True)
-def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second):
+def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second, corotator_offset=0.):
     commands = []
     duration = 0
 
@@ -152,8 +152,8 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
         commands += [
-            f"# Set corotator angle to {block.corotator_angle} degrees",
-            f"run.acu.set_boresight(target={block.corotator_angle})",
+            f"# Set corotator angle to {block.corotator_angle + corotator_offset} degrees",
+            f"run.acu.set_boresight(target={block.corotator_angle + corotator_offset})",
         ]
         state = state.replace(corotator_now=block.corotator_angle)
         duration += COROTATOR_DURATION
@@ -192,11 +192,7 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
 #         setup LAT specific configs
 # ----------------------------------------------------
 
-def make_geometry():
-    # These are just the median of the wafers and an ~estimated radius
-    # To be updated later
-    xi_offset = 0.0 #0.115
-    eta_offset = 0.0 #-0.573
+def make_geometry(xi_offset=0., eta_offset=0.):
     logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
     return {
         "c1_ws0": {"center": [-0.3710+xi_offset, 0+eta_offset], "radius": 0.3,},
@@ -274,6 +270,7 @@ def make_cal_target(
         az_speed=az_speed,
         az_accel=az_accel,
         source_direction=source_direction,
+        from_table=False,
     )
 
 def make_operations(
@@ -284,6 +281,7 @@ def make_operations(
     det_setup_duration=20*u.minute,
     apply_corotator_rot=True,
     cryo_stabilization_time=180*u.second,
+    corotator_offset=0.,
     open_shutter=False,
     close_shutter=False,
     relock_cadence=24*u.hour
@@ -310,13 +308,15 @@ def make_operations(
         ]
 
     cal_ops += [
-        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot,
+        'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence },
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'cryo_stabilization_time': cryo_stabilization_time},
+        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot,
+        'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
@@ -343,12 +343,17 @@ def make_config(
     el_stow=None,
     az_offset=0.,
     el_offset=0.,
+    xi_offset=0.,
+    eta_offset=0.,
     corotator_override=None,
     az_motion_override=False,
+    az_branch_override=None,
+    allow_partial_override=False,
+    drift_override=True,
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'lat-cmb')
-    geometries = make_geometry()
+    geometries = make_geometry(xi_offset, eta_offset)
 
     det_setup_duration = 20*u.minute
 
@@ -360,8 +365,8 @@ def make_config(
     )
 
     sun_policy = {
-        'min_angle': 30,
-        'min_sun_time': 1980,
+        'min_angle': 21,
+        'min_sun_time': 1801,
         'min_el': 0,
         'max_el': 180,
         'min_az': -180+10,
@@ -410,6 +415,9 @@ def make_config(
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'max_cmb_scan_duration': max_cmb_scan_duration,
+        'az_branch_override': az_branch_override,
+        'allow_partial_override': allow_partial_override,
+        'drift_override': drift_override,
         'stages': {
             'build_op': {
                 'plan_moves': {
@@ -512,9 +520,14 @@ class LATPolicy(tel.TelPolicy):
         el_stow=None,
         az_offset=0.,
         el_offset=0.,
+        xi_offset=0.,
+        eta_offset=0.,
         elevations_under_90=False,
         corotator_override=None,
         az_motion_override=False,
+        az_branch_override=None,
+        allow_partial_override=False,
+        drift_override=True,
         remove_targets=(),
         **op_cfg
     ):
@@ -535,15 +548,64 @@ class LATPolicy(tel.TelPolicy):
             el_stow=el_stow,
             az_offset=az_offset,
             el_offset=el_offset,
+            xi_offset=xi_offset,
+            eta_offset=eta_offset,
             corotator_override=corotator_override,
             az_motion_override=az_motion_override,
+            az_branch_override=az_branch_override,
+            allow_partial_override=allow_partial_override,
+            drift_override=drift_override,
             remove_targets=remove_targets,
             **op_cfg
         ))
 
         return x
 
-    def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+    def make_source_scans(self, target, blocks, sun_rule):
+        # digest array_query: it could be a fnmatch pattern matching the path
+        # in the geometry dict, or it could be looked up from a predefined
+        # wafer_set dict. Here we account for the latter case:
+        # look up predefined query in wafer_set
+        if target.array_query in self.wafer_sets:
+            array_query = self.wafer_sets[target.array_query]
+        else:
+            array_query = target.array_query
+
+        # build array geometry information based on the query
+        array_info = inst.array_info_from_query(self.geometries, array_query)
+        logger.debug(f"-> array_info: {array_info}")
+
+        # apply MakeCESourceScan rule to transform known observing windows into
+        # actual scan blocks
+        rule = ru.MakeCESourceScan(
+            array_info=array_info,
+            el_bore=target.el_bore,
+            drift=target.drift,
+            boresight_rot=target.boresight_rot,
+            allow_partial=target.allow_partial,
+            az_branch=target.az_branch,
+            source_direction=target.source_direction,
+        )
+        source_scans = rule(blocks['calibration'][target.source])
+
+        # sun check again: previous sun check ensure source is not too
+        # close to the sun, but our scan may still get close enough to
+        # the sun, in which case we will trim it or delete it depending
+        # on whether allow_partial is True
+        if target.allow_partial:
+            logger.info("-> allow_partial = True: trimming scan options by sun rule")
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            source_scans = min_dur_rule(sun_rule(source_scans))
+        else:
+            logger.info("-> allow_partial = False: filtering scan options by sun rule")
+            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
+
+        # flatten and sort
+        source_scans = core.seq_sort(source_scans, flatten=True)
+
+        return source_scans
+
+    def init_seqs(self, cfile: str, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
         Initialize the sequences for the scheduler to process.
 
@@ -567,32 +629,39 @@ class LATPolicy(tel.TelPolicy):
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
 
+        # get cal targets
+        if cfile is not None:
+            cal_targets = inst.parse_cal_targets_from_toast_lat(cfile)
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+
+            for i, cal_target in enumerate(cal_targets):
+                if cal_target.el_bore > 90:
+                    if self.elevations_under_90:
+                        cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
+                    else:
+                        raise NotImplementedError(
+                            "scheduler not implemented for boresight180 scans yet"
+                            " schedules must be generated with elevations_under_90"
+                            " set to True"
+                        )
+
+                if self.corotator_override is None:
+                    corotator = boresight_to_corotator(cal_target.el_bore, 0)
+                boresight = corotator_to_boresight(cal_target.el_bore, float(corotator))
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
+
+                if self.az_branch_override is not None:
+                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+
+            self.cal_targets += cal_targets
+
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
             if isinstance(cal_target, CalTarget):
                 source = cal_target.source
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, StimulatorTarget):
-                stimulator_candidates = []
-                current_date = t0.date()
-                end_date = t1.date()
-
-                while current_date <= end_date:
-                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                    if t0 <= candidate_time <= t1:
-                        stimulator_candidates.append(
-                            inst.StareBlock(
-                                name='stimulator',
-                                t0=candidate_time,
-                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                                az=cal_target.az_target,
-                                alt=cal_target.el_target,
-                                subtype='stimulator'
-                            )
-                        )
-                    current_date += dt.timedelta(days=1)
-                blocks['calibration']['stimulator'] = stimulator_candidates
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -649,57 +718,22 @@ class LATPolicy(tel.TelPolicy):
             logger.info(f"-> planning calibration scans for {target}...")
 
             if isinstance(target, StimulatorTarget):
-                logger.info(f"-> planning stimulator scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='stimulator'),
-                                           blocks['calibration']['stimulator'])
                 continue
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-            # digest array_query: it could be a fnmatch pattern matching the path
-            # in the geometry dict, or it could be looked up from a predefined
-            # wafer_set dict. Here we account for the latter case:
-            # look up predefined query in wafer_set
-            if target.array_query in self.wafer_sets:
-                array_query = self.wafer_sets[target.array_query]
-            else:
-                array_query = target.array_query
-
-            # build array geometry information based on the query
-            array_info = inst.array_info_from_query(self.geometries, array_query)
-            logger.debug(f"-> array_info: {array_info}")
-
-            # apply MakeCESourceScan rule to transform known observing windows into
-            # actual scan blocks
-            rule = ru.MakeCESourceScan(
-                array_info=array_info,
-                el_bore=target.el_bore,
-                drift=target.drift,
-                boresight_rot=target.boresight_rot,
-                allow_partial=target.allow_partial,
-                az_branch=target.az_branch,
-                source_direction=target.source_direction,
-            )
-            source_scans = rule(blocks['calibration'][target.source])
-
-            # sun check again: previous sun check ensure source is not too
-            # close to the sun, but our scan may still get close enough to
-            # the sun, in which case we will trim it or delete it depending
-            # on whether allow_partial is True
-            if target.allow_partial:
-                logger.info("-> allow_partial = True: trimming scan options by sun rule")
-                min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-                source_scans = min_dur_rule(sun_rule(source_scans))
-            else:
-                logger.info("-> allow_partial = False: filtering scan options by sun rule")
-                source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
-
-            # flatten and sort
-            source_scans = core.seq_sort(source_scans, flatten=True)
+            source_scans = self.make_source_scans(target, blocks, sun_rule)
 
             if len(source_scans) == 0:
-                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                continue
+                # try allow_partial=True if overriding and cal target is from table
+                if (not target.allow_partial) and target.from_table and self.allow_partial_override==True:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
+                    target = replace(target, allow_partial=True)
+                    source_scans = self.make_source_scans(target, blocks, sun_rule)
+
+                if len(source_scans) == 0:
+                    logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                    continue
 
             # which one can be added without conflicting with already planned calibration blocks?
             source_scans = core.seq_sort(

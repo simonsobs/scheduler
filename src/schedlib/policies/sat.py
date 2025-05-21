@@ -18,7 +18,7 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from .tel import CalTarget
+from ..instrument import CalTarget
 
 logger = u.init_logger(__name__)
 
@@ -58,7 +58,9 @@ class State(tel.State):
     hwp_spinning : bool
         Whether the high-precision measurement wheel is spinning or not.
     hwp_dir : bool
-        Current direction of HWP.  True is forward, False is backwards.
+        Current direction of HWP. True is Counter-clockwise seen from sky
+        (positive frequency), False is clock wise seen from sky (negative
+        frequency).
     """
     boresight_rot_now: float = 0
     hwp_spinning: bool = False
@@ -84,6 +86,45 @@ class SchedMode(tel.SchedMode):
         'wiregrid'; Wiregrid observations scheduled between block.t0 and block.t1
     """
     Wiregrid = 'wiregrid'
+
+
+def make_geometry(xi_offset=0., eta_offset=0.):
+    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
+    ## default SAT optics offsets
+    d_xi = 10.9624
+    d_eta_side = 6.46363
+    d_eta_mid = 12.634
+
+    return {
+        'ws3': {
+            'center': [-d_xi + xi_offset, d_eta_side + eta_offset],
+            'radius': 6,
+        },
+        'ws2': {
+            'center': [-d_xi + xi_offset, -d_eta_side + eta_offset],
+            'radius': 6,
+        },
+        'ws4': {
+            'center': [0 + xi_offset, d_eta_mid + eta_offset],
+            'radius': 6,
+        },
+        'ws0': {
+            'center': [0 + xi_offset, 0 + eta_offset],
+            'radius': 6,
+        },
+        'ws1': {
+            'center': [0 + xi_offset, -d_eta_mid + eta_offset],
+            'radius': 6,
+        },
+        'ws5': {
+            'center': [d_xi + xi_offset, d_eta_side + eta_offset],
+            'radius': 6,
+        },
+        'ws6': {
+            'center': [d_xi + xi_offset, -d_eta_side + eta_offset],
+            'radius': 6,
+        },
+    }
 
 def make_cal_target(
     source: str,
@@ -219,7 +260,9 @@ def hwp_spin_up(state, block, disable_hwp=False, brake_hwp=True):
             duration += HWP_SPIN_DOWN
             cmds += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
         else:
-            return state, 0, [f"# hwp already spinning with forward={state.hwp_dir}"]
+            direction = "ccw (positive frequency)" if state.hwp_dir \
+                else "cw (negative frequency)"
+            return state, 0, [f"# hwp already spinning " + direction]
 
     hwp_dir = block.hwp_dir if block.hwp_dir is not None else state.hwp_dir
     state = state.replace(hwp_dir=hwp_dir)

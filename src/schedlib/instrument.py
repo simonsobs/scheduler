@@ -1,6 +1,7 @@
 from __future__ import annotations
 from jax import tree_util as tu
 import pandas as pd
+import re
 from typing import List, TypeVar, Union, Dict, Optional
 import numpy as np
 from functools import reduce
@@ -9,6 +10,22 @@ from so3g.proj import quat
 
 from . import core, utils as u
 
+@dataclass(frozen=True)
+class CalTarget:
+    source: str
+    array_query: str
+    el_bore: float
+    tag: str
+    t0: dt.datetime = None
+    t1: dt.datetime = None
+    boresight_rot: float = 0
+    allow_partial: bool = False
+    drift: bool = True
+    az_branch: Optional[float] = None
+    az_speed: Optional[float]= None
+    az_accel: Optional[float] = None
+    source_direction: Optional[str] = None
+    from_table: Optional[bool] = None
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -34,7 +51,9 @@ class ScanBlock(core.NamedBlock):
     corotator_angle : float, optional
         Corotator angle in degrees (default is None)
     hwp_dir : bool, optional
-        HWP direction for SATs. Forward is True, backwards if False.
+        HWP direction for SATs. Counter-clockwise seen from sky
+        (positive frequency) is True, clockwise seen from sky
+        (negative frequency) is False.
         Default is None.
     subtype : str, optional
         Subtype of the scan block (default is an empty string).
@@ -393,8 +412,62 @@ def parse_sequence_from_toast_lat(ifile):
             priority=1, #row['#'],
             tag=_escape_string(
                 str(row['target']).strip()+","+
-                str(row['uid']).strip()
+                "uid-"+str(row['uid']).strip()
             ),
         )
         blocks.append(block)
     return blocks
+
+def parse_cal_targets_from_toast_lat(ifile):
+    columns = ["start_utc", "stop_utc", "target", "el",
+        "az_min", "az_max", "uid",
+    ]
+    # count the number of lines to skip
+    with open(ifile) as f:
+        for i, l in enumerate(f):
+            if l.startswith('#'):
+                continue
+            else:
+                break
+    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+    cal_targets = []
+
+    for _, row in df.iterrows():
+        target_fields = _escape_string(row['target'].strip()).lower().split(';')
+
+        match = re.match(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", target_fields[1])
+        tubes, wafers = match.groups()
+        tubes = re.findall(r"[a-zA-Z]\d+", tubes)
+
+        array_query = ""
+
+        suffixes = {
+            'ws0': ['ws0'],
+            'wsi': ['ws1', 'ws2']
+        }.get(wafers, [])
+
+        array_query = ",".join(f"{tube}_{suffix}" for tube in tubes for suffix in suffixes)
+
+        azmean = np.mean(
+                 np.unwrap([row['az_min'], row['az_max']], period=360)
+             ) % 360
+        if azmean < 180:
+            direction = "rising"
+        else:
+            direction = "setting"
+
+        cal_target = CalTarget(
+            t0=u.str2datetime(row['start_utc']),
+            t1=u.str2datetime(row['stop_utc']),
+            source=target_fields[0],
+            el_bore=row['el'],
+            boresight_rot=None,
+            tag=f"{str(array_query).strip()},{'uid-'+str(row['uid']).strip()}",
+            source_direction=direction,#_escape_string(row['direction'].strip()).lower(),
+            array_query=array_query,
+            allow_partial=False,
+            from_table=True
+        )
+        cal_targets.append(cal_target)
+
+    return cal_targets
