@@ -309,7 +309,7 @@ class SATP1Policy(SATPolicy):
         allow_partial_override=False,
         drift_override=True,
         wiregrid_az=180,
-        wiregrid_el=48,
+        wiregrid_el=60,
         **op_cfg
     ):
         if cal_targets is None:
@@ -383,6 +383,8 @@ class SATP1Policy(SATPolicy):
             'saturn': {
                 0 : {
                     'ws0,ws4': False,
+                    'ws3': False,
+                    'ws5': False,
                 },
                 -45 : {
                     'ws0,ws3': False,
@@ -431,7 +433,7 @@ class SATP1Policy(SATPolicy):
 
                 allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
                 cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
-
+                cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
