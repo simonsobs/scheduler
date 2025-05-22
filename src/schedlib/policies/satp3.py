@@ -95,6 +95,7 @@ commands_det_setup = [
 def make_operations(
     az_speed,
     az_accel,
+    az_motion_override=False,
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
@@ -112,7 +113,7 @@ def make_operations(
     pre_session_ops = [
         { 'name': 'sat.preamble'        , 'sched_mode': SchedMode.PreSession, },
         { 'name': 'start_time'          ,'sched_mode': SchedMode.PreSession},
-        { 'name': 'set_scan_params' , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
+        { 'name': 'set_scan_params' , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, 'az_motion_override': az_motion_override},
     ]
 
     cal_ops = []
@@ -186,6 +187,7 @@ def make_config(
 
     operations = make_operations(
         az_speed, az_accel,
+        az_motion_override,
         iv_cadence, bias_step_cadence,
         det_setup_duration,
         brake_hwp,
