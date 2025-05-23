@@ -653,7 +653,9 @@ class LATPolicy(tel.TelPolicy):
 
                 if self.corotator_override is None:
                     corotator = boresight_to_corotator(cal_target.el_bore, 0)
-                boresight = corotator_to_boresight(cal_target.el_bore, float(corotator))
+                    boresight = corotator_to_boresight(cal_target.el_bore, corotator)
+                else:
+                    boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
 
                 if self.az_branch_override is not None:
