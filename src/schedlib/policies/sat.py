@@ -338,7 +338,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
         direction = "ccw (positive frequency)" if state.hwp_dir \
                 else "cw (negative frequency)"
         return state, (block.t1 - state.curr_time).total_seconds(), [
-            "wiregrid.time_constant(num_repeats=1)",
+            "run.wiregrid.time_constant(num_repeats=1)",
             f"# hwp direction reversed, now spinning " + direction,
             ]
 
