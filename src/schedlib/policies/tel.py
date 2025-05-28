@@ -471,7 +471,15 @@ class TelPolicy:
 
         # split if 1 block with remainder > min duration
         if n_blocks == 1:
-            return core.block_split(block, block.t0 + max_dt)
+            blocks = core.block_split(block, block.t0 + max_dt)
+            for i, b in enumerate(blocks):
+                tags = b.tag.split(',')
+                for j, item in enumerate(tags):
+                    if item.startswith('uid'):
+                        tags[j] = item + '-pass-' + str(i)
+                        break
+                blocks[i] = blocks[i].replace(tag=",".join(tags))
+            return blocks#core.block_split(block, block.t0 + max_dt)
 
         blocks = []
         # calculate the offset for splitting
@@ -489,6 +497,14 @@ class TelPolicy:
         if remainder.total_seconds() > 0:
             split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
             blocks.append(split_blocks[0])
+
+        for i, b in enumerate(blocks):
+            tags = b.tag.split(',')
+            for j, item in enumerate(tags):
+                if item.startswith('uid'):
+                    tags[j] = item + '-pass-' + str(i)
+                    break
+            blocks[i] = blocks[i].replace(tag=",".join(tags))
 
         return blocks
 

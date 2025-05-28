@@ -13,19 +13,29 @@ from . import core, utils as u
 @dataclass(frozen=True)
 class CalTarget:
     source: str
-    array_query: str
+    array_query: Union(str, list)
     el_bore: float
     tag: str
     t0: dt.datetime = None
     t1: dt.datetime = None
-    boresight_rot: float = 0
-    allow_partial: bool = False
+    ra: float = None
+    dec: float = None
+    boresight_rot: float = None
+    allow_partial: Union(bool, list) = False
     drift: bool = True
     az_branch: Optional[float] = None
     az_speed: Optional[float]= None
     az_accel: Optional[float] = None
     source_direction: Optional[str] = None
-    from_table: Optional[bool] = None
+    from_table: bool = False
+
+@dataclass(frozen=True)
+class WiregridTarget:
+    name: str
+    t0: dt.datetime
+    t1: dt.datetime
+    tag: str
+    boresight_rot: float = None
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -333,14 +343,8 @@ def parse_sequence_from_toast_sat(ifile):
         List of ScanBlock objects parsed from the input file.
 
     """
-
-    #columns = ["start_utc", "stop_utc", "rotation", "patch", "az_min", "az_max", "el", "pass", "sub"]
-    #columns = ["start_utc", "stop_utc", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
-    #columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max", "el", "pass", "sub", "patch"]
-    # columns = ["start_utc", "stop_utc", "hwp_dir", "rotation", "az_min", "az_max",
-    #            "el", "speed", "accel", "#", "pass", "sub", "uid", "patch"]
     columns = ["start_utc", "stop_utc", "hwp_dir", "rotation",
-        "az_min", "az_max", "el", "speed", "accel", "#", "pass",
+        "az_min", "az_max", "el", "speed", "accel", "priority", "type", "pass",
         "sub", "uid", "patch"
     ]
 
@@ -354,22 +358,82 @@ def parse_sequence_from_toast_sat(ifile):
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
-        block = ScanBlock(
-            name=_escape_string(row['patch'].strip()),
+        if row['type'] != "None":
+            block = ScanBlock(
+                name=_escape_string(row['patch'].strip()),
+                t0=u.str2datetime(row['start_utc']),
+                t1=u.str2datetime(row['stop_utc']),
+                alt=row['el'],
+                az=row['az_min'],
+                az_speed=row['speed'],
+                az_accel=row['accel'],
+                throw=np.abs(row['az_max'] - row['az_min']),
+                boresight_angle=row['rotation'],
+                priority=row['priority'],
+                tag=_escape_string(row['uid'].strip()),
+                hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+            )
+            blocks.append(block)
+    return blocks
+
+def parse_cal_targets_from_toast_sat(ifile):
+    columns = ["start_utc", "stop_utc", "target", "direction",
+        "ra", "dec", "el", "uid"
+    ]
+    # count the number of lines to skip
+    with open(ifile) as f:
+        for i, l in enumerate(f):
+            if l.startswith('#'):
+                continue
+            else:
+                break
+    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+    cal_targets = []
+
+    for _, row in df.iterrows():
+        cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            alt=row['el'],
-            az=row['az_min'],
-            az_speed=row['speed'],
-            az_accel=row['accel'],
-            throw=np.abs(row['az_max'] - row['az_min']),
-            boresight_angle=row['rotation'],
-            priority=row['#'],
+            source=_escape_string(row['target'].strip()).lower(),
+            el_bore=row['el'],
+            boresight_rot=None,
             tag=_escape_string(row['uid'].strip()),
-            hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+            source_direction=_escape_string(row['direction'].strip()).lower(),
+            array_query=None,
+            allow_partial=False,
+            from_table=True
         )
-        blocks.append(block)
-    return blocks
+        cal_targets.append(cal_target)
+
+    return cal_targets
+
+def parse_wiregrid_targets_from_file(ifile):
+    columns = ["start_utc", "stop_utc", "type", "uid",
+        "remark"
+    ]
+    # count the number of lines to skip
+    with open(ifile) as f:
+        for i, l in enumerate(f):
+            if l.startswith('#'):
+                continue
+            else:
+                break
+    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+    wiregrid_targets = []
+
+    for _, row in df.iterrows():
+        name = _escape_string(row['remark'].strip()).lower()
+        wiregrid_target = WiregridTarget(
+            name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
+            t0=u.str2datetime(row['start_utc']),
+            t1=u.str2datetime(row['stop_utc']),
+            tag=_escape_string(row['uid'].strip()),
+        )
+        # temporarily disable wiregrid time const measurements
+        if wiregrid_target.name == 'wiregrid_gain':
+            wiregrid_targets.append(wiregrid_target)
+
+    return wiregrid_targets
 
 def parse_sequence_from_toast_lat(ifile):
     """

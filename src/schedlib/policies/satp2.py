@@ -1,12 +1,15 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import datetime as dt
 
 from typing import Optional
 
+from ..thirdparty import SunAvoidance
+from .. import config as cfg, core, source as src, rules as ru
 from .. import source as src, utils as u
 from .sat import SATPolicy, State, SchedMode, make_geometry
 from .tel import make_blocks, CalTarget
+from ..instrument import WiregridTarget, StareBlock, parse_cal_targets_from_toast_sat, parse_wiregrid_targets_from_file
 
 logger = u.init_logger(__name__)
 
@@ -83,11 +86,13 @@ def make_cal_target(
         az_speed=az_speed,
         az_accel=az_accel,
         source_direction=source_direction,
+        from_table=False
     )
 
 def make_operations(
     az_speed,
     az_accel,
+    az_motion_override=False,
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
     det_setup_duration=20*u.minute,
@@ -104,7 +109,7 @@ def make_operations(
     pre_session_ops = [
         { 'name': 'sat.preamble'    , 'sched_mode': SchedMode.PreSession},
         { 'name': 'start_time'      , 'sched_mode': SchedMode.PreSession},
-        { 'name': 'set_scan_params' , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, },
+        { 'name': 'set_scan_params' , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, 'az_motion_override': az_motion_override},
     ]
 
     cal_ops = []
@@ -146,7 +151,15 @@ def make_operations(
         { 'name': 'sat.wrap_up'   , 'sched_mode': SchedMode.PostSession},
     ]
 
-    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
+    wiregrid_ops = []
+    if not disable_hwp:
+        wiregrid_ops += [
+            { 'name': 'sat.setup_boresight' , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot, 'brake_hwp': brake_hwp, 'cryo_stabilization_time': cryo_stabilization_time},
+            { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreWiregrid, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,},
+            { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreWiregrid, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
+            { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
+        ]
+    return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 
 def make_config(
     master_file,
@@ -167,7 +180,13 @@ def make_config(
     boresight_override=None,
     hwp_override=None,
     brake_hwp=True,
+    disable_hwp=False,
     az_motion_override=False,
+    az_branch_override=None,
+    allow_partial_override=False,
+    drift_override=True,
+    wiregrid_az=180,
+    wiregrid_el=48,
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
@@ -177,9 +196,11 @@ def make_config(
 
     operations = make_operations(
         az_speed, az_accel,
+        az_motion_override,
         iv_cadence, bias_step_cadence,
         det_setup_duration,
         brake_hwp,
+        disable_hwp,
         **op_cfg
     )
 
@@ -226,6 +247,7 @@ def make_config(
         'boresight_override': boresight_override,
         'hwp_override':  hwp_override,
         'brake_hwp': brake_hwp,
+        'disable_hwp': disable_hwp,
         'az_motion_override': az_motion_override,
         'az_speed' : az_speed,
         'az_accel' : az_accel,
@@ -235,6 +257,11 @@ def make_config(
         'bias_step_cadence' : bias_step_cadence,
         'min_hwp_el' : min_hwp_el,
         'max_cmb_scan_duration' : max_cmb_scan_duration,
+        'az_branch_override': az_branch_override,
+        'allow_partial_override': allow_partial_override,
+        'drift_override': drift_override,
+        'wiregrid_az': wiregrid_az,
+        'wiregrid_el': wiregrid_el,
         'stages': {
             'build_op': {
                 'plan_moves': {
@@ -279,7 +306,13 @@ class SATP2Policy(SATPolicy):
         boresight_override=None,
         hwp_override=None,
         brake_hwp=True,
+        disable_hwp=False,
         az_motion_override=False,
+        az_branch_override=None,
+        allow_partial_override=False,
+        drift_override=True,
+        wiregrid_az=180,
+        wiregrid_el=48,
         **op_cfg
     ):
         if cal_targets is None:
@@ -304,13 +337,157 @@ class SATP2Policy(SATPolicy):
             boresight_override,
             hwp_override,
             brake_hwp,
+            disable_hwp,
             az_motion_override,
+            az_branch_override,
+            allow_partial_override,
+            drift_override,
+            wiregrid_az,
+            wiregrid_el,
             **op_cfg
         ))
         return x
 
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
+
+    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None):
+        # source -> boresight -> allow_partial
+        array_focus = {
+            'jupiter': {
+                0 : {
+                    'ws6': True,
+                    'ws1,ws0': True,
+                    'ws2': True
+                },
+                -45 : {
+                    'ws6,ws0': True,
+                    'ws5': True,
+                },
+                45 : {
+                    'ws2,ws0': True,
+                    'ws3': True,
+                }
+            },
+            'taua': {
+                0 : {
+                    'ws6': True,
+                    'ws1,ws0': True,
+                    'ws2': True
+                },
+                -45 : {
+                    'ws6,ws0': True,
+                    'ws5': True,
+                },
+                45 : {
+                    'ws2,ws0': True,
+                    'ws3': True,
+                }
+            },
+            'saturn': {
+                0 : {
+                    'ws0,ws4': False,
+                },
+                -45 : {
+                    'ws0,ws3': False,
+                },
+                45 : {
+                    'ws0,ws5': False,
+                }
+            },
+        }
+
+        # get cal targets
+        if cfile is not None:
+            cal_targets = parse_cal_targets_from_toast_sat(cfile)
+            # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+            # ensure cal_target source is in array_focus
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.source in array_focus.keys()]
+
+            # find nearest cmb block either before or after the cal target
+            for i, cal_target in enumerate(cal_targets):
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
+                if candidates:
+                    block = max(candidates, key=lambda x: x.t0)
+                else:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                    if candidates:
+                        block = min(candidates, key=lambda x: x.t0)
+                    else:
+                        raise ValueError("Cannot find nearby block for cal target")
+
+                if self.boresight_override is None:
+                    cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                else:
+                    cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
+
+                # get wafers to observe based on source name and boresight
+                focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
+                index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
+                # order list so current date's array_query is tried first
+                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
+                #array_query = list(focus_str.keys())[index]
+                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+
+                if self.az_branch_override is not None:
+                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+
+                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
+                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
+
+                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+
+            self.cal_targets += cal_targets
+
+        # get wiregrid file
+        if wgfile is not None and not self.disable_hwp:
+            wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
+            wiregrid_candidates[:] = [wiregrid_candidate for wiregrid_candidate in wiregrid_candidates if wiregrid_candidate.t0 >= t0 and wiregrid_candidate.t1 <= t1]
+
+            for i, wiregrid_candidate in enumerate(wiregrid_candidates):
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < wiregrid_candidate.t0]
+                if candidates:
+                    block = max(candidates, key=lambda x: x.t0)
+                else:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > wiregrid_candidate.t0]
+                    if candidates:
+                        block = min(candidates, key=lambda x: x.t0)
+                    else:
+                        raise ValueError("Cannot find nearby block for cal target")
+
+            if self.boresight_override is None:
+                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=block.boresight_angle)
+            else:
+                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=self.boresight_override)
+
+            self.cal_targets += wiregrid_candidates
+
+        wiregrid_candidates = []
+
+        # by default add calibration blocks specified in cal_targets if not already specified
+        for cal_target in self.cal_targets:
+            if isinstance(cal_target, CalTarget):
+                source = cal_target.source
+                if source not in blocks['calibration']:
+                    blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
+            elif isinstance(cal_target, WiregridTarget):
+                wiregrid_candidates.append(
+                    StareBlock(
+                        name=cal_target.name,
+                        t0=cal_target.t0,
+                        t1=cal_target.t1,
+                        az=self.wiregrid_az,
+                        alt=self.wiregrid_el,
+                        tag=cal_target.tag,
+                        subtype='wiregrid',
+                        hwp_dir=self.hwp_override if self.hwp_override is not None else None,
+                        boresight_angle=cal_target.boresight_rot
+                    )
+                )
+        blocks['calibration']['wiregrid'] = wiregrid_candidates
+
+        return blocks
 
     def init_state(self, t0: dt.datetime) -> State:
         """customize typical initial state for satp2, if needed"""

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import pandas as pd
 import numpy as np
 from functools import reduce
@@ -16,8 +16,15 @@ day = 24 * hour
 sidereal_day = 0.997269566 * day
 deg = np.pi / 180
 
+def get_cycle_option(t, options, anchor=None):
+    if anchor is None:
+        anchor = str2datetime("1970-01-01T00:00:00+00:00")
+    delta_days = (t - anchor).days
+    index = delta_days % len(options)
+    return index
+
 def str2ctime(time_str):
-    ctime = (pd.Timestamp(time_str) - pd.Timestamp("1970-01-01")) // pd.Timedelta('1s')
+    ctime = (pd.Timestamp(time_str).tz_localize(None) - pd.Timestamp("1970-01-01")) // pd.Timedelta('1s')
     return ctime
 
 def str2datetime(time_str):
@@ -189,11 +196,11 @@ def pformat(seq, **kwargs):
 
 def path2key(path, ignore_seqkey=False):
     """convert a path (used in tree_util.tree_map_with_path) to a dot-separated key
-    
+
     Parameters
     ----------
     path: a list of SequenceKey or DictKey
-    ignore_array: if True, ignore the SequencyKey index in the path 
+    ignore_array: if True, ignore the SequencyKey index in the path
 
     Returns
     -------
@@ -213,19 +220,19 @@ def path2key(path, ignore_seqkey=False):
 
 def match_query(path, query):
     """in order for a query to match with a path, it can
-    satisfy the following: 
+    satisfy the following:
     1. the query is a substring of the path
     2. the query is a glob pattern that matches the path
-    3. if the query is a comma-separated list of multiple queries, 
+    3. if the query is a comma-separated list of multiple queries,
     any of them meeting comdition 1 and 2 will return True
     """
     key = path2key(path)
     # first match the constraint to key
     queires = query.split(",")
     for q in queires:
-        if q in key: 
+        if q in key:
             return True
-        if fnmatch.fnmatch(key, q): 
+        if fnmatch.fnmatch(key, q):
             return True
     return False
 
@@ -306,10 +313,11 @@ def init_logger(name):
     logger = logging.getLogger(name)
     logger.propagate = False
     logger.setLevel(logging.INFO)
-    ch = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s ')
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
+    if not logger.handlers:
+        ch = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s ')
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
     return logger
 
 def set_logging_level(level=2):
