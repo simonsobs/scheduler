@@ -429,9 +429,7 @@ def parse_wiregrid_targets_from_file(ifile):
             t1=u.str2datetime(row['stop_utc']),
             tag=_escape_string(row['uid'].strip()),
         )
-        # temporarily disable wiregrid time const measurements
-        if wiregrid_target.name == 'wiregrid_gain':
-            wiregrid_targets.append(wiregrid_target)
+        wiregrid_targets.append(wiregrid_target)
 
     return wiregrid_targets
 

@@ -332,14 +332,15 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
         return state, (block.t1 - state.curr_time).total_seconds(), [
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
-    # elif block.name == 'wiregrid_time_const':
-    #     # wiregrid time const reverses the hwp direction
-    #     state = state.replace(hwp_dir=not state.hwp_dir)
-    #     return state, (block.t1 - state.curr_time).total_seconds(), [
-    #         f"# hwp spinning with forward={not state.hwp_dir}",
-    #         "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)",
-    #         f"# hwp spinning with forward={state.hwp_dir}"
-    #         ]
+    elif block.name == 'wiregrid_time_const':
+        # wiregrid time const reverses the hwp direction
+        state = state.replace(hwp_dir=not state.hwp_dir)
+        direction = "ccw (positive frequency)" if state.hwp_dir \
+                else "cw (negative frequency)"
+        return state, (block.t1 - state.curr_time).total_seconds(), [
+            "wiregrid.time_constant(num_repeats=1)",
+            f"# hwp direction reversed, now spinning " + direction,
+            ]
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
