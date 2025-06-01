@@ -456,10 +456,10 @@ class SATP2Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block for cal target")
 
-            if self.boresight_override is None:
-                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=block.boresight_angle)
-            else:
-                wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=self.boresight_override)
+                if self.boresight_override is None:
+                    wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=block.boresight_angle)
+                else:
+                    wiregrid_candidates[i] = replace(wiregrid_candidates[i], boresight_rot=self.boresight_override)
 
             self.cal_targets += wiregrid_candidates
 
