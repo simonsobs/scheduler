@@ -4,7 +4,7 @@
 import numpy as np
 import yaml
 import os.path as op
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
 
 import datetime as dt
@@ -18,14 +18,14 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from ..instrument import CalTarget
+from ..instrument import CalTarget, WiregridTarget
+
 
 logger = u.init_logger(__name__)
 
 HWP_SPIN_UP = 7*u.minute
 HWP_SPIN_DOWN = 15*u.minute
 BORESIGHT_DURATION = 1*u.minute
-WIREGRID_DURATION = 15*u.minute
 
 COMMANDS_HWP_BRAKE = [
     "run.smurf.stream('on', subtype='cal', tag='hwp_spin_down')",
@@ -69,13 +69,6 @@ class State(tel.State):
     def get_boresight(self):
         return self.boresight_rot_now
 
-@dataclass(frozen=True)
-class WiregridTarget:
-    hour: int
-    el_target: float
-    az_target: float = 180
-    duration: float = WIREGRID_DURATION
-
 class SchedMode(tel.SchedMode):
     """
     Enumerate different options for scheduling operations in SATPolicy.
@@ -85,6 +78,7 @@ class SchedMode(tel.SchedMode):
     Wiregrid : str
         'wiregrid'; Wiregrid observations scheduled between block.t0 and block.t1
     """
+    PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
 
 
@@ -329,11 +323,24 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo
 def bias_step(state, block, bias_step_cadence=None):
     return tel.bias_step(state, block, bias_step_cadence)
 
-@cmd.operation(name='sat.wiregrid', duration=WIREGRID_DURATION)
-def wiregrid(state):
-    return state, [
-        "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
-    ]
+@cmd.operation(name='sat.wiregrid', return_duration=True)
+def wiregrid(state, block, min_wiregrid_el=47.5):
+    assert state.hwp_spinning == True, "hwp is not spinning"
+    assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
+
+    if block.name == 'wiregrid_gain':
+        return state, (block.t1 - state.curr_time).total_seconds(), [
+            "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
+        ]
+    elif block.name == 'wiregrid_time_const':
+        # wiregrid time const reverses the hwp direction
+        state = state.replace(hwp_dir=not state.hwp_dir)
+        direction = "ccw (positive frequency)" if state.hwp_dir \
+                else "cw (negative frequency)"
+        return state, (block.t1 - state.curr_time).total_seconds(), [
+            "run.wiregrid.time_constant(num_repeats=1)",
+            f"# hwp direction reversed, now spinning " + direction,
+            ]
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
@@ -365,15 +372,24 @@ class SATPolicy(tel.TelPolicy):
         and False is reverse.
     brake_hwp : bool
         a bool that specifies whether or not active braking should be used for the hwp.
+    disable_hwp : bool
+        a bool that specifies whether or not to disable the hwp entirely.
     min_hwp_el : float
         the minimum elevation a move command to go to without stopping the hwp first
     boresight_override : float
         the angle of boresight to use if not None
+    wiregrid_az : float
+        azimuth to use for wiregrid measurements
+    wiregrid_el : float
+        elevation to use for wiregrid measurements
     """
     hwp_override: Optional[bool] = None
     brake_hwp: Optional[bool] = True
+    disable_hwp: bool = False
     min_hwp_el: float = 48 # deg
     boresight_override: Optional[float] = None
+    wiregrid_az: float = 180
+    wiregrid_el: float = 48
 
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
@@ -414,40 +430,51 @@ class SATPolicy(tel.TelPolicy):
                 config = yaml.load(config, Loader=loader)
         return cls(**config)
 
-    def divide_blocks(self, block, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
-        duration = block.duration
+    def make_source_scans(self, target, blocks, sun_rule):
+        # digest array_query: it could be a fnmatch pattern matching the path
+        # in the geometry dict, or it could be looked up from a predefined
+        # wafer_set dict. Here we account for the latter case:
+        # look up predefined query in wafer_set
+        if target.array_query in self.wafer_sets:
+            array_query = self.wafer_sets[target.array_query]
+        else:
+            array_query = target.array_query
 
-        # if the block is small enough, return it as is
-        if duration <= (max_dt + min_dt):
-            return [block]
+        # build array geometry information based on the query
+        array_info = inst.array_info_from_query(self.geometries, array_query)
+        logger.debug(f"-> array_info: {array_info}")
 
-        n_blocks = duration // max_dt
-        remainder = duration % max_dt
+        # apply MakeCESourceScan rule to transform known observing windows into
+        # actual scan blocks
+        rule = ru.MakeCESourceScan(
+            array_info=array_info,
+            el_bore=target.el_bore,
+            drift=target.drift,
+            boresight_rot=target.boresight_rot,
+            allow_partial=target.allow_partial,
+            az_branch=target.az_branch,
+            source_direction=target.source_direction,
+        )
+        source_scans = rule(blocks['calibration'][target.source])
 
-        # split if 1 block with remainder > min duration
-        if n_blocks == 1:
-            return core.block_split(block, block.t0 + max_dt)
+        # sun check again: previous sun check ensure source is not too
+        # close to the sun, but our scan may still get close enough to
+        # the sun, in which case we will trim it or delete it depending
+        # on whether allow_partial is True
+        if target.allow_partial:
+            logger.info("-> allow_partial = True: trimming scan options by sun rule")
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            source_scans = min_dur_rule(sun_rule(source_scans))
+        else:
+            logger.info("-> allow_partial = False: filtering scan options by sun rule")
+            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
 
-        blocks = []
-        # calculate the offset for splitting
-        offset = (remainder + max_dt) / 2 if remainder.total_seconds() > 0 else max_dt
+        # flatten and sort
+        source_scans = core.seq_sort(source_scans, flatten=True)
 
-        split_blocks = core.block_split(block, block.t0 + offset)
-        blocks.append(split_blocks[0])
+        return source_scans
 
-        # split the remaining block into chunks of max duration
-        for i in range(n_blocks - 1):
-            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + max_dt)
-            blocks.append(split_blocks[0])
-
-        # add the remaining part
-        if remainder.total_seconds() > 0:
-            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
-            blocks.append(split_blocks[0])
-
-        return blocks
-
-    def init_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+    def init_cmb_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
         """
         Initialize the sequences for the scheduler to process.
 
@@ -469,33 +496,6 @@ class SATPolicy(tel.TelPolicy):
             self.blocks,
             is_leaf=lambda x: isinstance(x, dict) and 'type' in x
         )
-
-        # by default add calibration blocks specified in cal_targets if not already specified
-        for cal_target in self.cal_targets:
-            if isinstance(cal_target, CalTarget):
-                source = cal_target.source
-                if source not in blocks['calibration']:
-                    blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-            elif isinstance(cal_target, WiregridTarget):
-                wiregrid_candidates = []
-                current_date = t0.date()
-                end_date = t1.date()
-
-                while current_date <= end_date:
-                    candidate_time = dt.datetime.combine(current_date, dt.time(cal_target.hour, 0), tzinfo=dt.timezone.utc)
-                    if t0 <= candidate_time <= t1:
-                        wiregrid_candidates.append(
-                            inst.StareBlock(
-                                name='wiregrid',
-                                t0=candidate_time,
-                                t1=candidate_time + dt.timedelta(seconds=cal_target.duration),
-                                az=cal_target.az_target,
-                                alt=cal_target.el_target,
-                                subtype='wiregrid'
-                            )
-                        )
-                    current_date += dt.timedelta(days=1)
-                blocks['calibration']['wiregrid'] = wiregrid_candidates
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
@@ -521,10 +521,10 @@ class SATPolicy(tel.TelPolicy):
 
         Returns
         -------
-        BlocksTree
+        blocks : BlocksTree
             New blocks tree after applying the specified observing rules.
-
         """
+
         # -----------------------------------------------------------------
         # step 1: preliminary sun avoidance
         #   - get rid of source observing windows too close to the sun
@@ -539,6 +539,12 @@ class SATPolicy(tel.TelPolicy):
             logger.error("no sun avoidance rule specified!")
             raise ValueError("Sun rule is required!")
 
+        # min duration rule
+        if 'min-duration' in self.rules:
+            # initial min duration rule to remove edge cases of very short scans
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            blocks['calibration'] = min_dur_rule(blocks['calibration'])
+
         # -----------------------------------------------------------------
         # step 2: plan calibration scans
         #   - refer to each target specified in cal_targets
@@ -548,97 +554,109 @@ class SATPolicy(tel.TelPolicy):
         logger.info("planning calibration scans...")
         cal_blocks = []
 
+        saved_cal_targets = []
         for target in self.cal_targets:
             logger.info(f"-> planning calibration scans for {target}...")
 
             if isinstance(target, WiregridTarget):
-                logger.info(f"-> planning wiregrid scans for {target}...")
-                cal_blocks += core.seq_map(lambda b: b.replace(subtype='wiregrid'),
-                                           blocks['calibration']['wiregrid'])
                 continue
 
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
-            # digest array_query: it could be a fnmatch pattern matching the path
-            # in the geometry dict, or it could be looked up from a predefined
-            # wafer_set dict. Here we account for the latter case:
-            # look up predefined query in wafer_set
-            if target.array_query in self.wafer_sets:
-                array_query = self.wafer_sets[target.array_query]
+            # get list of possible array queries
+            if isinstance(target.array_query, list):
+                array_queries = target.array_query.copy()
             else:
-                array_query = target.array_query
+                array_queries = [target.array_query]
 
-            # build array geometry information based on the query
-            array_info = inst.array_info_from_query(self.geometries, array_query)
-            logger.debug(f"-> array_info: {array_info}")
-
-            # apply MakeCESourceScan rule to transform known observing windows into
-            # actual scan blocks
-            rule = ru.MakeCESourceScan(
-                array_info=array_info,
-                el_bore=target.el_bore,
-                drift=target.drift,
-                boresight_rot=target.boresight_rot,
-                allow_partial=target.allow_partial,
-                az_branch=target.az_branch,
-                source_direction=target.source_direction,
-            )
-            source_scans = rule(blocks['calibration'][target.source])
-
-            # sun check again: previous sun check ensure source is not too
-            # close to the sun, but our scan may still get close enough to
-            # the sun, in which case we will trim it or delete it depending
-            # on whether allow_partial is True
-            if target.allow_partial:
-                logger.info("-> allow_partial = True: trimming scan options by sun rule")
-                min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-                source_scans = min_dur_rule(sun_rule(source_scans))
+            # get list of allow_partials
+            if isinstance(target.allow_partial, list):
+                allow_partial = target.allow_partial.copy()
             else:
-                logger.info("-> allow_partial = False: filtering scan options by sun rule")
-                source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
+                allow_partial = [target.allow_partial]
 
-            # flatten and sort
-            source_scans = core.seq_sort(source_scans, flatten=True)
+            # loop over array queries and try to find a source
+            for array_query in array_queries:
+                logger.info(f"trying array_query={array_query}")
+                target = replace(target, array_query=array_query)
+                target = replace(target, allow_partial=allow_partial)
 
-            if len(source_scans) == 0:
-                logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
-                continue
+                source_scans = self.make_source_scans(target, blocks, sun_rule)
 
-            # which one can be added without conflicting with already planned calibration blocks?
-            source_scans = core.seq_sort(
-                core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
-                flatten=True
-            )
+                if len(source_scans) == 0:
+                    # try allow_partial=True if overriding
+                    if (not target.allow_partial) and target.from_table and self.allow_partial_override==True:
+                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query}). trying allow_partial=True")
+                        target = replace(target, allow_partial=True)
+                        source_scans = self.make_source_scans(target, blocks, sun_rule)
 
-            if len(source_scans) == 0:
-                logger.warning(f"-> all scan options overlap with already planned source scans...")
-                continue
+                    if len(source_scans) == 0:
+                        logger.warning(f"-> no scan options available for {target.source} ({target.array_query})")
+                        continue
 
-            logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
-
-            # add the first scan option
-            cal_block = source_scans[0]
-
-            # update tag, speed, accel, etc
-            cal_block = cal_block.replace(
-                az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
-                az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
-                tag=f"{cal_block.tag},{target.tag}"
-            )
-
-            # override hwp direction
-            if self.hwp_override is not None:
-                cal_block = cal_block.replace(
-                    hwp_dir=self.hwp_override
+                # which one can be added without conflicting with already planned calibration blocks?
+                source_scans = core.seq_sort(
+                    core.seq_filter(lambda b: not any([b.overlaps(b_) for b_ in cal_blocks]), source_scans),
+                    flatten=True
                 )
-            cal_blocks.append(cal_block)
 
-        blocks['calibration'] = cal_blocks
+                if len(source_scans) == 0:
+                    logger.warning(f"-> all scan options overlap with already planned source scans...")
+                    continue
+
+                logger.info(f"-> found {len(source_scans)} scan options for {target.source} ({target.array_query}): {u.pformat(source_scans)}, adding the first one...")
+
+                # add the first scan option
+                cal_block = source_scans[0]
+
+                if array_query not in target.tag:
+                    tag = f"{cal_block.tag},{array_query},{target.tag}"
+                else:
+                    tag = f"{cal_block.tag},{target.tag}"
+
+                # update tag, speed, accel, etc
+                cal_block = cal_block.replace(
+                    az_speed = target.az_speed if target.az_speed is not None else self.az_speed,
+                    az_accel = target.az_accel if target.az_accel is not None else self.az_accel,
+                    tag=tag
+                )
+
+                # override hwp direction
+                if self.hwp_override is not None:
+                    cal_block = cal_block.replace(
+                        hwp_dir=self.hwp_override
+                    )
+
+                cal_blocks.append(cal_block)
+                saved_cal_targets.append(target)
+
+                # don't test other array queries if we have one that works
+                break
+
+        unique_cal_blocks = []
+        for i, cal_block in enumerate(cal_blocks):
+            if not saved_cal_targets[i].from_table:
+                unique_cal_blocks.append(cal_block)
+            else:
+                # whether to keep rising or setting blocks for current week
+                rising = cal_block.t0.isocalendar()[1] % 2 == 0
+                other_cal_blocks = [other_cal_block for j, other_cal_block in enumerate(cal_blocks) if j!=i]
+                other_saved_cal_targets = [other_saved_cal_target for j, other_saved_cal_target in enumerate(saved_cal_targets) if j!=i]
+
+                # if any blocks has same source and array query
+                if any(other_cal_block.name==cal_block.name for other_cal_block in other_cal_blocks) and \
+                    any(other_saved_cal_target.array_query==saved_cal_targets[i].array_query for other_saved_cal_target in other_saved_cal_targets):
+                    # add if source direction matches week's direction (if not it will be skipped)
+                    if (saved_cal_targets[i].source_direction == "rising" and rising) or \
+                    (saved_cal_targets[i].source_direction == "setting" and not rising):
+                        unique_cal_blocks.append(cal_block)
+                # if no other similar blocks schedule it
+                else:
+                    unique_cal_blocks.append(cal_block)
+
+        blocks['calibration'] = unique_cal_blocks + blocks['calibration']['wiregrid']
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
-
-        # check sun avoidance again
-        blocks['calibration'] = core.seq_flatten(sun_rule(blocks['calibration']))
 
         # min duration rule
         if 'min-duration' in self.rules:
@@ -658,7 +676,7 @@ class SATPolicy(tel.TelPolicy):
 
         # add proper subtypes
         blocks['calibration'] = core.seq_map(
-            lambda block: block.replace(subtype="cal") if block.name != 'wiregrid' else block,
+            lambda block: block.replace(subtype="cal") if block.subtype != 'wiregrid' else block,
             blocks['calibration']
         )
 
@@ -691,20 +709,17 @@ class SATPolicy(tel.TelPolicy):
         # add hwp direction to cal blocks
         if self.hwp_override is None:
             for i, block in enumerate(blocks):
-                if block.subtype=='cal' and block.hwp_dir is not None:
-                    # try next blocks
-                    for j in range(1, len(blocks)-i):
-                        if blocks[i+j].subtype=="cmb":
-                            blocks[i] = block.replace(hwp_dir=blocks[i+j].hwp_dir)
-                            break
+                if (block.subtype=='cal' or block.subtype=='wiregrid') and block.hwp_dir is None:
+                    candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 < block.t0]
+                    if candidates:
+                        cmb_block = max(candidates, key=lambda x: x.t0)
                     else:
-                        # try previous blocks
-                        for j in range(1, i+1):
-                            if blocks[i-j].subtype=="cmb":
-                                blocks[i] = block.replace(hwp_dir=blocks[i-j].hwp_dir)
-                                break
+                        candidates = [cmb_block for cmb_block in blocks if cmb_block.subtype == "cmb" and cmb_block.t0 > block.t0]
+                        if candidates:
+                            cmb_block = min(candidates, key=lambda x: x.t0)
                         else:
                             raise ValueError(f"Cannot assign HWP direction to cal block {block}")
+                    blocks[i] = block.replace(hwp_dir=cmb_block.hwp_dir)
 
         # -----------------------------------------------------------------
         # step 5: verify
@@ -804,6 +819,7 @@ class SATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
         cal_blocks += wiregrid_blocks
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
@@ -821,6 +837,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_post = [op for op in self.operations if op['sched_mode'] == SchedMode.PostObs]
         pre_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PreSession]
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
+        wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
 
         def map_block(block):
@@ -831,7 +848,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': block.priority
+                    'priority': -1
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -846,10 +863,10 @@ class SATPolicy(tel.TelPolicy):
                 return {
                     'name': block.name,
                     'block': block,
-                    'pre': [],
+                    'pre': wiregrid_pre,
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': block.priority
+                    'priority': -1
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -866,7 +883,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': 0,
+            'priority': -1,
             'pinned': True  # remain unchanged during multi-pass
         }
 
@@ -897,7 +914,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': 0,
+            'priority': -1,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
@@ -910,8 +927,8 @@ class SATPolicy(tel.TelPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, duration=WIREGRID_DURATION, **kwargs):
-        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target, duration=duration))
+    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, **kwargs):
+        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target))
 
 # ------------------------
 # utilities
