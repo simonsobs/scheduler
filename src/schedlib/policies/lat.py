@@ -27,9 +27,15 @@ COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
 def boresight_to_corotator(el, boresight):
-    return np.round(el - 60 + boresight, 4)
+    if el <= 90:
+        return np.round(el - 60 + boresight, 4)
+    else:
+        return np.round(boresight - el - 60, 4)
 def corotator_to_boresight(el, corotator):
-    return np.round(-1*(el - 60 - corotator), 4)
+    if el <= 90:
+        return np.round(-1*(el - 60 - corotator), 4)
+    else:
+        return np.round(el + 60 + corotator, 4)
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -240,7 +246,11 @@ def make_cal_target(
     }
     elevation = float(elevation)
     if corotator is None:
-        corotator = boresight_to_corotator(elevation,0)
+        if elevation <= 90:
+            boresight = 0
+        else:
+            boresight = 180
+        corotator = boresight_to_corotator(elevation, boresight)
     boresight = corotator_to_boresight(elevation,float(corotator))
 
     focus = focus.lower()
@@ -451,12 +461,6 @@ class LATPolicy(tel.TelPolicy):
                     return b.replace(alt=180-b.alt, az=b.az-180)
                 return b
             blocks = core.seq_map( fix_block, blocks)
-        else:
-            raise NotImplementedError(
-                "scheduler not implemented for boresight180 scans yet"
-                " schedules must be generated with elevations_under_90"
-                " set to True"
-            )
 
         if len(self.remove_targets) > 0:
             blocks = core.seq_filter_out(
@@ -473,13 +477,13 @@ class LATPolicy(tel.TelPolicy):
         else: ## run with co-rotator locked to elevation
             blocks = core.seq_map(
                 lambda b: b.replace(
-                    corotator_angle=boresight_to_corotator(b.alt,0)
+                    corotator_angle=boresight_to_corotator(b.alt, 0 if b.alt<=90 else 180)
                 ), blocks
             )
 
         blocks = core.seq_map(
             lambda b: b.replace(
-                boresight_angle=-1*(b.alt-60-b.corotator_angle)
+                boresight_angle=corotator_to_boresight(b.alt, b.corotator_angle)
             ), blocks
         )
         blocks = core.seq_map(
@@ -647,16 +651,16 @@ class LATPolicy(tel.TelPolicy):
                 if cal_target.el_bore > 90:
                     if self.elevations_under_90:
                         cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
-                    else:
-                        raise NotImplementedError(
-                            "scheduler not implemented for boresight180 scans yet"
-                            " schedules must be generated with elevations_under_90"
-                            " set to True"
-                        )
 
                 if self.corotator_override is None:
-                    corotator = boresight_to_corotator(cal_target.el_bore, 0)
-                boresight = corotator_to_boresight(cal_target.el_bore, float(corotator))
+                    if cal_target.el_bore <= 90:
+                        boresight = 0
+                    else:
+                        boresight = 180
+                    corotator = boresight_to_corotator(cal_target.el_bore, boresight)
+                    boresight = corotator_to_boresight(cal_target.el_bore, corotator)
+                else:
+                    boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
 
                 if self.az_branch_override is not None:

@@ -448,7 +448,7 @@ def parse_sequence_from_toast_lat(ifile):
     """
 
     columns = [
-        "start_utc", "stop_utc", "target", "el", "az_min", "az_max", "uid"
+        "start_utc", "stop_utc", "target", "direction", "el", "az_min", "az_max", "uid"
     ]
     # count the number of lines to skip
     with open(ifile) as f:
@@ -474,14 +474,14 @@ def parse_sequence_from_toast_lat(ifile):
             priority=1, #row['#'],
             tag=_escape_string(
                 str(row['target']).strip()+","+
-                "uid-"+str(row['uid']).strip()
+                "uid-"+str(int(row['uid'])).strip()
             ),
         )
         blocks.append(block)
     return blocks
 
 def parse_cal_targets_from_toast_lat(ifile):
-    columns = ["start_utc", "stop_utc", "target", "el",
+    columns = ["start_utc", "stop_utc", "target", "direction", "el",
         "az_min", "az_max", "uid",
     ]
     # count the number of lines to skip
@@ -497,26 +497,14 @@ def parse_cal_targets_from_toast_lat(ifile):
     for _, row in df.iterrows():
         target_fields = _escape_string(row['target'].strip()).lower().split(';')
 
-        match = re.match(r"([a-zA-Z0-9]+)_([a-zA-Z0-9]+)", target_fields[1])
-        tubes, wafers = match.groups()
-        tubes = re.findall(r"[a-zA-Z]\d+", tubes)
+        tubes = re.findall(r'[a-zA-Z]\d+', target_fields[1])
+        suffix_map = {
+            0: ['ws1', 'ws2', 'ws0'],
+            1: ['ws0', 'ws1', 'ws2']
+        }
 
-        array_query = ""
-
-        suffixes = {
-            'ws0': ['ws0'],
-            'wsi': ['ws1', 'ws2']
-        }.get(wafers, [])
-
-        array_query = ",".join(f"{tube}_{suffix}" for tube in tubes for suffix in suffixes)
-
-        azmean = np.mean(
-                 np.unwrap([row['az_min'], row['az_max']], period=360)
-             ) % 360
-        if azmean < 180:
-            direction = "rising"
-        else:
-            direction = "setting"
+        # Generate the full labels in order
+        array_query = ",".join(f"{tube}_{suffix}" for i, tube in enumerate(tubes) for suffix in suffix_map[i])
 
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
@@ -524,8 +512,8 @@ def parse_cal_targets_from_toast_lat(ifile):
             source=target_fields[0],
             el_bore=row['el'],
             boresight_rot=None,
-            tag=f"{str(array_query).strip()},{'uid-'+str(row['uid']).strip()}",
-            source_direction=direction,#_escape_string(row['direction'].strip()).lower(),
+            tag=f"{str(array_query).strip()},{'uid-'+str(int(row['uid'])).strip()}",
+            source_direction=_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
             from_table=True
