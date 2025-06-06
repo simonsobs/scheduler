@@ -385,8 +385,6 @@ class SATP1Policy(SATPolicy):
             'saturn': {
                 0 : {
                     'ws0,ws4': False,
-                    'ws3': False,
-                    'ws5': False,
                 },
                 -45 : {
                     'ws0,ws3': False,
