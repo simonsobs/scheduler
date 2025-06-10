@@ -28,14 +28,18 @@ STIMULATOR_DURATION = 15*u.minute
 
 def boresight_to_corotator(el, boresight):
     if el <= 90:
-        return np.round(el - 60 + boresight, 4)
+        el_ref = 60
     else:
-        return np.round(boresight - el - 60, 4)
+        el_ref = 240
+        el = 180 - el
+    return np.round(el - el_ref + boresight, 4)
 def corotator_to_boresight(el, corotator):
     if el <= 90:
-        return np.round(-1*(el - 60 - corotator), 4)
+        el_ref = 60
     else:
-        return np.round(el + 60 + corotator, 4)
+        el_ref = 240
+        el = 180 - el
+    return np.round(-1*(el - el_ref - corotator), 4)
 
 @dataclass_json
 @dataclass(frozen=True)
