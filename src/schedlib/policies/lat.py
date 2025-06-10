@@ -156,6 +156,8 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
             state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
+        assert np.abs(block.corotator_angle) <= 45, "corotator angle {block.corotator_angle} not within [-45, 45] range"
+
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
         commands += [
