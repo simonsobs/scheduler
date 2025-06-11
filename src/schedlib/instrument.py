@@ -391,15 +391,19 @@ def parse_cal_targets_from_toast_sat(ifile):
     cal_targets = []
 
     for _, row in df.iterrows():
+        target_str = _escape_string(row['target'].strip()).lower()
+        target_list = target_str.split(';', 1)
+        source = target_list[0].strip()
+        array_query = target_list[1].strip() if len(target_list) > 1 else None
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            source=_escape_string(row['target'].strip()).lower(),
+            source=source,
             el_bore=row['el'],
             boresight_rot=None,
             tag=_escape_string(row['uid'].strip()),
             source_direction=_escape_string(row['direction'].strip()).lower(),
-            array_query=None,
+            array_query=array_query,
             allow_partial=False,
             from_table=True
         )

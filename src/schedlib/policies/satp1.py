@@ -421,18 +421,22 @@ class SATP1Policy(SATPolicy):
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
 
                 # get wafers to observe based on source name and boresight
-                focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
-                index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
-                # order list so current date's array_query is tried first
-                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                #array_query = list(focus_str.keys())[index]
-                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+                if cal_target.array_query is None:
+                    focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
+                    index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
+                    # order list so current date's array_query is tried first
+                    array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
+                    #array_query = list(focus_str.keys())[index]
+                    cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+
+                    allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
+                else:
+                    allow_partial = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot][cal_target.array_query]
+                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
                 cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
