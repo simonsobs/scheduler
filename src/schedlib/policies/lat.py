@@ -112,7 +112,7 @@ def preamble(open_shutter=False):
     cmd += ["acu.clear_faults()"]
     if open_shutter:
         cmd += ["acu.stop_and_clear()",
-                "acu.set_shutter(action='open')"
+                "run.acu.set_shutter(action='open')"
             ]
     return cmd
 
@@ -120,7 +120,7 @@ def preamble(open_shutter=False):
 def wrap_up(state, block, close_shutter=False):
     state, cmd = tel.wrap_up(state, block)
     if close_shutter:
-        cmd += ["acu.set_shutter(action='close')"]
+        cmd += ["run.acu.set_shutter(action='close')"]
     return state, cmd
 
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
