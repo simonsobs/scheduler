@@ -424,7 +424,7 @@ class SATP2Policy(SATPolicy):
 
                 # get wafers to observe based on source name and boresight
                 focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
-                index = u.get_cycle_option(t0, list(focus_str.keys()), anchor_time)
+                index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
                 # order list so current date's array_query is tried first
                 array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
                 #array_query = list(focus_str.keys())[index]
