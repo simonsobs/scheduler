@@ -412,9 +412,6 @@ class SATP3Policy(SATPolicy):
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
-
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
