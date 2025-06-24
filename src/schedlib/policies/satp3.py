@@ -47,7 +47,7 @@ def make_cal_target(
         keys_to_remove = []
         for key, val in array_focus.items():
             wafers = val.split(',')
-            cleaned = [w for w in wafers if w not in bad_wafers]
+            cleaned = [w for w in wafers if w not in ignore_wafers]
             if cleaned:
                 array_focus[key] = ','.join(cleaned)
             else:
