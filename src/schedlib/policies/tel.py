@@ -193,6 +193,7 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
                 commands += ["run.smurf.take_noise(concurrent=True, tag='res_check')"]
             commands += [
                 "run.smurf.uxm_relock(concurrent=True)",
+                "run.smurf.take_bgmap(concurrent=True)",
                 "################## Relock Over #######################",
                 ""
             ]
@@ -249,8 +250,6 @@ def det_setup(
                 "################### Detector Setup######################",
                 "with disable_trace():",
                 "    run.initialize()",
-                "run.smurf.take_bgmap(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='res_check')",
                 "run.smurf.iv_curve(concurrent=True, ",
                 "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
                 "run.smurf.bias_dets(concurrent=True)",

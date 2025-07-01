@@ -103,7 +103,6 @@ commands_det_setup = [
     "################### Detector Setup######################",
     "with disable_trace():",
     "    run.initialize()",
-    "run.smurf.take_bgmap(concurrent=True)",
     "run.smurf.iv_curve(concurrent=True)",
     "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
     "time.sleep(300)",
