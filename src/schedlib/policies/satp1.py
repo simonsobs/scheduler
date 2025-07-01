@@ -29,6 +29,7 @@ def make_cal_target(
     az_speed=None,
     az_accel=None,
     source_direction=None,
+    ignore_wafers=None,
 ) -> CalTarget:
     array_focus = {
         0 : {
@@ -53,6 +54,19 @@ def make_cal_target(
             'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
         },
     }
+
+    if ignore_wafers is not None:
+        for angle_key, focus_dict in array_focus.items():
+            keys_to_remove = []
+            for key, val in focus_dict.items():
+                wafers = val.split(',')
+                cleaned = [w for w in wafers if w not in ignore_wafers]
+                if cleaned:
+                    focus_dict[key] = ','.join(cleaned)
+                else:
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                focus_dict.pop(key)
 
     boresight = float(boresight)
     elevation = float(elevation)
@@ -349,7 +363,7 @@ class SATP1Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None):
+    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None, ignore_wafers=None):
         # source -> boresight -> allow_partial
         array_focus = {
             'jupiter': {
@@ -394,6 +408,18 @@ class SATP1Policy(SATPolicy):
                 }
             },
         }
+
+        if ignore_wafers is not None:
+            for outer_key in list(array_focus.keys()):
+                for inner_key in list(array_focus[outer_key].keys()):
+                    new_entries = {}
+                    for wafers_str, val in array_focus[outer_key][inner_key].items():
+                        wafers = wafers_str.split(',')
+                        filtered = [w for w in wafers if w not in ignore_wafers]
+                        if filtered:
+                            new_key = ','.join(filtered)
+                            new_entries[new_key] = val
+                    array_focus[outer_key][inner_key] = new_entries
 
         # get cal targets
         if cfile is not None:

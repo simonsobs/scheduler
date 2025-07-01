@@ -28,17 +28,11 @@ HWP_SPIN_DOWN = 15*u.minute
 BORESIGHT_DURATION = 1*u.minute
 
 COMMANDS_HWP_BRAKE = [
-    "run.smurf.stream('on', subtype='cal', tag='hwp_spin_down')",
-    "run.hwp.stop(active=True)",
-    "sup.disable_driver_board()",
-    "run.smurf.stream('off')",
+    "run.hwp.spin_down(active=True)",
     "",
 ]
 COMMANDS_HWP_STOP = [
-    "run.smurf.stream('on', subtype='cal', tag='hwp_spin_down')",
-    "run.hwp.stop(active=False)",
-    "sup.disable_driver_board()",
-    "run.smurf.stream('off')",
+    "run.hwp.spin_down(active=False)",
     "",
 ]
 
@@ -264,10 +258,7 @@ def hwp_spin_up(state, block, disable_hwp=False, brake_hwp=True):
 
     freq = 2 if hwp_dir else -2
     return state, duration + HWP_SPIN_UP, cmds + [
-        "run.smurf.stream('on', subtype='cal', tag='hwp_spin_up')",
-        "sup.enable_driver_board()",
-        f"run.hwp.set_freq(freq={freq})",
-        "run.smurf.stream('off')",
+        f"run.hwp.spin_up(freq={freq})"
         "",
     ]
 

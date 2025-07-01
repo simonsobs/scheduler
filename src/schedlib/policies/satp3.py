@@ -29,21 +29,32 @@ def make_cal_target(
     az_speed=None,
     az_accel=None,
     source_direction=None,
+    ignore_wafers=None,
 ) -> CalTarget:
     array_focus = {
         'left' : 'ws3,ws2',
         'middle' : 'ws0,ws1,ws4',
-        #'right' : 'ws5,ws6',
-        'right' : 'ws6',
-        #'top': 'ws3,ws4,ws5',
-        'top': 'ws3,ws4',
+        'right' : 'ws5,ws6',
+        'top': 'ws3,ws4,ws5',
         'toptop': 'ws4',
         'center': 'ws0',
         'bottom': 'ws1,ws2,ws6',
         'bottombottom': 'ws1',
-        #'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        'all' : 'ws0,ws1,ws2,ws3,ws4,ws6',
+        'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
     }
+
+    if ignore_wafers is not None:
+        keys_to_remove = []
+        for key, val in array_focus.items():
+            wafers = val.split(',')
+            cleaned = [w for w in wafers if w not in ignore_wafers]
+            if cleaned:
+                array_focus[key] = ','.join(cleaned)
+            else:
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            array_focus.pop(key)
 
     boresight = int(boresight)
     elevation = int(elevation)
@@ -140,16 +151,16 @@ def make_operations(
         ]
 
     cal_ops += [
-        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot,
         'det_setup_duration': det_setup_duration},
+        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
+        { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'sat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
@@ -365,7 +376,7 @@ class SATP3Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None):
+    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None, ignore_wafers=None):
         # wafer -> allow_partial
         array_focus = {
                 'ws0': False,
@@ -373,9 +384,13 @@ class SATP3Policy(SATPolicy):
                 'ws2': False,
                 'ws3': False,
                 'ws4': False,
-                #'ws5': False,
+                'ws5': False,
                 'ws6': False,
         }
+
+        if ignore_wafers is not None:
+            for wafer in ignore_wafers:
+                array_focus.pop(wafer, None)
 
         # get cal targets
         if cfile is not None:

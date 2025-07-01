@@ -401,7 +401,7 @@ def parse_cal_targets_from_toast_sat(ifile):
             source=source,
             el_bore=row['el'],
             boresight_rot=None,
-            tag=_escape_string(row['uid'].strip()),
+            tag=f"{'uid-'+row['uid'].strip()}",
             source_direction=_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
@@ -431,7 +431,7 @@ def parse_wiregrid_targets_from_file(ifile):
             name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            tag=_escape_string(row['uid'].strip()),
+            tag=f"{'uid-'+row['uid'].strip()}",
         )
         wiregrid_targets.append(wiregrid_target)
 
