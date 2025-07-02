@@ -188,10 +188,6 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
                 "####################### Relock #######################",
                 "run.smurf.zero_biases()",
                 "time.sleep(120)",
-            ]
-            if state.has_active_channels:
-                commands += ["run.smurf.take_noise(concurrent=True, tag='res_check')"]
-            commands += [
                 "run.smurf.uxm_relock(concurrent=True)",
                 "run.smurf.take_bgmap(concurrent=True)",
                 "################## Relock Over #######################",

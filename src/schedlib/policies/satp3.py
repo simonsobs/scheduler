@@ -90,7 +90,6 @@ commands_uxm_relock = [
     "####################### Relock #######################",
     "run.smurf.zero_biases()",
     "time.sleep(120)",
-    "run.smurf.take_noise(concurrent=True, tag='res_check')",
     "run.smurf.uxm_relock(concurrent=True)",
     "run.smurf.take_bgmap(concurrent=True)",
     "################## Relock Over #######################",
