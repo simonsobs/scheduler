@@ -9,6 +9,8 @@ from typing import List, Union, Optional, Dict, Any, Tuple
 import jax.tree_util as tu
 from functools import reduce
 
+import random
+
 from .. import config as cfg, core, source as src, rules as ru
 from .. import commands as cmd, instrument as inst, utils as u
 from ..thirdparty import SunAvoidance
@@ -425,6 +427,8 @@ class TelPolicy:
     allow_partial_override: float = None
     drift_override: bool = True
 
+    rng: np.random.Generator = field(init=False, default=None)
+
     def construct_seq(self, loader_cfg, t0, t1):
         if loader_cfg['type'] == 'source':
             return src.source_gen_seq(loader_cfg['name'], t0, t1)
@@ -472,6 +476,9 @@ class TelPolicy:
         # split if 1 block with remainder > min duration
         if n_blocks == 1:
             blocks = core.block_split(block, block.t0 + max_dt)
+            # shuffle the list of blocks
+            shuffled_indices = self.rng.permutation(len(blocks))
+            blocks = [blocks[i] for i in shuffled_indices]
             for i, b in enumerate(blocks):
                 tags = b.tag.split(',')
                 for j, item in enumerate(tags):
@@ -479,7 +486,7 @@ class TelPolicy:
                         tags[j] = item + '-pass-' + str(i)
                         break
                 blocks[i] = blocks[i].replace(tag=",".join(tags))
-            return blocks#core.block_split(block, block.t0 + max_dt)
+            return blocks
 
         blocks = []
         # calculate the offset for splitting
@@ -497,6 +504,10 @@ class TelPolicy:
         if remainder.total_seconds() > 0:
             split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
             blocks.append(split_blocks[0])
+
+        # shuffle the list of blocks
+        shuffled_indices = self.rng.permutation(len(blocks))
+        blocks = [blocks[i] for i in shuffled_indices]
 
         for i, b in enumerate(blocks):
             tags = b.tag.split(',')
