@@ -431,18 +431,20 @@ class SATP1Policy(SATPolicy):
 
             # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
-                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-                if candidates:
-                    block = max(candidates, key=lambda x: x.t0)
-                else:
-                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                if cal_target.boresight_rot is None:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
                     if candidates:
-                        block = min(candidates, key=lambda x: x.t0)
+                        block = max(candidates, key=lambda x: x.t0)
                     else:
-                        raise ValueError("Cannot find nearby block for cal target")
+                        candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                        if candidates:
+                            block = min(candidates, key=lambda x: x.t0)
+                        else:
+                            raise ValueError("Cannot find nearby block for cal target")
 
                 if self.boresight_override is None:
-                    cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                    if cal_target.boresight_rot is None:
+                        cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
                 else:
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
 
