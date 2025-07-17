@@ -9,8 +9,6 @@ from typing import List, Union, Optional, Dict, Any, Tuple
 import jax.tree_util as tu
 from functools import reduce
 
-import random
-
 from .. import config as cfg, core, source as src, rules as ru
 from .. import commands as cmd, instrument as inst, utils as u
 from ..thirdparty import SunAvoidance
