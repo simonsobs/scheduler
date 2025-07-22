@@ -474,10 +474,13 @@ class TelPolicy:
         # split if 1 block with remainder > min duration
         if n_blocks == 1:
             blocks = core.block_split(block, block.t0 + max_dt)
+            t0 = blocks[0].t0
             # shuffle the list of blocks
             shuffled_indices = self.rng.permutation(len(blocks))
             blocks = [blocks[i] for i in shuffled_indices]
             for i, b in enumerate(blocks):
+                blocks[i] = b.replace(t0=t0, t1=t0 + b.duration)
+                t0 += blocks[i].duration
                 tags = b.tag.split(',')
                 for j, item in enumerate(tags):
                     if item.startswith('uid'):
@@ -503,11 +506,14 @@ class TelPolicy:
             split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
             blocks.append(split_blocks[0])
 
+        t0 = blocks[0].t0
         # shuffle the list of blocks
         shuffled_indices = self.rng.permutation(len(blocks))
         blocks = [blocks[i] for i in shuffled_indices]
 
         for i, b in enumerate(blocks):
+            blocks[i] = b.replace(t0=t0, t1=t0 + b.duration)
+            t0 += blocks[i].duration
             tags = b.tag.split(',')
             for j, item in enumerate(tags):
                 if item.startswith('uid'):
