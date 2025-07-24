@@ -18,13 +18,13 @@ from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from .tel import State, make_blocks
+from .tel import State, make_blocks, SchedMode
 from ..instrument import CalTarget
 
 logger = u.init_logger(__name__)
 
 COROTATOR_DURATION = 1*u.minute
-STIMULATOR_DURATION = 15*u.minute
+STIMULATOR_DURATION = 70*u.second
 
 def boresight_to_corotator(el, boresight):
     if el <= 90:
@@ -59,24 +59,6 @@ class State(tel.State):
 
     def get_boresight(self):
         return corotator_to_boresight(self.el_now, self.corotator_now)
-
-@dataclass(frozen=True)
-class StimulatorTarget:
-    hour: int
-    el_target: float
-    az_target: float = 180
-    duration: float = STIMULATOR_DURATION
-
-class SchedMode(tel.SchedMode):
-    """
-    Enumerate different options for scheduling operations in LATPolicy.
-
-    Attributes
-    ----------
-    Stimulator : str
-        'stimulator'; Stimulator observations scheduled between block.t0 and block.t1
-    """
-    Stimulator = 'stimulator'
 
 
 # ----------------------------------------------------
@@ -150,6 +132,15 @@ def cmb_scan(state, block):
 def source_scan(state, block):
     return tel.source_scan(state, block)
 
+@cmd.operation(name='lat.stimulator', return_duration=True)
+def stimulator(state):
+    cmd = [
+        "# run stimulator",
+        f"run.stimulator.calibrate_tau()",
+        f"run.stimulator.calibrate_gain()",
+        ""
+    ]
+    return state, STIMULATOR_DURATION, cmd
 
 @cmd.operation(name='lat.setup_corotator', return_duration=True)
 def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second, corotator_offset=0.):
@@ -182,12 +173,6 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
 @cmd.operation(name='lat.bias_step', return_duration=True)
 def bias_step(state, block, bias_step_cadence=None):
     return tel.bias_step(state, block, bias_step_cadence)
-
-@cmd.operation(name='lat.stimulator', duration=STIMULATOR_DURATION)
-def stimulator(state):
-    return state, [
-        "run.stimulator.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
-    ]
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
@@ -302,7 +287,8 @@ def make_operations(
     corotator_offset=0.,
     open_shutter=False,
     close_shutter=False,
-    relock_cadence=24*u.hour
+    relock_cadence=24*u.hour,
+    run_stimulator=True,
 ):
 
     pre_session_ops = [
@@ -325,17 +311,35 @@ def make_operations(
             { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
         ]
 
+    # cal
     cal_ops += [
         { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot,
         'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence },
+        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence }
+    ]
+    if run_stimulator:
+        cal_ops += [
+            { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PreCal, }
+        ]
+    cal_ops += [
         { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
+    if run_stimulator:
+        cal_ops += [
+            { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PostCal, }
+        ]
+    # cmb
     cmb_ops += [
         { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot,
         'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
+    ]
+    if run_stimulator:
+        cmb_ops += [
+            { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PreObs, }
+        ]
+    cmb_ops += [
         { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
@@ -739,9 +743,6 @@ class LATPolicy(tel.TelPolicy):
         for target in self.cal_targets:
             logger.info(f"-> planning calibration scans for {target}...")
 
-            if isinstance(target, StimulatorTarget):
-                continue
-
             assert target.source in blocks['calibration'], f"source {target.source} not found in sequence"
 
             source_scans = self.make_source_scans(target, blocks, sun_rule)
@@ -813,8 +814,7 @@ class LATPolicy(tel.TelPolicy):
 
         # add proper subtypes
         blocks['calibration'] = core.seq_map(
-            lambda block: block.replace(subtype="cal") if block.name != 'stimulator' else block,
-            blocks['calibration']
+            lambda block: block.replace(subtype="cal"), blocks['calibration']
         )
 
         blocks['baseline']['cmb'] = core.seq_map(
@@ -927,8 +927,6 @@ class LATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
-        stimulator_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'stimulator', seq))
-        cal_blocks += stimulator_blocks
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
@@ -944,7 +942,6 @@ class LATPolicy(tel.TelPolicy):
         cmb_post = [op for op in self.operations if op['sched_mode'] == SchedMode.PostObs]
         pre_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PreSession]
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
-        stimulator_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Stimulator]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -964,15 +961,6 @@ class LATPolicy(tel.TelPolicy):
                     'in': cmb_in,
                     'post': cmb_post,
                     'priority': 1
-                }
-            elif block.subtype == 'stimulator':
-                return {
-                    'name': block.name,
-                    'block': block,
-                    'pre': [],
-                    'in': stimulator_in,
-                    'post': [],
-                    'priority': 0
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -1028,6 +1016,3 @@ class LATPolicy(tel.TelPolicy):
 
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
-
-    def add_stimulator_target(self, el_target, hour_utc=12, az_target=180, duration=STIMULATOR_DURATION, **kwargs):
-        self.cal_targets.append(StimulatorTarget(hour=hour_utc, az_target=az_target, el_target=el_target, duration=duration))
