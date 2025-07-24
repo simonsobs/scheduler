@@ -494,7 +494,7 @@ class LATPolicy(tel.TelPolicy):
         )
         blocks = core.seq_map(
             lambda b: b.replace(
-                az_speed= round( self.az_speed/np.cos(np.radians(b.alt)),2),
+                az_speed=round( self.az_speed/np.cos(np.radians(b.alt if b.alt <= 90 else 180 - b.alt)),2),
                 az_accel=self.az_accel,
             ), blocks
         )
