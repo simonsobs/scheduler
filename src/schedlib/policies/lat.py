@@ -334,13 +334,13 @@ def make_operations(
         { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot,
         'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
         { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
+        { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
     ]
     if run_stimulator:
         cmb_ops += [
             { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PreObs, }
         ]
     cmb_ops += [
-        { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
         { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
     ]
 
