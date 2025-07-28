@@ -150,16 +150,25 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     az_offset=block1.az_offset, alt_offset=block1.alt_offset)]
 
     # elevations to check. search in order of cur_el -> min_el then from cur_el -> max_el
-    alt_step = 4
-    alt_lower = np.arange(block0.alt, sun_policy['min_el'] - alt_step, -alt_step)
-    alt_lower[-1] = sun_policy['min_el']
-    alt_upper = np.arange(block0.alt + alt_step, el_limits[-1] + alt_step, alt_step)
-    alt_upper[-1] = el_limits[-1]
+    alt_step = 8
+    if block0.alt <= 90:
+        alt_lower = np.arange(block0.alt, sun_policy['min_el'] - alt_step, -alt_step)
+        alt_lower[-1] = sun_policy['min_el']
+    else:
+        alt_lower = np.arange(block0.alt, el_limits[-1] + alt_step, alt_step)
+        alt_lower[-1] = el_limits[-1]
+
+    if block0.alt <= 90:
+        alt_upper = np.arange(block0.alt + alt_step, el_limits[-1] + alt_step, alt_step)
+        alt_upper[-1] = el_limits[-1]
+    else:
+        alt_upper = np.arange(block0.alt, sun_policy['min_el'] - alt_step, -alt_step)
+        alt_upper[-1] = sun_policy['min_el']
 
     alt_range = np.concatenate((alt_lower, alt_upper))
 
     # check 180, next, and current azimuths for parking
-    az_range = np.array([180, block1.az, block0.az])
+    az_range = np.array([block0.az, block1.az, 180])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
@@ -873,7 +882,8 @@ class PlanMoves:
         logger.info(f"checking if az falls outside limits")
         seq_ = []
         for b in seq:
-            if b.az < self.az_limits[0] or b.az > self.az_limits[1]:
+            drifted_az = b.az + b.block.throw + b.block.az_drift * ((b.t1 - b.t0).total_seconds())
+            if b.az < self.az_limits[0] or b.az > self.az_limits[1] or (drifted_az < self.az_limits[0]) or (drifted_az > self.az_limits[1]):
                 logger.info(f"block az ({b.az}) outside limits, unwrapping...")
                 az_unwrap = find_unwrap(b.az, az_limits=self.az_limits)[0]
                 logger.info(f"-> unwrapping az: {b.az} -> {az_unwrap}")
@@ -1004,7 +1014,7 @@ class SimplifyMoves:
         return ir
 
 
-def find_unwrap(az, az_limits=[-90, 450]) -> List[float]:
+def find_unwrap(az, az_limits) -> List[float]:
     az = (az - az_limits[0]) % 360 + az_limits[0]  # min az becomes az_limits[0]
     az_unwraps = list(np.arange(az, az_limits[1], 360))
     return az_unwraps

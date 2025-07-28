@@ -805,7 +805,7 @@ class LATPolicy(tel.TelPolicy):
         if 'az-range' in self.rules:
             logger.info(f"applying az range rule: {self.rules['az-range']}")
             az_range = ru.AzRange(**self.rules['az-range'])
-            blocks['calibration'] = az_range(blocks['calibration'])
+            blocks = az_range(blocks)
 
         # -----------------------------------------------------------------
         # step 4: tags
