@@ -355,6 +355,18 @@ def parse_sequence_from_toast_sat(ifile):
                 continue
             else:
                 break
+
+        for j, line in enumerate(f):
+            if j < i:
+                continue
+            if line.strip() == '':
+                continue  # skip blank lines
+            fields = [x.strip() for x in line.split('|')]
+            if len(fields) != len(columns):
+                raise ValueError(
+                    f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
+                )
+
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
@@ -377,7 +389,7 @@ def parse_sequence_from_toast_sat(ifile):
     return blocks
 
 def parse_cal_targets_from_toast_sat(ifile):
-    columns = ["start_utc", "stop_utc", "target", "direction",
+    columns = ["start_utc", "stop_utc", "target", "direction", "rot",
         "ra", "dec", "el", "uid"
     ]
     # count the number of lines to skip
@@ -387,19 +399,35 @@ def parse_cal_targets_from_toast_sat(ifile):
                 continue
             else:
                 break
+
+        for j, line in enumerate(f):
+            if j < i:
+                continue
+            if line.strip() == '':
+                continue  # skip blank lines
+            fields = [x.strip() for x in line.split('|')]
+            if len(fields) != len(columns):
+                raise ValueError(
+                    f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
+                )
+
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     cal_targets = []
 
     for _, row in df.iterrows():
+        target_str = _escape_string(row['target'].strip()).lower()
+        target_list = target_str.split(';', 1)
+        source = target_list[0].strip()
+        array_query = target_list[1].strip() if len(target_list) > 1 else None
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            source=_escape_string(row['target'].strip()).lower(),
+            source=source,
             el_bore=row['el'],
-            boresight_rot=None,
+            boresight_rot=row['rot'],
             tag=f"{'uid-'+row['uid'].strip()}",
             source_direction=_escape_string(row['direction'].strip()).lower(),
-            array_query=None,
+            array_query=array_query,
             allow_partial=False,
             from_table=True
         )
@@ -418,6 +446,18 @@ def parse_wiregrid_targets_from_file(ifile):
                 continue
             else:
                 break
+
+        for j, line in enumerate(f):
+            if j < i:
+                continue
+            if line.strip() == '':
+                continue  # skip blank lines
+            fields = [x.strip() for x in line.split('|')]
+            if len(fields) != len(columns):
+                raise ValueError(
+                    f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
+                )
+
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     wiregrid_targets = []
 
@@ -457,6 +497,18 @@ def parse_sequence_from_toast_lat(ifile):
                 continue
             else:
                 break
+
+        for j, line in enumerate(f):
+            if j < i:
+                continue
+            if line.strip() == '':
+                continue  # skip blank lines
+            fields = [x.strip() for x in line.split('|')]
+            if len(fields) != len(columns):
+                raise ValueError(
+                    f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
+                )
+
     df = pd.read_csv(
         ifile, skiprows=i, delimiter="|",
         names=columns, comment='#'
@@ -491,6 +543,18 @@ def parse_cal_targets_from_toast_lat(ifile):
                 continue
             else:
                 break
+
+        for j, line in enumerate(f):
+            if j < i:
+                continue
+            if line.strip() == '':
+                continue  # skip blank lines
+            fields = [x.strip() for x in line.split('|')]
+            if len(fields) != len(columns):
+                raise ValueError(
+                    f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
+                )
+
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     cal_targets = []
 
