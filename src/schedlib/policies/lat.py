@@ -356,7 +356,8 @@ def make_config(
     max_cmb_scan_duration,
     cal_targets,
     elevations_under_90=False,
-    remove_targets=[],
+    remove_cmb_targets=[],
+    remove_cal_targets=[],
     az_stow=None,
     el_stow=None,
     az_offset=0.,
@@ -426,7 +427,8 @@ def make_config(
         'corotator_override': corotator_override,
         'elevations_under_90': elevations_under_90,
         'az_motion_override': az_motion_override,
-        'remove_targets': remove_targets,
+        'remove_cmb_targets': remove_cmb_targets,
+        'remove_cal_targets': remove_cal_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'az_offset': az_offset,
@@ -457,7 +459,8 @@ class LATPolicy(tel.TelPolicy):
     """
     corotator_override: Optional[float] = None
     elevations_under_90: Optional[bool] = False
-    remove_targets: Optional[Tuple] = ()
+    remove_cmb_targets: Optional[Tuple] = ()
+    remove_cal_targets: Optional[Tuple] = ()
 
     def apply_overrides(self, blocks):
 
@@ -468,9 +471,9 @@ class LATPolicy(tel.TelPolicy):
                 return b
             blocks = core.seq_map( fix_block, blocks)
 
-        if len(self.remove_targets) > 0:
+        if len(self.remove_cmb_targets) > 0:
             blocks = core.seq_filter_out(
-                lambda b: b.name in self.remove_targets,
+                lambda b: b.name in self.remove_cmb_targets,
                 blocks
             )
 
@@ -547,7 +550,8 @@ class LATPolicy(tel.TelPolicy):
         az_branch_override=None,
         allow_partial_override=False,
         drift_override=True,
-        remove_targets=(),
+        remove_cmb_targets=(),
+        remove_cal_targets=(),
         **op_cfg
     ):
         if cal_targets is None:
@@ -574,7 +578,8 @@ class LATPolicy(tel.TelPolicy):
             az_branch_override=az_branch_override,
             allow_partial_override=allow_partial_override,
             drift_override=drift_override,
-            remove_targets=remove_targets,
+            remove_cmb_targets=remove_cmb_targets,
+            remove_cal_targets=remove_cal_targets,
             **op_cfg
         ))
 
@@ -674,6 +679,8 @@ class LATPolicy(tel.TelPolicy):
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
+
+        self.cal_targets = [cal_target for cal_target in self.cal_targets if cal_target.source not in self.remove_cal_targets]
 
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
