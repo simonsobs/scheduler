@@ -41,26 +41,12 @@ def el_to_locked_corotator(el):
     else:
         return el - 120
 
-def boresight_to_corotator(el, boresight):
-    """
-    Calculates the corotator angle from the boresight (-roll) angle
-    when the corotator is locked.  When locked, the corotator angle is
-    0 at 60 deg and 120 deg.
-
-    Parameters
-    ----------
-    el : float
-        The elevation of the boresight in degrees.
-    boresight : float
-        The rotation angle of the boresight (-roll angle) in degrees.
-    """
-    return boresight + el - 60
-
 def corotator_to_boresight(el, corotator):
     """
-    Calculates the boresight angle (-roll) from the corotator angle
-    when the corotator is locked.  When locked, the corotator angle is
-    0 at 60 deg and 120 deg.
+    Calculates the boresight angle (-roll) from the corotator angle.
+    When the corotator is locked, The corotator angle is determined from
+    the function ``el_to_locked_corotator``, otherwise it can be any value
+    between -45 and 45 degrees.
 
     Parameters
     ----------
@@ -70,6 +56,21 @@ def corotator_to_boresight(el, corotator):
         The rotation angle of the corotator in degrees.
     """
     return -(el - 60 - corotator)
+
+def boresight_to_corotator(el, boresight):
+    """
+    Calculates the corotator angle from the boresight (-roll) angle.
+    The boresight angle is determined from the function ``corotator_to_boresight``
+    using a fixed corotator angle or the value from ``el_to_locked_corotator``.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    boresight : float
+        The rotation angle of the boresight (-roll) angle in degrees.
+    """
+    return boresight + el - 60
 
 @dataclass_json
 @dataclass(frozen=True)
