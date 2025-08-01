@@ -26,20 +26,51 @@ logger = u.init_logger(__name__)
 COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 15*u.minute
 
-def boresight_to_corotator(el, boresight):
+def el_to_locked_corotator(el):
+    """
+    Calculates the locked corotator angle for a given elevation.  The
+    corotator angle is set to 0 deg at elevations of 60 deg and 120 deg.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    """
     if el <= 90:
-        el_ref = 60
+        return el - 60
     else:
-        el_ref = 240
-        el = 180 - el
-    return np.round(el - el_ref + boresight, 4)
+        return el - 120
+
 def corotator_to_boresight(el, corotator):
-    if el <= 90:
-        el_ref = 60
-    else:
-        el_ref = 240
-        el = 180 - el
-    return np.round(-1*(el - el_ref - corotator), 4)
+    """
+    Calculates the boresight angle (-roll) from the corotator angle.
+    When the corotator is locked, The corotator angle is determined from
+    the function ``el_to_locked_corotator``, otherwise it can be any value
+    between -45 and 45 degrees.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    corotator : float
+        The rotation angle of the corotator in degrees.
+    """
+    return -(el - 60 - corotator)
+
+def boresight_to_corotator(el, boresight):
+    """
+    Calculates the corotator angle from the boresight (-roll) angle.
+    The boresight angle is determined from the function ``corotator_to_boresight``
+    using a fixed corotator angle or the value from ``el_to_locked_corotator``.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    boresight : float
+        The rotation angle of the boresight (-roll) angle in degrees.
+    """
+    return boresight + el - 60
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -252,12 +283,8 @@ def make_cal_target(
     }
     elevation = float(elevation)
     if corotator is None:
-        if elevation <= 90:
-            boresight = 0
-        else:
-            boresight = 180
-        corotator = boresight_to_corotator(elevation, boresight)
-    boresight = corotator_to_boresight(elevation,float(corotator))
+        corotator = el_to_locked_corotator(elevation)
+    boresight = corotator_to_boresight(elevation, float(corotator))
 
     focus = focus.lower()
 
@@ -483,7 +510,7 @@ class LATPolicy(tel.TelPolicy):
         else: ## run with co-rotator locked to elevation
             blocks = core.seq_map(
                 lambda b: b.replace(
-                    corotator_angle=boresight_to_corotator(b.alt, 0 if b.alt<=90 else 180)
+                    corotator_angle=el_to_locked_corotator(b.alt)
                 ), blocks
             )
 
@@ -659,11 +686,7 @@ class LATPolicy(tel.TelPolicy):
                         cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
 
                 if self.corotator_override is None:
-                    if cal_target.el_bore <= 90:
-                        boresight = 0
-                    else:
-                        boresight = 180
-                    corotator = boresight_to_corotator(cal_target.el_bore, boresight)
+                    corotator = el_to_locked_corotator(cal_target.el_bore)
                     boresight = corotator_to_boresight(cal_target.el_bore, corotator)
                 else:
                     boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
