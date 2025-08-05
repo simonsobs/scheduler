@@ -815,7 +815,14 @@ class SATPolicy(tel.TelPolicy):
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
 
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
-        cal_blocks =  core.seq_sort(core.seq_merge(cal_blocks, wiregrid_blocks, flatten=True))
+
+        for i, wiregrid_block in enumerate(wiregrid_blocks):
+            if core.seq_has_overlap_with_block(cal_blocks, wiregrid_block):
+                logger.warn(f"wiregrid block {wiregrid_block} has overlap with cal scans. removing.")
+                wiregrid_blocks[i] = None
+
+        cal_blocks += wiregrid_blocks
+
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
