@@ -320,7 +320,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
     assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
 
     if block.name == 'wiregrid_gain':
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
     elif block.name == 'wiregrid_time_const':
@@ -328,7 +328,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
         state = state.replace(hwp_dir=not state.hwp_dir)
         direction = "ccw (positive frequency)" if state.hwp_dir \
                 else "cw (negative frequency)"
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.time_constant(num_repeats=1)",
             f"# hwp direction reversed, now spinning " + direction,
             ]
