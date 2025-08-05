@@ -498,6 +498,9 @@ class SATPolicy(tel.TelPolicy):
             is_leaf=lambda x: isinstance(x, list)
         )
 
+        # set the seed for shuffling blocks
+        self.rng = np.random.default_rng(t0.day)
+
         return blocks
 
     def apply(self, blocks: core.BlocksTree) -> core.BlocksTree:
@@ -659,7 +662,7 @@ class SATPolicy(tel.TelPolicy):
         if 'az-range' in self.rules:
             logger.info(f"applying az range rule: {self.rules['az-range']}")
             az_range = ru.AzRange(**self.rules['az-range'])
-            blocks['calibration'] = az_range(blocks['calibration'])
+            blocks = az_range(blocks)
 
         # -----------------------------------------------------------------
         # step 4: tags
