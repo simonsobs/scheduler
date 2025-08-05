@@ -68,38 +68,38 @@ def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
     policy['exclusion_radius'] = sun_policy['min_angle']
 
     sungod = avoidance.SunTracker(policy=policy, base_time=t0.timestamp()-100, compute=True)
-    az_range, el_range = get_traj(az0, az1, alt0, alt1)
 
-    d = sungod.check_trajectory(az_range, el_range, t=t0.timestamp())
-    if d['sun_dist_min'] <= policy['exclusion_radius'] or d['sun_time'] <= policy['min_sun_time']:
-        return t0
-
-    moves = sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=t0.timestamp())
-    move, _ = sungod.select_move(moves)
-
-    if move is None:
-        return t0
-
-    if block0 is not None and hasattr(block0, 'block'):
-        drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
-        az_range, el_range = get_traj(drifted_az, az1, alt0, alt1)
+    if block0 is None or not hasattr(block0, 'block'):
+        az_range, el_range = get_traj(az0, az1, alt0, alt1)
 
         d = sungod.check_trajectory(az_range, el_range, t=t0.timestamp())
         if d['sun_dist_min'] <= policy['exclusion_radius'] or d['sun_time'] <= policy['min_sun_time']:
             return t0
 
-        end_moves = sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=t0.timestamp())
-        end_move, _ = sungod.select_move(end_moves)
+        moves = sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=t0.timestamp())
+        move, _ = sungod.select_move(moves)
 
-        if end_move is None:
+        if move is None:
+            return t0
+        else:
+            return u.ct2dt(u.dt2ct(t0) + move['sun_time'])
+    else:
+        drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
+        az_range, el_range = get_traj(drifted_az, az1, alt0, alt1)
+        d1 = sungod.check_trajectory(az_range, el_range, t=t0.timestamp())
+
+        if (d1['sun_dist_min'] <= policy['exclusion_radius'] or d1['sun_time'] <= policy['min_sun_time']):
             return t0
 
-    if block0 is not None and hasattr(block0, 'az_drift'):
-        return u.ct2dt(u.dt2ct(t0) + min(move['sun_time'], end_move['sun_time']))
-    else:
-        return u.ct2dt(u.dt2ct(t0) + move['sun_time'])
+        moves1 = sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=t0.timestamp())
+        move1, _ = sungod.select_move(moves1)
 
-def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None):
+        if move1 is None:
+            return t0
+        else:
+            return u.ct2dt(u.dt2ct(t0) + move1['sun_time'])
+
+def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None, block0=None):
     # gets a safe parking location for the time range and
     # Do the move in two steps, parking at az_parking (180
     # is most likely to be sun-safe).  Identify a spot that
@@ -113,7 +113,7 @@ def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None):
 
     for trial_alt in trial_alts:
         safet = get_traj_ok_time_socs(az_parking, az_parking, trial_alt, trial_alt,
-                                      t0, sun_policy)
+                                      t0, sun_policy, block0=block0)
         if safet >= t1:
             break
     else:
@@ -175,10 +175,10 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
 
     for az_test in az_range:
         for alt_test in alt_range:
-            logger.info(f"trying to park at ({az_test}, {alt_test})")
+            logger.info(f"trying to park at ({az_test}, {alt_test}) with max_delay={max_delay}")
             # try parking position at (az_test, alt_test)
             parking = get_parking(block0.t1, block1.t0, block0.alt, sun_policy,
-                                    az_parking=az_test, alt_parking=alt_test)
+                                    az_parking=az_test, alt_parking=alt_test, block0=block0)
 
             if parking is not None:
                 az_parking, alt_parking, t0_parking, t1_parking = parking
@@ -200,7 +200,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             shift = 10.
             while t1_parking < block1.t0 + dt.timedelta(seconds=max_delay):
                 ok_until = get_traj_ok_time_socs(
-                    az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy, block1)
+                    az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy)
                 if ok_until >= block1.t0 and ok_until > t1_parking:
                     break
                 t1_parking = t1_parking + dt.timedelta(seconds=shift)
@@ -681,6 +681,10 @@ class BuildOpSimple:
             state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
+        # for how long is this block sun-safe
+        final_safet = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, block.t1,
+                                            self.plan_moves['sun_policy'], block0=block)
+
         initial_state = state
 
         logger.debug(f"--> with constraint: planning {block.name} from {state.curr_time} to {block.t1}")
@@ -758,12 +762,13 @@ class BuildOpSimple:
 
         # have we extended past our constraint?
         post_block_name = "post_block"
-        if state.curr_time > constraint.t1:
+        end_time = min(constraint.t1, final_safet)
+        if state.curr_time > end_time:
             logger.debug(f"---> post-block ops extended past constraint")
             # shrink our block to make space for post-block operation and
             # revert to an old state before retrying
-            delta_t = (state.curr_time - constraint.t1).total_seconds()
-            block = block.shrink_right(state.curr_time - constraint.t1)
+            delta_t = (state.curr_time - end_time).total_seconds()
+            block = block.shrink_right(state.curr_time - end_time)
 
             # if we extends passed the block.t0, there is not enough time to do anything
             # -> revert to initial state
@@ -772,7 +777,7 @@ class BuildOpSimple:
                 logger.info(f"--> skipping because post-block op couldn't fit inside constraint")
                 return initial_state, []
             post_block_name = "post_block (into)"
-            state = state.replace(curr_time=constraint.t1)
+            state = state.replace(curr_time=end_time)
 
         # block has been trimmed properly, so we can just do this
         if len(pre_ops) > 0:
