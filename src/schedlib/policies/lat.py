@@ -24,7 +24,7 @@ from ..instrument import CalTarget
 logger = u.init_logger(__name__)
 
 COROTATOR_DURATION = 1*u.minute
-STIMULATOR_DURATION = 70*u.second
+STIMULATOR_DURATION = 4*u.minute
 
 def boresight_to_corotator(el, boresight):
     if el <= 90:
