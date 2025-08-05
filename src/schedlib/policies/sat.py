@@ -815,7 +815,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
 
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
-        cal_blocks += wiregrid_blocks
+        cal_blocks =  core.seq_sort(core.seq_merge(cal_blocks, wiregrid_blocks, flatten=True))
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
