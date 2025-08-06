@@ -370,7 +370,8 @@ def bias_step(state, block, bias_step_cadence=None):
             last_bias_step_elevation = block.alt,
             last_bias_step_boresight = block.boresight_angle,
         )
-        return state, 60, [ "run.smurf.bias_step(concurrent=True)", ]
+        return state, 60, [ "run.smurf.bias_step(concurrent=True)",
+                            f"run.wait_until('{(state.curr_time + dt.timedelta(seconds=60)).isoformat(timespec='seconds')}')"]
     else:
         return state, 0, []
 
