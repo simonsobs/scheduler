@@ -217,7 +217,6 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             if parking is not None:
                 az_parking, alt_parking, t0_parking, t1_parking = parking
             else:
-                logger.info("parking at ({np.round(az_test,1)}, {alt_test}) is not safe")
                 continue
 
             # you might need to rush away from final position...
