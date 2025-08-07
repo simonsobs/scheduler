@@ -67,7 +67,7 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
 
     return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
-def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy, block0=None, return_all=False):
+def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy, block0=None, return_all=False, check_move=False):
     # Returns the timestamp until which the move from (az0, alt0) to
     # (az1, alt1) is sunsafe using socs sun-safety checker.  If block0 is
     # passed it will check the start and end azimuths of a scan if it can
@@ -80,42 +80,57 @@ def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy, block0=None, ret
     policy['min_sun_time'] = sun_policy['min_sun_time']
     policy['exclusion_radius'] = sun_policy['min_angle']
 
-    sungod = avoidance.SunTracker(policy=policy, base_time=t0.timestamp()-100, compute=True)
+    t0 = t0.timestamp()
 
     if block0 is not None and hasattr(block0, 'block'):
+        subtype = block0.subtype
         block0 = block0.block
+    elif block0 is not None:
+        subtype = block0.subtype
 
-    if block0 is None:
-        az_range, el_range = get_traj(az0, az1, alt0, alt1)
+    if block0 is None or subtype == IRMode.PreBlock:# or subtype == IRMode.InBlock:
+        sungod = avoidance.SunTracker(policy=policy, base_time=t0-100, compute=True)
     else:
-        # drifted az at end of block
+        sungod = avoidance.SunTracker(policy=policy, base_time=block0.t1.timestamp()-100, compute=True)
         drifted_az = block0.az + block0.az_drift * ((block0.t1 - block0.t0).total_seconds())
+        end_az_range = [drifted_az, drifted_az + block0.throw]
+
+        d2 = sungod.check_trajectory(end_az_range, [block0.alt, block0.alt], t=block0.t1.timestamp())
+
+        if d2['sun_dist_start'] >= d2['sun_dist_stop']:
+            az0_new = drifted_az + block0.throw
+        else:
+            az0_new = drifted_az
 
         if az0 == az1:
-            az1 = drifted_az + block0.throw
-        az_range, el_range = get_traj(drifted_az + block0.throw, az1, alt0, alt1)
+            az1 = az0_new
 
-    d = sungod.check_trajectory(az_range, el_range, t=t0.timestamp())
+        az0 = az0_new
+
+        sungod.reset(base_time=t0-100.)
+    az_range, el_range = get_traj(az0, az1, alt0, alt1)
+    d = sungod.check_trajectory(az_range, el_range, t=t0)
 
     if (d['sun_dist_min'] <= policy['exclusion_radius'] or d['sun_time'] <= policy['min_sun_time']):
         if return_all:
-            return t0, d
+            return u.ct2dt(t0), d, az0
         else:
-            return t0
+            return u.ct2dt(t0)
 
-    moves = sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=t0.timestamp())
+    moves = sungod.analyze_paths(az_range[0], el_range[0], az_range[-1], el_range[-1], t=t0)
     move, _ = sungod.select_move(moves)
 
     if move is None:
         if return_all:
-            return t0, move
+            return u.ct2dt(t0), move, az0
         else:
-            return t0
+            return u.ct2dt(t0)
     else:
         if return_all:
-            return u.ct2dt(u.dt2ct(t0) + move['sun_time']), move
+            return u.ct2dt(t0 + move['sun_time']), move, az0
         else:
-            return u.ct2dt(u.dt2ct(t0) + move['sun_time'])
+            return u.ct2dt(t0 + move['sun_time'])
+
 
 def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None, block0=None):
     # gets a safe parking location for the time range and
@@ -131,7 +146,7 @@ def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None, bloc
 
     for trial_alt in trial_alts:
         safet = get_traj_ok_time_socs(az_parking, az_parking, trial_alt, trial_alt,
-                                      t0, sun_policy, block0=block0)
+                                      t0, sun_policy, block0=None)
         if safet >= t1:
             break
     else:
@@ -151,8 +166,8 @@ def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None, bloc
 
 def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay=300):
     # Check the move
-    t1 = get_traj_ok_time_socs(block0.az, block1.az, block0.alt, block1.alt,
-                               block0.t1, sun_policy, block0)
+    t1, _, az_strict = get_traj_ok_time_socs(block0.az, block1.az, block0.alt, block1.alt,
+                               block0.t1, sun_policy, block0, return_all=True)
     # if previous block runs into or beyond next block
     if block0.t1 >= block1.t0:
         # allow for t1 = max(block0.t1, block1.t0) if same source,
@@ -184,11 +199,10 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
         alt_upper[-1] = sun_policy['min_el']
 
     alt_range = np.concatenate((alt_lower, alt_upper))
-
-    drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
+    # drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
 
     # check 180, next, and current azimuths for parking
-    az_range = np.array([drifted_az, block1.az, 180])
+    az_range = np.array([-45, 180, az_strict, block1.az])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
@@ -198,7 +212,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             logger.info(f"trying to park at ({np.round(az_test,1)}, {alt_test}) with max_delay={max_delay}")
             # try parking position at (az_test, alt_test)
             parking = get_parking(block0.t1, block1.t0, block0.alt, sun_policy,
-                                    az_parking=az_test, alt_parking=alt_test, block0=block0)
+                                  az_parking=az_test, alt_parking=alt_test, block0=block0)
 
             if parking is not None:
                 az_parking, alt_parking, t0_parking, t1_parking = parking
@@ -210,7 +224,6 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             move_away_by = get_traj_ok_time_socs(block0.az, az_parking, block0.alt,
                                                  alt_parking, block0.t1, sun_policy,
                                                  block0)
-
             if move_away_by < t0_parking:
                 if move_away_by <= block0.t1:
                     logger.info("move away time <= block0.t1")
@@ -705,8 +718,9 @@ class BuildOpSimple:
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
         # for how long is this block sun-safe
-        _, sun_safe_end = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, block.t1, self.plan_moves['sun_policy'], block0=block, return_all=True)
-        final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe_end['sun_time'])
+        _, sun_safe, _ = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, block.t1,
+                                       self.plan_moves['sun_policy'], block0=block, return_all=True, check_move=False)
+        final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe['sun_time'])
 
         initial_state = state
 
