@@ -202,7 +202,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
     # drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
 
     # check 180, next, and current azimuths for parking
-    az_range = np.array([-45, 180, az_strict, block1.az])
+    az_range = np.array([180, az_strict, block1.az])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
