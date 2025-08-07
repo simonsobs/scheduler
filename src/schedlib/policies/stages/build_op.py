@@ -67,7 +67,7 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
 
     return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
 
-def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy, block0=None, return_all=False, check_move=False):
+def get_traj_ok_time_socs(az0, az1, alt0, alt1, t0, sun_policy, block0=None, return_all=False):
     # Returns the timestamp until which the move from (az0, alt0) to
     # (az1, alt1) is sunsafe using socs sun-safety checker.  If block0 is
     # passed it will check the start and end azimuths of a scan if it can
@@ -223,6 +223,10 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             move_away_by = get_traj_ok_time_socs(block0.az, az_parking, block0.alt,
                                                  alt_parking, block0.t1, sun_policy,
                                                  block0)
+
+            if move_away_by == block0.t1:
+                continue
+
             if move_away_by < t0_parking:
                 if move_away_by <= block0.t1:
                     logger.info("move away time <= block0.t1")
