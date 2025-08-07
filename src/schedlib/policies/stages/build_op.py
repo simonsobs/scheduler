@@ -722,7 +722,7 @@ class BuildOpSimple:
 
         # for how long is this block sun-safe
         _, sun_safe, _ = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, block.t1,
-                                       self.plan_moves['sun_policy'], block0=block, return_all=True, check_move=False)
+                                       self.plan_moves['sun_policy'], block0=block, return_all=True)
         final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe['sun_time'])
 
         initial_state = state
