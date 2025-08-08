@@ -415,7 +415,7 @@ def parse_cal_targets_from_toast_sat(ifile):
             source=source,
             el_bore=row['el'],
             boresight_rot=row['rot'],
-            tag=f"{'uid-'+row['uid'].strip()}",
+            tag=_escape_string(row['uid'].strip()),
             source_direction=_escape_string(row['direction'].strip()).lower(),
             array_query=array_query,
             allow_partial=False,
