@@ -407,6 +407,27 @@ class SATP1Policy(SATPolicy):
                     'ws0,ws5': False,
                 }
             },
+
+            'moon': {
+                0 : {
+                    'ws3,ws2': False,
+                    'ws0,ws1,ws4': False,
+                    'ws5,ws6': False,
+                    'ws1,ws2,ws6': False,
+                },
+                45 : {
+                    'ws3,ws4': False,
+                    'ws2,ws0,ws5': False,
+                    'ws1,ws6': False,
+                    'ws1,ws2,ws3': False,
+                },
+                -45 : {
+                    'ws1,ws2': False,
+                    'ws6,ws0,ws3': False,
+                    'ws4,ws5': False,
+                    'ws1,ws6,ws5': False,
+                },
+            }
         }
 
         if ignore_wafers is not None:
@@ -431,34 +452,40 @@ class SATP1Policy(SATPolicy):
 
             # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
-                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-                if candidates:
-                    block = max(candidates, key=lambda x: x.t0)
-                else:
-                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                if cal_target.boresight_rot is None:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
                     if candidates:
-                        block = min(candidates, key=lambda x: x.t0)
+                        block = max(candidates, key=lambda x: x.t0)
                     else:
-                        raise ValueError("Cannot find nearby block for cal target")
+                        candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                        if candidates:
+                            block = min(candidates, key=lambda x: x.t0)
+                        else:
+                            raise ValueError("Cannot find nearby block for cal target")
 
                 if self.boresight_override is None:
-                    cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
+                    if cal_target.boresight_rot is None:
+                        cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
                 else:
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
 
                 # get wafers to observe based on source name and boresight
-                focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
-                index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
-                # order list so current date's array_query is tried first
-                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                #array_query = list(focus_str.keys())[index]
-                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+                if cal_target.array_query is None:
+                    focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
+                    index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
+                    # order list so current date's array_query is tried first
+                    array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
+                    #array_query = list(focus_str.keys())[index]
+                    cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+
+                    allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
+                else:
+                    allow_partial = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot][cal_target.array_query]
+                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
-                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
                 cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
