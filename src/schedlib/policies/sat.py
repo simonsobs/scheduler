@@ -320,7 +320,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
     assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
 
     if block.name == 'wiregrid_gain':
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
     elif block.name == 'wiregrid_time_const':
@@ -328,7 +328,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
         state = state.replace(hwp_dir=not state.hwp_dir)
         direction = "ccw (positive frequency)" if state.hwp_dir \
                 else "cw (negative frequency)"
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.time_constant(num_repeats=1)",
             f"# hwp direction reversed, now spinning " + direction,
             ]
@@ -815,7 +815,14 @@ class SATPolicy(tel.TelPolicy):
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
 
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
+
+        for i, wiregrid_block in enumerate(wiregrid_blocks):
+            if core.seq_has_overlap_with_block(cal_blocks, wiregrid_block):
+                logger.warn(f"wiregrid block {wiregrid_block} has overlap with cal scans. removing.")
+                wiregrid_blocks[i] = None
+
         cal_blocks += wiregrid_blocks
+
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
