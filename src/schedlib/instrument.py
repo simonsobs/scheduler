@@ -377,53 +377,29 @@ def parse_sequence_from_toast_sat(ifile):
     return blocks
 
 def parse_cal_targets_from_toast_sat(ifile):
-
-    try:
-        columns = ["start_utc", "stop_utc", "target", "direction", "rot",
-            "ra", "dec", "el", "uid"
-        ]
-
-        # count the number of lines to skip
-        with open(ifile) as f:
-            for i, l in enumerate(f):
-                if l.startswith('#'):
-                    continue
-                else:
-                    break
-
-            for j, line in enumerate(f):
-                if j < i:
-                    continue
-                if line.strip() == '':
-                    continue  # skip blank lines
-                fields = [x.strip() for x in line.split('|')]
-                if len(fields) != len(columns):
-                    raise ValueError(
-                        f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
-                    )
-    except:
-        columns = ["start_utc", "stop_utc", "target", "direction",
-            "ra", "dec", "el", "uid"
-        ]
-
+    columns = ["start_utc", "stop_utc", "target", "direction",
+        "ra", "dec", "el", "uid"
+    ]
+    # count the number of lines to skip
+    with open(ifile) as f:
+        for i, l in enumerate(f):
+            if l.startswith('#'):
+                continue
+            else:
+                break
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     cal_targets = []
 
     for _, row in df.iterrows():
-        target_str = _escape_string(row['target'].strip()).lower()
-        target_list = target_str.split(';', 1)
-        source = target_list[0].strip()
-        array_query = target_list[1].strip() if len(target_list) > 1 else None
-
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            source=source,
+            source=_escape_string(row['target'].strip()).lower(),
             el_bore=row['el'],
-            boresight_rot=row['rot'] if 'rot' in row.keys() else None,
-            tag=_escape_string(row['uid'].strip()),
+            boresight_rot=None,
+            tag=f"{'uid-'+row['uid'].strip()}",
             source_direction=_escape_string(row['direction'].strip()).lower(),
-            array_query=array_query,
+            array_query=None,
             allow_partial=False,
             from_table=True
         )
