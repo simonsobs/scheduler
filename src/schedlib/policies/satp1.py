@@ -185,6 +185,8 @@ def make_config(
     max_cmb_scan_duration,
     cal_targets,
     min_hwp_el=None,
+    max_hwp_el=None,
+    force_max_hwp_el=False,
     az_stow=None,
     el_stow=None,
     az_offset=0.,
@@ -239,8 +241,13 @@ def make_config(
         'az_range': [-45, 405]
     }
 
+    if force_max_hwp_el and max_hwp_el is not None:
+        max_el  = max_hwp_el
+    else:
+        max_el = 90
+
     el_range = {
-        'el_range': [40, 90]
+        'el_range': [40, max_el]
     }
 
     config = {
@@ -269,6 +276,7 @@ def make_config(
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'min_hwp_el': min_hwp_el,
+        'max_hwp_el': max_hwp_el,
         'max_cmb_scan_duration': max_cmb_scan_duration,
         'az_branch_override': az_branch_override,
         'allow_partial_override': allow_partial_override,
@@ -310,6 +318,8 @@ class SATP1Policy(SATPolicy):
         max_cmb_scan_duration=1*u.hour,
         cal_targets=None,
         min_hwp_el=48,
+        max_hwp_el=60,
+        force_max_hwp_el=False,
         az_stow=None,
         el_stow=None,
         az_offset=0.,
@@ -340,6 +350,8 @@ class SATP1Policy(SATPolicy):
             max_cmb_scan_duration,
             cal_targets,
             min_hwp_el,
+            max_hwp_el,
+            force_max_hwp_el,
             az_stow,
             el_stow,
             az_offset,

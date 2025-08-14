@@ -886,7 +886,7 @@ class LATPolicy(tel.TelPolicy):
                 f"of {alt_limits[0]} degrees."
                 )
 
-                assert block.alt < alt_limits[1], (
+                assert block.alt <= alt_limits[1], (
                 f"Block {block} is above the maximum elevation "
                 f"of {alt_limits[1]} degrees."
                 )

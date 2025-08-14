@@ -334,14 +334,14 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
             ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
     duration = 0
     cmd = []
 
-    if state.hwp_spinning and el < min_el:
+    if state.hwp_spinning and (el < min_el or el > max_el):
         state = state.replace(hwp_spinning=False)
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
@@ -378,6 +378,7 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     disable_hwp: bool = False
     min_hwp_el: float = 48 # deg
+    max_hwp_el: float = 60 # deg
     boresight_override: Optional[float] = None
     wiregrid_az: float = 180
     wiregrid_el: float = 48
@@ -728,7 +729,7 @@ class SATPolicy(tel.TelPolicy):
                 f"of {alt_limits[0]} degrees."
                 )
 
-                assert block.alt < alt_limits[1], (
+                assert block.alt <= alt_limits[1], (
                 f"Block {block} is above the maximum elevation "
                 f"of {alt_limits[1]} degrees."
                 )

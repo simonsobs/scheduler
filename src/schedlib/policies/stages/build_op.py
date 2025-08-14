@@ -245,17 +245,29 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
     alt_step = 4
     if block0.alt <= 90:
         alt_lower = np.arange(block0.alt, sun_policy['min_el'] - alt_step, -alt_step)
-        alt_lower[-1] = sun_policy['min_el']
+        if len(alt_lower) > 0:
+            alt_lower[-1] = sun_policy['min_el']
+        else:
+            alt_lower = [sun_policy['min_el']]
     else:
         alt_lower = np.arange(block0.alt, el_limits[-1] + alt_step, alt_step)
-        alt_lower[-1] = el_limits[-1]
+        if len(alt_lower) > 0:
+            alt_lower[-1] = el_limits[-1]
+        else:
+            alt_lower = [el_limits[-1]]
 
     if block0.alt <= 90:
         alt_upper = np.arange(block0.alt + alt_step, el_limits[-1] + alt_step, alt_step)
-        alt_upper[-1] = el_limits[-1]
+        if len(alt_upper) > 0:
+            alt_upper[-1] = el_limits[-1]
+        else:
+            alt_upper = [el_limits[-1]]
     else:
         alt_upper = np.arange(block0.alt, sun_policy['min_el'] - alt_step, -alt_step)
-        alt_upper[-1] = sun_policy['min_el']
+        if len(alt_upper) > 0:
+            alt_upper[-1] = sun_policy['min_el']
+        else:
+            alt_upper = [sun_policy['min_el']]
 
     alt_range = np.concatenate((alt_lower, alt_upper))
     # drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
@@ -931,6 +943,8 @@ class BuildOpSimple:
                 # add min hwp elevation if present
                 if hasattr(self.policy_config, 'min_hwp_el'):
                     op_cfgs[0]['min_el'] = self.policy_config.min_hwp_el
+                if hasattr(self.policy_config, 'max_hwp_el'):
+                    op_cfgs[0]['max_el'] = self.policy_config.max_hwp_el
                 if hasattr(self.policy_config, 'brake_hwp'):
                     op_cfgs[0]['brake_hwp'] = self.policy_config.brake_hwp
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
