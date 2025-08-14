@@ -424,18 +424,23 @@ class SATP3Policy(SATPolicy):
                         raise ValueError("Cannot find nearby block")
 
                 # get wafers to observe based on date
-                focus_str = array_focus
-                index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
-                # order list so current date's array_query is tried first
-                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                #array_query = list(focus_str.keys())[index]
-                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+                if cal_target.array_query is None:
+                    # get wafers to observe based on date
+                    focus_str = array_focus
+                    index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
+                    # order list so current date's array_query is tried first
+                    array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
+                    #array_query = list(focus_str.keys())[index]
+                    cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+
+                    allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
+                else:
+                    allow_partial = False
+
+                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
-
-                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
 
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
