@@ -320,7 +320,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
     assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
 
     if block.name == 'wiregrid_gain':
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
     elif block.name == 'wiregrid_time_const':
@@ -328,20 +328,20 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
         state = state.replace(hwp_dir=not state.hwp_dir)
         direction = "ccw (positive frequency)" if state.hwp_dir \
                 else "cw (negative frequency)"
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.time_constant(num_repeats=1)",
             f"# hwp direction reversed, now spinning " + direction,
             ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
     duration = 0
     cmd = []
 
-    if state.hwp_spinning and el < min_el:
+    if state.hwp_spinning and (el < min_el or el > max_el):
         state = state.replace(hwp_spinning=False)
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
@@ -378,6 +378,7 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     disable_hwp: bool = False
     min_hwp_el: float = 48 # deg
+    max_hwp_el: float = 60 # deg
     boresight_override: Optional[float] = None
     wiregrid_az: float = 180
     wiregrid_el: float = 48
@@ -728,7 +729,7 @@ class SATPolicy(tel.TelPolicy):
                 f"of {alt_limits[0]} degrees."
                 )
 
-                assert block.alt < alt_limits[1], (
+                assert block.alt <= alt_limits[1], (
                 f"Block {block} is above the maximum elevation "
                 f"of {alt_limits[1]} degrees."
                 )
@@ -815,7 +816,14 @@ class SATPolicy(tel.TelPolicy):
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
 
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
+
+        for i, wiregrid_block in enumerate(wiregrid_blocks):
+            if core.seq_has_overlap_with_block(cal_blocks, wiregrid_block):
+                logger.warn(f"wiregrid block {wiregrid_block} has overlap with cal scans. removing.")
+                wiregrid_blocks[i] = None
+
         cal_blocks += wiregrid_blocks
+
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
