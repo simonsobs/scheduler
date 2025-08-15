@@ -163,12 +163,15 @@ def get_traj_ok_time_socs_move(az0, az1, alt0, alt1, t0, sun_policy, block0=None
         d = sungod.check_trajectory(az_range, el_range, t=t0)
 
         az_range2, el_range2 = get_traj(drifted_az + block0.throw, az1, alt0, alt1)
-        d2 = sungod.check_trajectory(az_range, el_range, t=t0)
+        d2 = sungod.check_trajectory(az_range2, el_range2, t=t0)
 
         if d2['sun_dist_min'] < d['sun_dist_min'] or d2['sun_time'] < d['sun_time']:
             d = d2
             az_range = az_range2
             el_range = el_range2
+            az0 = drifted_az + block0.throw
+        else:
+            az0 = drifted_az
 
     if (d['sun_dist_min'] <= policy['exclusion_radius'] or d['sun_time'] <= policy['min_sun_time']):
         if return_all:
