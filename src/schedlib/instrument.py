@@ -76,6 +76,8 @@ class ScanBlock(core.NamedBlock):
     az_drift: float = 0. # deg / s
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
+    el_freq: float = None
+    scan_type: int = 1 # scan type (1, 2, or 3)
     az_offset: float = 0. # deg
     alt_offset: float = 0. # deg
     boresight_angle: Optional[float] = None # deg
@@ -472,7 +474,7 @@ def parse_sequence_from_toast_lat(ifile):
     """
 
     columns = [
-        "start_utc", "stop_utc", "target", "direction", "el", "az_min", "az_max", "uid"
+        "start_utc", "stop_utc", "target", "direction", "el", "az_min", "az_max", "scan_type", "uid"
     ]
     # count the number of lines to skip
     with open(ifile) as f:
@@ -496,6 +498,7 @@ def parse_sequence_from_toast_lat(ifile):
             az=row['az_min'],
             throw=np.abs(row['az_max'] - row['az_min']),
             priority=1, #row['#'],
+            scan_type=row["scan_type"],
             tag=_escape_string(
                 str(row['target']).strip()+","+
                 "uid-"+str(int(row['uid'])).strip()
