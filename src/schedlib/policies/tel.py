@@ -276,14 +276,16 @@ def det_setup(
 def cmb_scan(state, block):
     if (
         block.az_speed != state.az_speed_now or
-        block.az_accel != state.az_accel_now
+        block.az_accel != state.az_accel_now or
+        block.el_freq != state.el_freq_now
     ):
         commands = [
-            f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
+            f"run.acu.set_scan_params(az_speed={block.az_speed}, az_accel={block.az_accel}, el_freq={block.el_freq})"
         ]
         state = state.replace(
             az_speed_now=block.az_speed,
-            az_accel_now=block.az_accel
+            az_accel_now=block.az_accel,
+            el_freq_now=block.el_freq
         )
     else:
         commands = []
@@ -294,6 +296,7 @@ def cmb_scan(state, block):
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    width={round(block.throw,3)}, az_drift=0,",
+        f"    type={block.scan_type},",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
         ")",
@@ -306,14 +309,16 @@ def source_scan(state, block):
         return state, 0, ["# too late, don't scan"]
     if (
         block.az_speed != state.az_speed_now or
-        block.az_accel != state.az_accel_now
+        block.az_accel != state.az_accel_now or
+        block.el_freq != state.el_freq_now
     ):
         commands = [
-            f"run.acu.set_scan_params({block.az_speed}, {block.az_accel})"
+            f"run.acu.set_scan_params(az_speed={block.az_speed}, az_accel={block.az_accel}, el_freq={block.el_freq})"
         ]
         state = state.replace(
             az_speed_now=block.az_speed,
-            az_accel_now=block.az_accel
+            az_accel_now=block.az_accel,
+            el_freq_now=block.el_freq
         )
     else:
         commands = []
@@ -413,6 +418,7 @@ class TelPolicy:
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
+    el_freq: float = None
     az_offset: float = 0.
     el_offset: float = 0.
     iv_cadence : float = 4 * u.hour
