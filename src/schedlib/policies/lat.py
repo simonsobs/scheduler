@@ -691,8 +691,8 @@ class LATPolicy(tel.TelPolicy):
                         cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
 
                 if self.corotator_override is None:
-                    corotator = el_to_locked_corotator(cal_target.el_bore)
-                    boresight = corotator_to_boresight(cal_target.el_bore, corotator)
+                    corotator = el_to_locked_corotator(cal_targets[i].el_bore)
+                    boresight = corotator_to_boresight(cal_targets[i].el_bore, corotator)
                 else:
                     boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
