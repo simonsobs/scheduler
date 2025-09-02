@@ -57,9 +57,7 @@ class AzRange(core.MappableRule):
         def get_best_az(az, throw, az_limit, wrap=360):
             # see if wrapping around helps
             az_best = az
-            print(np.arange(az, az_limit, wrap))
             for az_ in np.arange(az, az_limit, wrap):
-                print(az_, is_good(az_, throw))
                 # ideal case: find full coverage after 2pi wrapping
                 if is_good(az_, throw):
                     return block.replace(az=az_)
