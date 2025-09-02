@@ -1012,6 +1012,7 @@ class PlanMoves:
                 az_unwrap = find_unwrap(b.az, az_limits=self.az_limits)[0]
                 logger.info(f"-> unwrapping az: {b.az} -> {az_unwrap}")
                 seq_ += [b.replace(az=az_unwrap)]
+                seq_[-1].replace(block=b.block.replace(az=az_unwrap))
             else:
                 seq_ += [b]
         seq = seq_
