@@ -1000,11 +1000,19 @@ class PlanMoves:
         seq_ = []
         for b in seq:
             drifted_az = b.az + b.block.throw + b.block.az_drift * ((b.t1 - b.t0).total_seconds())
-            if b.az < self.az_limits[0] or b.az > self.az_limits[1] or (drifted_az < self.az_limits[0]) or (drifted_az > self.az_limits[1]):
+            if (
+                b.az < self.az_limits[0]
+                or b.az > self.az_limits[1]
+                or drifted_az < self.az_limits[0]
+                or drifted_az > self.az_limits[1]
+                or b.az + b.block.throw < self.az_limits[0]
+                or b.az + b.block.throw > self.az_limits[1]
+            ):
                 logger.info(f"block az ({b.az}) outside limits, unwrapping...")
                 az_unwrap = find_unwrap(b.az, az_limits=self.az_limits)[0]
                 logger.info(f"-> unwrapping az: {b.az} -> {az_unwrap}")
                 seq_ += [b.replace(az=az_unwrap)]
+                seq_[-1].replace(block=b.block.replace(az=az_unwrap))
             else:
                 seq_ += [b]
         seq = seq_
