@@ -7,11 +7,11 @@ from . import core, source as src, instrument as inst, utils
 
 @dataclass(frozen=True)
 class AltRange(core.MappableRule):
-    """Restrict the altitude range of source blocks. 
+    """Restrict the altitude range of source blocks.
 
     Parameters
     ----------
-    alt_range : Tuple[float, float]. min and max altitude in degrees 
+    alt_range : Tuple[float, float]. min and max altitude in degrees
     """
     alt_range: Tuple[float, float]
 
@@ -26,10 +26,10 @@ class AzRange(core.MappableRule):
     """Restrict the azimuth range of scan blocks
 
     TODO: fix drift
-    
+
     Parameters
     ----------
-    az_range : Tuple[float, float]. min and max azimuth in degrees 
+    az_range : Tuple[float, float]. min and max azimuth in degrees
     trim: bool. whether to trim the block if it is out of range
 
     """
@@ -54,87 +54,47 @@ class AzRange(core.MappableRule):
             else:
                 return min(self.az_range[1], az) - max(self.az_range[0], az + throw)
 
+        def get_best_az(az, throw, az_limit, wrap=360):
+            # see if wrapping around helps
+            az_best = az
+            print(np.arange(az, az_limit, wrap))
+            for az_ in np.arange(az, az_limit, wrap):
+                print(az_, is_good(az_, throw))
+                # ideal case: find full coverage after 2pi wrapping
+                if is_good(az_, throw):
+                    return block.replace(az=az_)
+                if get_coverage(az_, throw) > get_coverage(az, throw):
+                    az_best = az_
+
+            # when we get here, it means we didn't find a full coverage,
+            # abort if we don't want to trim
+            if not self.trim:
+                return None
+
+            # if we are allowed to trim, use the best coverage
+            return block.replace(az=max(az_best, az_limit), throw=get_coverage(az_best, throw))
+
         # get az limits
         dt = utils.dt2ct(block.t1) - utils.dt2ct(block.t0)
-        az, throw = block.az,  block.throw + dt * block.az_drift
+        az, throw, drifted_throw = block.az, block.throw, block.throw + dt * block.az_drift
 
-        if is_good(az, throw): return block 
+        if is_good(az, throw) and is_good(az, drifted_throw): return block
 
         if az < self.az_range[0]:
-            # see if wrapping around helps
-            az_best = az
-            for az_ in np.arange(az, self.az_range[1], 360):
-                # ideal case: find full coverage after 2pi wrapping
-                if is_good(az_, throw):
-                    return block.replace(az=az_)
-                if get_coverage(az_, throw) > get_coverage(az, throw):
-                    az_best = az_
-
-            # when we get here, it means we didn't find a full coverage,
-            # abort if we don't want to trim
-            if not self.trim:
-                return None
-
-            # if we are allowed to trim, use the best coverage
-            return block.replace(az=max(az_best, self.az_range[0]), throw=get_coverage(az_best, throw))
-
+            return get_best_az(az, drifted_throw, az_limit=self.az_range[1], wrap=360)
         elif az > self.az_range[1]:
-            # see if wrapping around helps
-            az_best = az
-            for az_ in np.arange(az, self.az_range[0], -360):
-                # ideal case: find full coverage after 2pi wrapping
-                if is_good(az_, throw):
-                    return block.replace(az=az_)
-                if get_coverage(az_, throw) > get_coverage(az, throw):
-                    az_best = az_
-
-            # when we get here, it means we didn't find a full coverage,
-            # abort if we don't want to trim
-            if not self.trim:
-                return None
-
-            # if we are allowed to trim, use the best coverage
-            return block.replace(az=min(az_best, self.az_range[1]), throw=get_coverage(az_best, throw))
-
-        elif (az + throw) > self.az_range[1]:
-            # see if wrapping around helps
-            az_best = az
-            for az_ in np.arange(az, self.az_range[0], -360):
-                # ideal case: find full coverage after 2pi wrapping
-                if is_good(az_, throw):
-                    return block.replace(az=az_)
-                if get_coverage(az_, throw) > get_coverage(az, throw):
-                    az_best = az_
-
-            # when we get here, it means we didn't find a full coverage,
-            # abort if we don't want to trim
-            if not self.trim:
-                return None
-
-            # if we are allowed to trim, use the best coverage
-            return block.replace(az=max(az_best, self.az_range[0]), throw=get_coverage(az_best, throw))
-
-        elif (az + throw) < self.az_range[0]:
-            # see if wrapping around helps
-            az_best = az
-            for az_ in np.arange(az, self.az_range[1], 360):
-                # ideal case: find full coverage after 2pi wrapping
-                if is_good(az_, throw):
-                    return block.replace(az=az_)
-                if get_coverage(az_, throw) > get_coverage(az, throw):
-                    az_best = az_
-
-            # when we get here, it means we didn't find a full coverage,
-            # abort if we don't want to trim
-            if not self.trim:
-                return None
-
-            # if we are allowed to trim, use the best coverage
-            return block.replace(az=min(az_best, self.az_range[1]), throw=get_coverage(az_best, throw))
-
+            return get_best_az(az, drifted_throw, az_limit=self.az_range[0], wrap=-360)
+        elif az + drifted_throw < self.az_range[0]:
+            return get_best_az(az, drifted_throw, az_limit=self.az_range[1], wrap=360)
+        elif az + drifted_throw > self.az_range[1]:
+            return get_best_az(az, drifted_throw, az_limit=self.az_range[0], wrap=-360)
+        elif az + throw < self.az_range[0]:
+            return get_best_az(az, throw, az_limit=self.az_range[1], wrap=360)
+        elif az + throw > self.az_range[1]:
+            return get_best_az(az, throw, az_limit=self.az_range[0], wrap=-360)
         else:
             raise RuntimeError("This should not happen")
-            
+
 @dataclass(frozen=True)
 class DayMod(core.GreenRule):
     """Restrict the blocks to a specific day of the week.
@@ -142,7 +102,7 @@ class DayMod(core.GreenRule):
 
     Parameters
     ----------
-    day: int 
+    day: int
         day index of the interval to repeat
     day_mod: int
         the interval in days to repeat
@@ -161,7 +121,7 @@ class DayMod(core.GreenRule):
 @dataclass(frozen=True)
 class DriftMode(core.MappableRule):
     """Restrict the blocks to a specific drift mode.
-    
+
     Parameters
     ----------
     mode : str. drift mode ['rising', 'setting', 'both']
@@ -177,11 +137,11 @@ class DriftMode(core.MappableRule):
 @dataclass(frozen=True)
 class MinDuration(core.GreenRule):
     """Restrict the minimum block size.
-    
+
     Parameters
     ----------
     min_duration : int. minimum duration in seconds
-    
+
     """
     min_duration: int  # in seconds
     def apply(self, blocks: core.BlocksTree) -> core.BlocksTree:
@@ -282,7 +242,7 @@ class MakeSourcePlan(core.MappableRule):
         blocks = []
         for i_l, i_r in ranges:
             block = src.ObservingWindow(
-                t0=utils.ct2dt(t[i_l]), t1=utils.ct2dt(t[i_r-1]), 
+                t0=utils.ct2dt(t[i_l]), t1=utils.ct2dt(t[i_r-1]),
                 name=block.name, mode=block.mode,
                 t_start=t[i_l:i_r], obs_length=obs_length[i_l:i_r],
                 az_bore=az_bore[i_l:i_r], alt_bore=alt_bore[i_l:i_r],
@@ -397,11 +357,11 @@ class MakeSourceScan(core.MappableRule):
 class MakeCESourceScan(core.MappableRule):
     """Transform SourceBlock into fixed-elevation ScanBlocks that support
     az drift mode.
-   
+
     Parameters
     ----------
     array_info : dict. array information, contains 'center' and 'radius' keys
-    el_bore : float. elevation of the boresight in degrees 
+    el_bore : float. elevation of the boresight in degrees
     drift : bool. whether to enable drift mode
     allow_partial : bool. whether to allow partial scans
 
@@ -414,7 +374,7 @@ class MakeCESourceScan(core.MappableRule):
     az_branch: Optional[float] = None
     source_direction: Optional[str] = None
 
-    def apply_block(self, block: core.Block) -> core.Block: 
+    def apply_block(self, block: core.Block) -> core.Block:
         if isinstance(block, src.SourceBlock):
             # if drift mode is enabled, we pass in a v_az that's None
             # so that it will be automatically calculated. Otherwise, we pass
@@ -423,7 +383,7 @@ class MakeCESourceScan(core.MappableRule):
             if self.source_direction is not None:
                 if self.source_direction != block.mode:
                     return None
-            return src.make_source_ces(block, array_info=self.array_info, 
+            return src.make_source_ces(block, array_info=self.array_info,
                                        allow_partial=self.allow_partial,
                                        el_bore=self.el_bore, v_az=v_az,
                                        boresight_rot=self.boresight_rot,
@@ -437,7 +397,7 @@ class MakeCESourceScan(core.MappableRule):
         geometries = config.pop('geometries', {})
         array_info = inst.array_info_from_query(geometries, query)
         return cls(array_info=array_info, **config)
-    
+
 # global registry of rules
 RULES = {
     'alt-range': AltRange,
