@@ -628,28 +628,7 @@ class SATPolicy(tel.TelPolicy):
                 # don't test other array queries if we have one that works
                 break
 
-        unique_cal_blocks = []
-        for i, cal_block in enumerate(cal_blocks):
-            if not saved_cal_targets[i].from_table:
-                unique_cal_blocks.append(cal_block)
-            else:
-                # whether to keep rising or setting blocks for current week
-                rising = cal_block.t0.isocalendar()[1] % 2 == 0
-                other_cal_blocks = [other_cal_block for j, other_cal_block in enumerate(cal_blocks) if j!=i]
-                other_saved_cal_targets = [other_saved_cal_target for j, other_saved_cal_target in enumerate(saved_cal_targets) if j!=i]
-
-                # if any blocks has same source and array query
-                if any(other_cal_block.name==cal_block.name for other_cal_block in other_cal_blocks) and \
-                    any(other_saved_cal_target.array_query==saved_cal_targets[i].array_query for other_saved_cal_target in other_saved_cal_targets):
-                    # add if source direction matches week's direction (if not it will be skipped)
-                    if (saved_cal_targets[i].source_direction == "rising" and rising) or \
-                    (saved_cal_targets[i].source_direction == "setting" and not rising):
-                        unique_cal_blocks.append(cal_block)
-                # if no other similar blocks schedule it
-                else:
-                    unique_cal_blocks.append(cal_block)
-
-        blocks['calibration'] = unique_cal_blocks + blocks['calibration']['wiregrid']
+        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 
