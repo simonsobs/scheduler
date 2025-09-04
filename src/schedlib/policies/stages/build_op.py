@@ -228,7 +228,7 @@ def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None, bloc
 
 def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay=300, alt_step=4):
     # Check the move
-    t1, _, az_strict = get_traj_ok_time_socs_move(block0.az, block1.az, block0.alt, block1.alt,
+    t1, _, az_strict = get_traj_ok_time_socs_scan(block0.az, block1.az, block0.alt, block1.alt,
                                block0.t1, sun_policy, block0, return_all=True)
 
     # if previous block runs into or beyond next block
@@ -279,7 +279,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
         az_range = np.array([180, az_strict, block1.az])
     else:
         # check a wide range of parking positions of max_delay = 0
-        az_range = np.array([180, az_strict, block1.az, 0, 90, 270])
+        az_range = np.array([180, az_strict, block1.az, 90, 270])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
@@ -298,7 +298,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                 continue
 
             # you might need to rush away from final position...
-            move_away_by, move, _ = get_traj_ok_time_socs_move(block0.az, az_parking, block0.alt,
+            move_away_by, move, _ = get_traj_ok_time_socs_scan(block0.az, az_parking, block0.alt,
                     alt_parking, block0.t1, sun_policy, block0=block0, return_all=True)
 
             if (
@@ -316,7 +316,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                 # You might need to wait until the last second before going to new pos
                 shift = 10.
                 while t1_parking < block1.t0 + dt.timedelta(seconds=max_delay):
-                    ok_until, move, _ = get_traj_ok_time_socs_move(
+                    ok_until, move, _ = get_traj_ok_time_socs_scan(
                         az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy, return_all=True)
                     if (
                         ok_until >= block1.t0
@@ -330,7 +330,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     logger.info(f"reached max delay")
                     continue
             else:
-                ok_until, move, _ = get_traj_ok_time_socs_move(
+                ok_until, move, _ = get_traj_ok_time_socs_scan(
                     az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy, return_all=True)
 
                 if (
