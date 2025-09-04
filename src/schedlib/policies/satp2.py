@@ -289,7 +289,7 @@ def make_config(
                 'plan_moves': {
                     'stow_position': stow_position,
                     'sun_policy': sun_policy,
-                    'az_step': 0.5,
+                    'alt_step': 4,
                     'az_limits': az_range['az_range'],
                     'el_limits': el_range['el_range'],
                 }

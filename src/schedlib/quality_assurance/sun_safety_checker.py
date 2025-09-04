@@ -58,7 +58,7 @@ class SunCrawler:
         self.cur_az = 0
         self.cur_el = 0
 
-        self.MAX_SUN_MAP_TDELTA = 6.*3600.
+        self.MAX_SUN_MAP_TDELTA = 1.*3600.
 
         self._get_initial_pos()
         self._generate_sun_solution()
