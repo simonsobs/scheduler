@@ -226,10 +226,11 @@ def get_parking(t0, t1, alt0, sun_policy, az_parking=180, alt_parking=None, bloc
     return (az_parking, trial_alt, t0_parking, t1_parking)
 
 
-def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay=300):
+def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay=300, alt_step=4):
     # Check the move
     t1, _, az_strict = get_traj_ok_time_socs_move(block0.az, block1.az, block0.alt, block1.alt,
                                block0.t1, sun_policy, block0, return_all=True)
+
     # if previous block runs into or beyond next block
     if block0.t1 >= block1.t0:
         # allow for t1 = max(block0.t1, block1.t0) if same source,
@@ -245,7 +246,6 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     az_offset=block1.az_offset, alt_offset=block1.alt_offset)]
 
     # elevations to check. search in order of cur_el -> min_el then from cur_el -> max_el
-    alt_step = 4
     if block0.alt <= 90:
         alt_lower = np.arange(block0.alt, sun_policy['min_el'] - alt_step, -alt_step)
         if len(alt_lower) > 0:
@@ -273,10 +273,13 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             alt_upper = [sun_policy['min_el']]
 
     alt_range = np.concatenate((alt_lower, alt_upper))
-    # drifted_az = block0.block.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
 
-    # check 180, next, and current azimuths for parking
-    az_range = np.array([180, az_strict, block1.az])
+    if max_delay > 0:
+        # check 180, next, and current azimuths for parking if max delay > 0 due to computation time
+        az_range = np.array([180, az_strict, block1.az])
+    else:
+        # check a wide range of parking positions of max_delay = 0
+        az_range = np.array([180, az_strict, block1.az, 0, 90, 270])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
@@ -291,30 +294,52 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             if parking is not None:
                 az_parking, alt_parking, t0_parking, t1_parking = parking
             else:
+                logger.info("({np.round(az_test,1)}, {alt_test}) not safe")
                 continue
 
             # you might need to rush away from final position...
-            move_away_by = get_traj_ok_time_socs_move(block0.az, az_parking, block0.alt,
-                    alt_parking, block0.t1, sun_policy, block0=block0)
+            move_away_by, move, _ = get_traj_ok_time_socs_move(block0.az, az_parking, block0.alt,
+                    alt_parking, block0.t1, sun_policy, block0=block0, return_all=True)
 
-            if move_away_by <= block0.t1:# + dt.timedelta(seconds=60):
-                logger.info("move away time <= block0.t1")
+            if (
+                move is None
+                or move['sun_time'] <= sun_policy['min_sun_time']
+                or move['sun_dist_min'] <= sun_policy['min_angle']
+            ):
+                logger.info("no move to gap")
                 continue
 
             if move_away_by < t0_parking:
                 t0_parking = move_away_by + (move_away_by - block0.t1) / 2
 
-            # You might need to wait until the last second before going to new pos
-            shift = 10.
-            while t1_parking < block1.t0 + dt.timedelta(seconds=max_delay):
-                ok_until = get_traj_ok_time_socs_move(
-                    az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy)
-                if ok_until >= block1.t0 and ok_until > t1_parking:
-                    break
-                t1_parking = t1_parking + dt.timedelta(seconds=shift)
+            if max_delay > 0:
+                # You might need to wait until the last second before going to new pos
+                shift = 10.
+                while t1_parking < block1.t0 + dt.timedelta(seconds=max_delay):
+                    ok_until, move, _ = get_traj_ok_time_socs_move(
+                        az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy, return_all=True)
+                    if (
+                        ok_until >= block1.t0
+                        and move is not None
+                        and move['sun_time'] > sun_policy['min_sun_time']
+                        and move['sun_dist_min'] > sun_policy['min_angle']
+                    ):
+                        break
+                    t1_parking = t1_parking + dt.timedelta(seconds=shift)
+                else:
+                    logger.info(f"reached max delay")
+                    continue
             else:
-                logger.info(f"reached max delay")
-                continue
+                ok_until, move, _ = get_traj_ok_time_socs_move(
+                    az_parking, block1.az, alt_parking, block1.alt, t1_parking, sun_policy, return_all=True)
+
+                if (
+                    ok_until < block1.t0
+                    or move is None
+                    or move['sun_time'] <= sun_policy['min_sun_time']
+                    or move['sun_dist_min'] <= sun_policy['min_angle']
+                ):
+                    continue
 
             if t1_parking > block1.t0:
                 logger.warning("sun-safe parking delays move to next field by "
@@ -987,7 +1012,7 @@ class PlanMoves:
     sun_policy: Dict[str, Any]
     stow_position: Dict[str, Any]
     el_limits: Tuple[float, float]
-    az_step: float = 1
+    alt_step: float = 4
     az_limits: Tuple[float, float] = (-90, 450)
 
     def apply(self, seq, t_end):
@@ -1021,11 +1046,11 @@ class PlanMoves:
         seq_ = [seq[0]]
         for i in range(1, len(seq)):
             gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
-                                 is_end=(i==(len(seq)-1)), max_delay=0)
+                                 is_end=(i==(len(seq)-1)), max_delay=0, alt_step=self.alt_step)
             if gaps is None:
                 # repeat with 20 minute delay
                 gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
-                                is_end=(i==(len(seq)-1)), max_delay=1200)
+                                is_end=(i==(len(seq)-1)), max_delay=1200, alt_step=self.alt_step)
             if gaps is None:
                 raise ValueError(f"No sun-safe gap found between {seq[i-1]} and {seq[i]}")
             seq_.extend(gaps)
