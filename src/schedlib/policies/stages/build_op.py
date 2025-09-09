@@ -279,7 +279,9 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
         az_range = np.array([180, az_strict, block1.az])
     else:
         # check a wide range of parking positions of max_delay = 0
-        az_range = np.array([180, az_strict, block1.az, 90, 270])
+        drifted_az = block0.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
+        az1 = drifted_az if az_strict != drifted_az else block0.az
+        az_range = np.array([180, az_strict, az1, block1.az, 90, 270])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
@@ -294,7 +296,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
             if parking is not None:
                 az_parking, alt_parking, t0_parking, t1_parking = parking
             else:
-                logger.info("({np.round(az_test,1)}, {alt_test}) not safe")
+                logger.info(f"parking at ({np.round(az_test,1)}, {alt_test}) not safe")
                 continue
 
             # you might need to rush away from final position...
@@ -327,7 +329,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                         break
                     t1_parking = t1_parking + dt.timedelta(seconds=shift)
                 else:
-                    logger.info(f"reached max delay")
+                    logger.info(f"reached max delay={max_delay}")
                     continue
             else:
                 ok_until, move, _ = get_traj_ok_time_socs_scan(
@@ -339,6 +341,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     or move['sun_time'] <= sun_policy['min_sun_time']
                     or move['sun_dist_min'] <= sun_policy['min_angle']
                 ):
+                    logger.info(f"move from gap to block1 not safe with max_delay={max_delay}")
                     continue
 
             if t1_parking > block1.t0:
@@ -441,7 +444,23 @@ class SunSafeError(Exception):
     def __str__(self):
         base_message = super().__str__()
         if self.block0 and self.block1:
-            return f"{base_message} (Block: {self.block} -> {self.block1})"
+            return f"{base_message} (Block: {self.block0} -> {self.block1})"
+        elif self.block0:
+            return f"{base_message} (Block: {self.block0})"
+        else:
+            return base_message
+
+# custom exceptions
+class NoGapError(Exception):
+    def __init__(self, message, block0=None, block1=None):
+        super().__init__(message)
+        self.block0 = block0
+        self.block1 = block1
+
+    def __str__(self):
+        base_message = super().__str__()
+        if self.block0 and self.block1:
+            return f"{base_message} (Block: {self.block0} -> {self.block1})"
         elif self.block0:
             return f"{base_message} (Block: {self.block0})"
         else:
@@ -1048,11 +1067,11 @@ class PlanMoves:
             gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
                                  is_end=(i==(len(seq)-1)), max_delay=0, alt_step=self.alt_step)
             if gaps is None:
-                # repeat with 20 minute delay
+                # repeat with 5 minute delay
                 gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
-                                is_end=(i==(len(seq)-1)), max_delay=1200, alt_step=self.alt_step)
+                                is_end=(i==(len(seq)-1)), max_delay=300, alt_step=self.alt_step)
             if gaps is None:
-                raise ValueError(f"No sun-safe gap found between {seq[i-1]} and {seq[i]}")
+                raise NoGapError(f"No sun-safe gap found between {seq[i-1]} and {seq[i]}", seq[i-1], seq[i])
             seq_.extend(gaps)
             seq_.append(seq[i])
 
