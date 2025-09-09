@@ -434,8 +434,8 @@ class IRMode:
     Gap = 'gap'
     Aux = 'aux'
 
-# custom exceptions
-class SunSafeError(Exception):
+# base exception for errors
+class SchedError(Exception):
     def __init__(self, message, block0=None, block1=None):
         super().__init__(message)
         self.block0 = block0
@@ -450,21 +450,14 @@ class SunSafeError(Exception):
         else:
             return base_message
 
-# custom exceptions
-class NoGapError(Exception):
-    def __init__(self, message, block0=None, block1=None):
-        super().__init__(message)
-        self.block0 = block0
-        self.block1 = block1
 
-    def __str__(self):
-        base_message = super().__str__()
-        if self.block0 and self.block1:
-            return f"{base_message} (Block: {self.block0} -> {self.block1})"
-        elif self.block0:
-            return f"{base_message} (Block: {self.block0})"
-        else:
-            return base_message
+class SunSafeError(SchedError):
+    """Raised when a plan violates sun-safety constraints."""
+
+
+class NoGapError(SchedError):
+    """Raised when no safe gap could be found between blocks."""
+
 
 @dataclass(frozen=True)
 class BuildOpSimple:
