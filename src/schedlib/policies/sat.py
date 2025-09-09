@@ -549,7 +549,6 @@ class SATPolicy(tel.TelPolicy):
         logger.info("planning calibration scans...")
         cal_blocks = []
 
-        saved_cal_targets = []
         for target in self.cal_targets:
             logger.info(f"-> planning calibration scans for {target}...")
 
@@ -623,7 +622,6 @@ class SATPolicy(tel.TelPolicy):
                     )
 
                 cal_blocks.append(cal_block)
-                saved_cal_targets.append(target)
 
                 # don't test other array queries if we have one that works
                 break
@@ -864,7 +862,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': -1,
+            'priority': -2,
             'pinned': True  # remain unchanged during multi-pass
         }
 
@@ -895,7 +893,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': -1,
+            'priority': -2,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
