@@ -280,8 +280,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
     else:
         # check a wide range of parking positions of max_delay = 0
         drifted_az = block0.az + block0.block.throw + block0.block.az_drift * ((block0.block.t1 - block0.block.t0).total_seconds())
-        az1 = drifted_az if az_strict != drifted_az else block0.az
-        az_range = np.array([180, az_strict, az1, block1.az, 90, 270])
+        az_range = np.array([180, az_strict, block0.az, drifted_az, block0.az + block0.block.throw, block1.az, 90, 270])
 
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
@@ -345,8 +344,9 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     continue
 
             if t1_parking > block1.t0:
-                logger.warning("sun-safe parking delays move to next field by "
-                            f"{(t1_parking - block1.t0).total_seconds()} seconds")
+                logger.warning(f"sun-safe parking delays move from {block0} ({block0.block.name}) to "
+                               f"{block1} ({block1.block.name}) by "
+                               f"{(t1_parking - block1.t0).total_seconds()} seconds")
 
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,
                     az=az_parking, alt=alt_parking,
@@ -444,20 +444,17 @@ class SchedError(Exception):
     def __str__(self):
         base_message = super().__str__()
         if self.block0 and self.block1:
-            return f"{base_message} (Block: {self.block0} -> {self.block1})"
+            return f"{base_message} (Block0 -> Block1: {self.block0} -> {self.block1})"
         elif self.block0:
-            return f"{base_message} (Block: {self.block0})"
+            return f"{base_message} (Block0: {self.block0})"
         else:
             return base_message
-
 
 class SunSafeError(SchedError):
     """Raised when a plan violates sun-safety constraints."""
 
-
 class NoGapError(SchedError):
     """Raised when no safe gap could be found between blocks."""
-
 
 @dataclass(frozen=True)
 class BuildOpSimple:
@@ -1060,11 +1057,11 @@ class PlanMoves:
             gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
                                  is_end=(i==(len(seq)-1)), max_delay=0, alt_step=self.alt_step)
             if gaps is None:
-                # repeat with 5 minute delay
+                # repeat with 20 minute delay
                 gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
-                                is_end=(i==(len(seq)-1)), max_delay=300, alt_step=self.alt_step)
+                                is_end=(i==(len(seq)-1)), max_delay=1200, alt_step=self.alt_step)
             if gaps is None:
-                raise NoGapError(f"No sun-safe gap found between {seq[i-1]} and {seq[i]}", seq[i-1], seq[i])
+                raise NoGapError(f"No sun-safe gap found between '{seq[i-1].block.name}' and '{seq[i].block.name}'", seq[i-1], seq[i])
             seq_.extend(gaps)
             seq_.append(seq[i])
 
