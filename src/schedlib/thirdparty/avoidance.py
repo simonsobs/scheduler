@@ -68,7 +68,7 @@ class SunAvoidance(core.MappableRule):
     el_horizon: float = 0,
     el_dodging: bool = False,
     response_time: float = 4*u.hour
-    cut_buffer: int = 60
+    cut_buffer: int = 5
     time_step: float = 1
 
     @singledispatchmethod
@@ -115,13 +115,13 @@ class SunAvoidance(core.MappableRule):
         # if the whole block is safe, return it (don't think it will happen here)
         if np.all(safe_intervals[0] == [0, len(t)]):
             return block
-        
+
         return [block.replace(t0=u.ct2dt(t[i0]), t1=u.ct2dt(t[i1-1])) for i0, i1 in safe_intervals]
 
     def to_dict(self):
         res = asdict(self)
         # get rid of unnecessary fields for sun tracker
-        res.pop("cut_buffer", None) 
+        res.pop("cut_buffer", None)
         res.pop("time_step", None)
         return res
 
