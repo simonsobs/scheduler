@@ -463,7 +463,7 @@ class TelPolicy:
 
 
     def divide_blocks(self, block, scan_dt=dt.timedelta(minutes=60),
-                      min_dt=dt.timedelta(minutes=30), max_dt=dt.timedelta(minutes=75)):
+                      min_dt=dt.timedelta(minutes=15), max_dt=dt.timedelta(minutes=75)):
         """
         Divide CMB blocks into smaller sub-blocks.  If a block has a duration less than max_dt,
         it is returned unchanged.  This function will randomize the duration of the first block
@@ -509,7 +509,7 @@ class TelPolicy:
         if duration <= max_dt:
             return [block]
 
-        first_dur = self.rng.uniform(min_dt.total_seconds(), scan_dt.total_seconds())
+        first_dur = self.rng.uniform(scan_dt.total_seconds() / 2, scan_dt.total_seconds())
         # how much time is left over after subtracting out first block
         remaining = (duration - dt.timedelta(seconds=first_dur)).total_seconds()
 
