@@ -500,7 +500,7 @@ class SATPolicy(tel.TelPolicy):
         )
 
         # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(t0.day)
+        self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
 
@@ -827,7 +827,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': -1
+                    'priority': -2
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -845,7 +845,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': wiregrid_pre,
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': -1
+                    'priority': -2
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
