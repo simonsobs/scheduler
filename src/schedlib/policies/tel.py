@@ -462,66 +462,93 @@ class TelPolicy:
         return blocks
 
 
-    def divide_blocks(self, block, max_dt=dt.timedelta(minutes=60), min_dt=dt.timedelta(minutes=15)):
-        duration = block.duration
+    def divide_blocks(self, block, scan_dt=dt.timedelta(minutes=60),
+                      min_dt=dt.timedelta(minutes=15), max_dt=dt.timedelta(minutes=75)):
+        """
+        Divide CMB blocks into smaller sub-blocks.  If a block has a duration less than max_dt,
+        it is returned unchanged.  This function will randomize the duration of the first block
+        between min_dt and scan_dt.  The remainder will be divided into as many scan_dt blocks as
+        possible and the remainder will either be another shorter final block or added to one of the
+        scan_dt blocks if the combined duration is less than max_dt.
 
-        # if the block is small enough, return it as is
-        if duration <= (max_dt + min_dt):
-            return [block]
+        Parameters
+        ----------
+        block : core.ScanBlock
+            The scan block to subidivide.
+        scan_dt : dt.timedelta
+            Nominal length of a scan.
+        min_dt : dt.timedelta
+            Minimum allowed length of a scan.
+        max_dt : dt.timedelta
+            Maximum allowed length of a scan.
 
-        n_blocks = duration // max_dt
-        remainder = duration % max_dt
+        Returns
+        -------
+        blocks : list[core.ScanBlock]
+            List of subdivided blocks
+        """
+        def check_blocks(block, blocks):
+            assert blocks[0].t0 == block.t0, f"{block} division failed. t0 does not match."
+            assert blocks[-1].t1 == block.t1, f"{block} division failed. t1 does not match."
+            assert (sum([b.duration.total_seconds() for b in blocks]) == block.duration.total_seconds(),
+                    f"{block} division failed. duration does not match.")
 
-        # split if 1 block with remainder > min duration
-        if n_blocks == 1:
-            blocks = core.block_split(block, block.t0 + max_dt)
-            t0 = blocks[0].t0
-            # shuffle the list of blocks
-            shuffled_indices = self.rng.permutation(len(blocks))
-            blocks = [blocks[i] for i in shuffled_indices]
+        # add iteration number for divided block to uid
+        def update_uid(blocks):
             for i, b in enumerate(blocks):
-                blocks[i] = b.replace(t0=t0, t1=t0 + b.duration)
-                t0 += blocks[i].duration
                 tags = b.tag.split(',')
                 for j, item in enumerate(tags):
                     if item.startswith('uid'):
                         tags[j] = item + '-pass-' + str(i)
                         break
                 blocks[i] = blocks[i].replace(tag=",".join(tags))
+
+        duration = block.duration
+
+        # if the block is small enough, return it as is
+        if duration <= max_dt:
+            return [block]
+
+        first_dur = self.rng.uniform(scan_dt.total_seconds() / 2, scan_dt.total_seconds())
+        # how much time is left over after subtracting out first block
+        remaining = (duration - dt.timedelta(seconds=first_dur)).total_seconds()
+
+        # number of blocks after subtracting out random first block
+        n_blocks = int(remaining // scan_dt.total_seconds())
+        # leftover for final block
+        remainder = remaining % scan_dt.total_seconds()
+
+        # when the remainder is less than scan_dt
+        if n_blocks == 0:
+            if dt.timedelta(seconds=remainder) > min_dt:
+                blocks = core.block_split(block, block.t0 + dt.timedelta(seconds=first_dur))
+                update_uid(blocks)
+                check_blocks(block, blocks)
+                return blocks
+            else:
+                return [block]
             return blocks
 
+        # split out first block with random duration
         blocks = []
-        # calculate the offset for splitting
-        offset = (remainder + max_dt) / 2 if remainder.total_seconds() > 0 else max_dt
-
-        split_blocks = core.block_split(block, block.t0 + offset)
+        t_now = block.t0 + dt.timedelta(seconds=first_dur)
+        split_blocks = core.block_split(block, t_now)
         blocks.append(split_blocks[0])
 
-        # split the remaining block into chunks of max duration
-        for i in range(n_blocks - 1):
-            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + max_dt)
+        # split out other blocks
+        while t_now < block.t1:
+            t_now = t_now + scan_dt
+            split_blocks = core.block_split(split_blocks[-1], t_now)
             blocks.append(split_blocks[0])
 
-        # add the remaining part
-        if remainder.total_seconds() > 0:
-            split_blocks = core.block_split(split_blocks[-1], split_blocks[-1].t0 + offset)
-            blocks.append(split_blocks[0])
+        # add final block to last max_dt block if total duration <= max_dt + min_dt
+        if len(blocks) > 2 and blocks[-1].duration <= min_dt:
+            blocks[-2] = blocks[-2].extend_right(blocks[-1].duration)
+            # throw away last block
+            blocks = blocks[:-1]
 
-        t0 = blocks[0].t0
-        # shuffle the list of blocks
-        shuffled_indices = self.rng.permutation(len(blocks))
-        blocks = [blocks[i] for i in shuffled_indices]
-
-        for i, b in enumerate(blocks):
-            blocks[i] = b.replace(t0=t0, t1=t0 + b.duration)
-            t0 += blocks[i].duration
-            tags = b.tag.split(',')
-            for j, item in enumerate(tags):
-                if item.startswith('uid'):
-                    tags[j] = item + '-pass-' + str(i)
-                    break
-            blocks[i] = blocks[i].replace(tag=",".join(tags))
-
+        update_uid(blocks)
+        check_blocks(block, blocks)
         return blocks
 
     def cmd2txt(self, irs, t0, t1, state=None):

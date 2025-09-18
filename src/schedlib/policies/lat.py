@@ -723,7 +723,7 @@ class LATPolicy(tel.TelPolicy):
         )
 
         # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(t0.day)
+        self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
 
