@@ -478,7 +478,7 @@ def make_config(
                 'plan_moves': {
                     'stow_position': stow_position,
                     'sun_policy': sun_policy,
-                    'az_step': 0.5,
+                    'alt_step': 10,
                     'az_limits': az_range['az_range'],
                     'el_limits': el_range['el_range'],
                 }
@@ -701,8 +701,8 @@ class LATPolicy(tel.TelPolicy):
                         cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
 
                 if self.corotator_override is None:
-                    corotator = el_to_locked_corotator(cal_target.el_bore)
-                    boresight = corotator_to_boresight(cal_target.el_bore, corotator)
+                    corotator = el_to_locked_corotator(cal_targets[i].el_bore)
+                    boresight = corotator_to_boresight(cal_targets[i].el_bore, corotator)
                 else:
                     boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
@@ -733,7 +733,7 @@ class LATPolicy(tel.TelPolicy):
         )
 
         # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(t0.day)
+        self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
 
