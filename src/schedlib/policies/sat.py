@@ -320,7 +320,7 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
     assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
 
     if block.name == 'wiregrid_gain':
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
     elif block.name == 'wiregrid_time_const':
@@ -328,20 +328,20 @@ def wiregrid(state, block, min_wiregrid_el=47.5):
         state = state.replace(hwp_dir=not state.hwp_dir)
         direction = "ccw (positive frequency)" if state.hwp_dir \
                 else "cw (negative frequency)"
-        return state, (block.t1 - state.curr_time).total_seconds(), [
+        return state, block.duration.total_seconds(), [
             "run.wiregrid.time_constant(num_repeats=1)",
             f"# hwp direction reversed, now spinning " + direction,
             ]
 
 @cmd.operation(name="move_to", return_duration=True)
-def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, brake_hwp=True, force=False):
+def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake_hwp=True, force=False):
     if not force and (state.az_now == az and state.el_now == el):
         return state, 0, []
 
     duration = 0
     cmd = []
 
-    if state.hwp_spinning and el < min_el:
+    if state.hwp_spinning and (el < min_el or el > max_el):
         state = state.replace(hwp_spinning=False)
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
@@ -378,6 +378,7 @@ class SATPolicy(tel.TelPolicy):
     brake_hwp: Optional[bool] = True
     disable_hwp: bool = False
     min_hwp_el: float = 48 # deg
+    max_hwp_el: float = 60 # deg
     boresight_override: Optional[float] = None
     wiregrid_az: float = 180
     wiregrid_el: float = 48
@@ -499,7 +500,7 @@ class SATPolicy(tel.TelPolicy):
         )
 
         # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(t0.day)
+        self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
 
@@ -548,7 +549,6 @@ class SATPolicy(tel.TelPolicy):
         logger.info("planning calibration scans...")
         cal_blocks = []
 
-        saved_cal_targets = []
         for target in self.cal_targets:
             logger.info(f"-> planning calibration scans for {target}...")
 
@@ -622,33 +622,11 @@ class SATPolicy(tel.TelPolicy):
                     )
 
                 cal_blocks.append(cal_block)
-                saved_cal_targets.append(target)
 
                 # don't test other array queries if we have one that works
                 break
 
-        unique_cal_blocks = []
-        for i, cal_block in enumerate(cal_blocks):
-            if not saved_cal_targets[i].from_table:
-                unique_cal_blocks.append(cal_block)
-            else:
-                # whether to keep rising or setting blocks for current week
-                rising = cal_block.t0.isocalendar()[1] % 2 == 0
-                other_cal_blocks = [other_cal_block for j, other_cal_block in enumerate(cal_blocks) if j!=i]
-                other_saved_cal_targets = [other_saved_cal_target for j, other_saved_cal_target in enumerate(saved_cal_targets) if j!=i]
-
-                # if any blocks has same source and array query
-                if any(other_cal_block.name==cal_block.name for other_cal_block in other_cal_blocks) and \
-                    any(other_saved_cal_target.array_query==saved_cal_targets[i].array_query for other_saved_cal_target in other_saved_cal_targets):
-                    # add if source direction matches week's direction (if not it will be skipped)
-                    if (saved_cal_targets[i].source_direction == "rising" and rising) or \
-                    (saved_cal_targets[i].source_direction == "setting" and not rising):
-                        unique_cal_blocks.append(cal_block)
-                # if no other similar blocks schedule it
-                else:
-                    unique_cal_blocks.append(cal_block)
-
-        blocks['calibration'] = unique_cal_blocks + blocks['calibration']['wiregrid']
+        blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
 
         logger.info(f"-> after calibration policy: {u.pformat(blocks['calibration'])}")
 
@@ -662,7 +640,7 @@ class SATPolicy(tel.TelPolicy):
         if 'az-range' in self.rules:
             logger.info(f"applying az range rule: {self.rules['az-range']}")
             az_range = ru.AzRange(**self.rules['az-range'])
-            blocks['calibration'] = az_range(blocks['calibration'])
+            blocks = az_range(blocks)
 
         # -----------------------------------------------------------------
         # step 4: tags
@@ -728,7 +706,7 @@ class SATPolicy(tel.TelPolicy):
                 f"of {alt_limits[0]} degrees."
                 )
 
-                assert block.alt < alt_limits[1], (
+                assert block.alt <= alt_limits[1], (
                 f"Block {block} is above the maximum elevation "
                 f"of {alt_limits[1]} degrees."
                 )
@@ -815,7 +793,14 @@ class SATPolicy(tel.TelPolicy):
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
 
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
+
+        for i, wiregrid_block in enumerate(wiregrid_blocks):
+            if core.seq_has_overlap_with_block(cal_blocks, wiregrid_block):
+                logger.warn(f"wiregrid block {wiregrid_block} has overlap with cal scans. removing.")
+                wiregrid_blocks[i] = None
+
         cal_blocks += wiregrid_blocks
+
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
         # divide cmb blocks
@@ -842,7 +827,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': -1
+                    'priority': -2
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -860,7 +845,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': wiregrid_pre,
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': -1
+                    'priority': -2
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
@@ -877,7 +862,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': -1,
+            'priority': -2,
             'pinned': True  # remain unchanged during multi-pass
         }
 
@@ -908,7 +893,7 @@ class SATPolicy(tel.TelPolicy):
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': -1,
+            'priority': -2,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]

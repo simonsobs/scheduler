@@ -68,7 +68,7 @@ class SunAvoidance(core.MappableRule):
     el_horizon: float = 0,
     el_dodging: bool = False,
     response_time: float = 4*u.hour
-    cut_buffer: int = 60
+    cut_buffer: int = 5
     time_step: float = 1
 
     @singledispatchmethod
@@ -92,12 +92,14 @@ class SunAvoidance(core.MappableRule):
                 az = np.linspace(az_left[_i], az_right[_i], 101)
                 j, i = sun._azel_pix(az, alt, dt=t[_i]-sun.base_time)
                 sun_time = sun.sun_times[j, i]
-                ok[_i] = (sun_time > self.min_sun_time).all()
+                sun_dist = sun.sun_dist[j, i]
+                ok[_i] = ((sun_time > self.min_sun_time) & (sun_dist > self.min_angle)).all()
         else:
             t, az, alt = block.get_az_alt(time_step=self.time_step)
             j, i = sun._azel_pix(az, alt, dt=t-sun.base_time)
             sun_time = sun.sun_times[j, i]
-            ok = sun_time > self.min_sun_time
+            sun_dist = sun.sun_dist[j, i]
+            ok = (sun_time > self.min_sun_time) & (sun_dist > self.min_angle)
 
         # find safe intervals
         n_buffer = self.cut_buffer // self.time_step
@@ -115,13 +117,13 @@ class SunAvoidance(core.MappableRule):
         # if the whole block is safe, return it (don't think it will happen here)
         if np.all(safe_intervals[0] == [0, len(t)]):
             return block
-        
+
         return [block.replace(t0=u.ct2dt(t[i0]), t1=u.ct2dt(t[i1-1])) for i0, i1 in safe_intervals]
 
     def to_dict(self):
         res = asdict(self)
         # get rid of unnecessary fields for sun tracker
-        res.pop("cut_buffer", None) 
+        res.pop("cut_buffer", None)
         res.pop("time_step", None)
         return res
 

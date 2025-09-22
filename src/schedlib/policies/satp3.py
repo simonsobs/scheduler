@@ -192,6 +192,8 @@ def make_config(
     max_cmb_scan_duration,
     cal_targets,
     min_hwp_el=None,
+    max_hwp_el=None,
+    force_max_hwp_el=False,
     az_stow=None,
     el_stow=None,
     az_offset=0.,
@@ -251,8 +253,13 @@ def make_config(
         'az_range': [-45, 405]
     }
 
+    if force_max_hwp_el and max_hwp_el is not None:
+        max_el  = max_hwp_el
+    else:
+        max_el = 90
+
     el_range = {
-        'el_range': [40, 90]
+        'el_range': [40, max_el]
     }
 
     config = {
@@ -281,6 +288,7 @@ def make_config(
         'iv_cadence': iv_cadence,
         'bias_step_cadence': bias_step_cadence,
         'min_hwp_el': min_hwp_el,
+        'max_hwp_el': max_hwp_el,
         'max_cmb_scan_duration': max_cmb_scan_duration,
         'az_branch_override': az_branch_override,
         'allow_partial_override': allow_partial_override,
@@ -292,7 +300,7 @@ def make_config(
                 'plan_moves': {
                     'stow_position': stow_position,
                     'sun_policy': sun_policy,
-                    'az_step': 0.5,
+                    'alt_step': 4,
                     'az_limits': az_range['az_range'],
                     'el_limits': el_range['el_range'],
                 }
@@ -322,6 +330,8 @@ class SATP3Policy(SATPolicy):
         max_cmb_scan_duration=1*u.hour,
         cal_targets=None,
         min_hwp_el=48,
+        max_hwp_el=60,
+        force_max_hwp_el=False,
         az_stow=None,
         el_stow=None,
         az_offset=0.,
@@ -351,7 +361,10 @@ class SATP3Policy(SATPolicy):
             iv_cadence,
             bias_step_cadence,
             max_cmb_scan_duration,
-            cal_targets, min_hwp_el,
+            cal_targets,
+            min_hwp_el,
+            max_hwp_el,
+            force_max_hwp_el,
             az_stow,
             el_stow,
             az_offset,
@@ -411,18 +424,23 @@ class SATP3Policy(SATPolicy):
                         raise ValueError("Cannot find nearby block")
 
                 # get wafers to observe based on date
-                focus_str = array_focus
-                index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
-                # order list so current date's array_query is tried first
-                array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                #array_query = list(focus_str.keys())[index]
-                cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+                if cal_target.array_query is None:
+                    # get wafers to observe based on date
+                    focus_str = array_focus
+                    index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
+                    # order list so current date's array_query is tried first
+                    array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
+                    #array_query = list(focus_str.keys())[index]
+                    cal_targets[i] = replace(cal_targets[i], array_query=array_query)
+
+                    allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
+                else:
+                    allow_partial = False
+
+                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
-
-                allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
 
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 

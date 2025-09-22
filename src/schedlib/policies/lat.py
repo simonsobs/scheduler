@@ -26,20 +26,51 @@ logger = u.init_logger(__name__)
 COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 4*u.minute
 
-def boresight_to_corotator(el, boresight):
+def el_to_locked_corotator(el):
+    """
+    Calculates the locked corotator angle for a given elevation.  The
+    corotator angle is set to 0 deg at elevations of 60 deg and 120 deg.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    """
     if el <= 90:
-        el_ref = 60
+        return el - 60
     else:
-        el_ref = 240
-        el = 180 - el
-    return np.round(el - el_ref + boresight, 4)
+        return el - 120
+
 def corotator_to_boresight(el, corotator):
-    if el <= 90:
-        el_ref = 60
-    else:
-        el_ref = 240
-        el = 180 - el
-    return np.round(-1*(el - el_ref - corotator), 4)
+    """
+    Calculates the boresight angle (-roll) from the corotator angle.
+    When the corotator is locked, The corotator angle is determined from
+    the function ``el_to_locked_corotator``, otherwise it can be any value
+    between -45 and 45 degrees.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    corotator : float
+        The rotation angle of the corotator in degrees.
+    """
+    return -(el - 60 - corotator)
+
+def boresight_to_corotator(el, boresight):
+    """
+    Calculates the corotator angle from the boresight (-roll) angle.
+    The boresight angle is determined from the function ``corotator_to_boresight``
+    using a fixed corotator angle or the value from ``el_to_locked_corotator``.
+
+    Parameters
+    ----------
+    el : float
+        The elevation of the boresight in degrees.
+    boresight : float
+        The rotation angle of the boresight (-roll) angle in degrees.
+    """
+    return boresight + el - 60
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -237,12 +268,8 @@ def make_cal_target(
     }
     elevation = float(elevation)
     if corotator is None:
-        if elevation <= 90:
-            boresight = 0
-        else:
-            boresight = 180
-        corotator = boresight_to_corotator(elevation, boresight)
-    boresight = corotator_to_boresight(elevation,float(corotator))
+        corotator = el_to_locked_corotator(elevation)
+    boresight = corotator_to_boresight(elevation, float(corotator))
 
     focus = focus.lower()
 
@@ -360,7 +387,8 @@ def make_config(
     max_cmb_scan_duration,
     cal_targets,
     elevations_under_90=False,
-    remove_targets=[],
+    remove_cmb_targets=[],
+    remove_cal_targets=[],
     az_stow=None,
     el_stow=None,
     az_offset=0.,
@@ -430,7 +458,8 @@ def make_config(
         'corotator_override': corotator_override,
         'elevations_under_90': elevations_under_90,
         'az_motion_override': az_motion_override,
-        'remove_targets': remove_targets,
+        'remove_cmb_targets': remove_cmb_targets,
+        'remove_cal_targets': remove_cal_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
         'az_offset': az_offset,
@@ -446,7 +475,7 @@ def make_config(
                 'plan_moves': {
                     'stow_position': stow_position,
                     'sun_policy': sun_policy,
-                    'az_step': 0.5,
+                    'alt_step': 10,
                     'az_limits': az_range['az_range'],
                     'el_limits': el_range['el_range'],
                 }
@@ -461,7 +490,8 @@ class LATPolicy(tel.TelPolicy):
     """
     corotator_override: Optional[float] = None
     elevations_under_90: Optional[bool] = False
-    remove_targets: Optional[Tuple] = ()
+    remove_cmb_targets: Optional[Tuple] = ()
+    remove_cal_targets: Optional[Tuple] = ()
 
     def apply_overrides(self, blocks):
 
@@ -472,9 +502,9 @@ class LATPolicy(tel.TelPolicy):
                 return b
             blocks = core.seq_map( fix_block, blocks)
 
-        if len(self.remove_targets) > 0:
+        if len(self.remove_cmb_targets) > 0:
             blocks = core.seq_filter_out(
-                lambda b: b.name in self.remove_targets,
+                lambda b: b.name in self.remove_cmb_targets,
                 blocks
             )
 
@@ -487,7 +517,7 @@ class LATPolicy(tel.TelPolicy):
         else: ## run with co-rotator locked to elevation
             blocks = core.seq_map(
                 lambda b: b.replace(
-                    corotator_angle=boresight_to_corotator(b.alt, 0 if b.alt<=90 else 180)
+                    corotator_angle=el_to_locked_corotator(b.alt)
                 ), blocks
             )
 
@@ -551,7 +581,8 @@ class LATPolicy(tel.TelPolicy):
         az_branch_override=None,
         allow_partial_override=False,
         drift_override=True,
-        remove_targets=(),
+        remove_cmb_targets=(),
+        remove_cal_targets=(),
         **op_cfg
     ):
         if cal_targets is None:
@@ -578,7 +609,8 @@ class LATPolicy(tel.TelPolicy):
             az_branch_override=az_branch_override,
             allow_partial_override=allow_partial_override,
             drift_override=drift_override,
-            remove_targets=remove_targets,
+            remove_cmb_targets=remove_cmb_targets,
+            remove_cal_targets=remove_cal_targets,
             **op_cfg
         ))
 
@@ -663,12 +695,8 @@ class LATPolicy(tel.TelPolicy):
                         cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
 
                 if self.corotator_override is None:
-                    if cal_target.el_bore <= 90:
-                        boresight = 0
-                    else:
-                        boresight = 180
-                    corotator = boresight_to_corotator(cal_target.el_bore, boresight)
-                    boresight = corotator_to_boresight(cal_target.el_bore, corotator)
+                    corotator = el_to_locked_corotator(cal_targets[i].el_bore)
+                    boresight = corotator_to_boresight(cal_targets[i].el_bore, corotator)
                 else:
                     boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
@@ -678,6 +706,8 @@ class LATPolicy(tel.TelPolicy):
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
+
+        self.cal_targets = [cal_target for cal_target in self.cal_targets if cal_target.source not in self.remove_cal_targets]
 
         # by default add calibration blocks specified in cal_targets if not already specified
         for cal_target in self.cal_targets:
@@ -697,7 +727,7 @@ class LATPolicy(tel.TelPolicy):
         )
 
         # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(t0.day)
+        self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
 
@@ -806,7 +836,7 @@ class LATPolicy(tel.TelPolicy):
         if 'az-range' in self.rules:
             logger.info(f"applying az range rule: {self.rules['az-range']}")
             az_range = ru.AzRange(**self.rules['az-range'])
-            blocks['calibration'] = az_range(blocks['calibration'])
+            blocks = az_range(blocks)
 
         # -----------------------------------------------------------------
         # step 4: tags
@@ -856,7 +886,7 @@ class LATPolicy(tel.TelPolicy):
                 f"of {alt_limits[0]} degrees."
                 )
 
-                assert block.alt < alt_limits[1], (
+                assert block.alt <= alt_limits[1], (
                 f"Block {block} is above the maximum elevation "
                 f"of {alt_limits[1]} degrees."
                 )
