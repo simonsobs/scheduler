@@ -474,7 +474,9 @@ def parse_sequence_from_toast_lat(ifile):
     """
 
     columns = [
-        "start_utc", "stop_utc", "target", "direction", "el", "az_min", "az_max", "scan_type", "uid"
+        "start_utc", "stop_utc", "target", "direction",
+        "type", "rate", "accel", "el_amp", "el_freq", "el",
+        "az_min", "az_max", "uid"
     ]
     # count the number of lines to skip
     with open(ifile) as f:
@@ -497,8 +499,11 @@ def parse_sequence_from_toast_lat(ifile):
             corotator_angle=row['el']-60,
             az=row['az_min'],
             throw=np.abs(row['az_max'] - row['az_min']),
-            priority=1, #row['#'],
-            scan_type=row["scan_type"],
+            az_speed=row['rate'],
+            az_accel=row['accel'],
+            el_freq=row['el_freq'],
+            priority=1,
+            scan_type=int(re.search(r'\d+', row["type"]).group()),
             tag=_escape_string(
                 str(row['target']).strip()+","+
                 "uid-"+str(int(row['uid'])).strip()
