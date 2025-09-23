@@ -377,7 +377,11 @@ class SATP2Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None, ignore_wafers=None):
+    def init_cal_seqs(
+        self, cfile, wgfile, blocks, 
+        t0, t1, anchor_time=None, 
+        ignore_wafers=None
+    ):
         # source -> boresight -> allow_partial
         array_focus = {
             'jupiter': {
@@ -411,15 +415,9 @@ class SATP2Policy(SATPolicy):
                 }
             },
             'saturn': {
-                0 : {
-                    'ws0,ws4': False,
-                },
-                -45 : {
-                    'ws0,ws3': False,
-                },
-                45 : {
-                    'ws0,ws5': False,
-                }
+                0 : {'ws0,ws4': True, 'ws2,ws3': True, 'ws5,ws6': True},
+                -45 : {'ws0,ws3': True, 'ws1,ws2': True, 'ws4,ws5': True,},
+                45 : {'ws0,ws5': True, 'ws3,ws4': True, 'ws1,ws6': True},
             },
 
             'moon': {
@@ -458,7 +456,12 @@ class SATP2Policy(SATPolicy):
 
         # get cal targets
         if cfile is not None:
-            cal_targets = parse_cal_targets_from_toast_sat(cfile)
+            if type(cfile) == str:
+                cal_targets = parse_cal_targets_from_toast_sat(cfile)
+            else:
+                assert type(cfile) == list
+                cal_targets = cfile
+
             # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
             # ensure cal_target source is in array_focus
