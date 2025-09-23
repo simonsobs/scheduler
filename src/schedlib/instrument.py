@@ -382,7 +382,7 @@ def parse_cal_targets_from_toast_sat(ifile):
         columns = ["start_utc", "stop_utc", "target", "direction", "rot",
             "ra", "dec", "el", "uid"
         ]
-
+    
         # count the number of lines to skip
         with open(ifile) as f:
             for i, l in enumerate(f):
@@ -401,12 +401,15 @@ def parse_cal_targets_from_toast_sat(ifile):
                     raise ValueError(
                         f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
                     )
-    except:
+    
+    except ValueError:
         columns = ["start_utc", "stop_utc", "target", "direction",
             "ra", "dec", "el", "uid"
         ]
 
-    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+    df = pd.read_csv(
+        ifile, skiprows=i, delimiter="|", names=columns, comment='#'
+    )
     cal_targets = []
 
     for _, row in df.iterrows():

@@ -423,6 +423,26 @@ def source_gen_seq(source: str, t0: dt.datetime, t1: dt.datetime) -> core.Blocks
     blocks = _PrecomputedSource.for_(source, t0, t1).blocks
     return core.seq_flatten(core.seq_trim(blocks, t0, t1))
 
+def block_get_matching_src_block(block: core.Block, source: str) -> SourceBlock:
+    """
+    Get the corresponding block for a source with the same time bounds. It is 
+    primarily used for source avoidance calculation.
+
+    Parameters
+    ----------
+    block : Block
+        The input block for which a corresponding sun block will be returned.
+    source: str
+        The source we want the matching block for
+
+    Returns
+    -------
+    SourceBlock
+        A SourceBlock object with the same time bounds as the input block and
+        with the name and mode set to 'sun' and 'both', respectively.
+    """
+    return SourceBlock(t0=block.t0, t1=block.t1, name=source, mode="both")
+
 def block_get_matching_sun_block(block: core.Block) -> SourceBlock:
     """
     Get the corresponding sun block with the same time bounds. It is primarily
@@ -440,7 +460,26 @@ def block_get_matching_sun_block(block: core.Block) -> SourceBlock:
         with the name and mode set to 'sun' and 'both', respectively.
 
     """
-    return SourceBlock(t0=block.t0, t1=block.t1, name="sun", mode="both")
+    return block_get_matching_src_block(block, "sun")
+
+def block_get_matching_moon_block(block: core.Block) -> SourceBlock:
+    """
+    Get the corresponding sun block with the same time bounds. It is primarily
+    used for moon avoidance calculation.
+
+    Parameters
+    ----------
+    block : Block
+        The input block for which a corresponding sun block will be returned.
+
+    Returns
+    -------
+    SourceBlock
+        A SourceBlock object with the same time bounds as the input block and
+        with the name and mode set to 'moon' and 'both', respectively.
+
+    """
+    return block_get_matching_src_block(block, "moon")
 
 @dataclass(frozen=True)
 class ObservingWindow(SourceBlock):
