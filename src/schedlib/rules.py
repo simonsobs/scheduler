@@ -2,6 +2,7 @@ from typing import Tuple, Dict, List, Optional
 import numpy as np
 import datetime as dt
 from dataclasses import dataclass, field
+import logging
 
 from . import core, source as src, instrument as inst, utils
 
@@ -290,6 +291,12 @@ class SourceAvoidance(core.MappableRule):
         """
         if not isinstance(block, (inst.ScanBlock, src.SourceBlock)):
             return block
+        
+        if isinstance(block, inst.ScanBlock):
+            logging.warning(
+                "schedlib.rules.SourceAvoidance being called for a ScanBlock " 
+                "but is not optimized for ScanBlocks"
+            )
 
         # get locations of the Sun. Being lazing and not changing
         # variable names from "sun"
