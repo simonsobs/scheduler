@@ -489,6 +489,7 @@ class SATP3Policy(SATPolicy):
                     f" {t0}"
                 )
                 state = state.replace(curr_time = t0)
+
             return state
 
         return State(
