@@ -1081,7 +1081,6 @@ class PlanMoves:
                 gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
                                 is_end=(i==(len(seq)-1)), max_delay=1200, alt_step=self.alt_step, sungod=sungod)
             if gaps is None:
-                end = time.time()
                 raise NoGapError(f"No sun-safe gap found between '{seq[i-1].block.name}' and '{seq[i].block.name}'", seq[i-1], seq[i])
             seq_.extend(gaps)
             seq_.append(seq[i])
