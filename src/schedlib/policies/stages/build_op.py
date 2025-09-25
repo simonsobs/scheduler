@@ -39,7 +39,7 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
     # Returns the timestamp until which the move from
     # (az0, alt0) to (az1, alt1) is sunsafe.
 
-    t0 = t0.isoformat(timespec='seconds') #np.round(t0.timestamp(), 1)
+    t0 = t0.isoformat(timespec='seconds')
     t0 = dt.datetime.fromisoformat(t0).timestamp()
 
     sun_tracker = get_sun_tracker(t0, policy=sun_policy)
