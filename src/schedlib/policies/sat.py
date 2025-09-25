@@ -791,7 +791,6 @@ class SATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
-
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
 
         for i, wiregrid_block in enumerate(wiregrid_blocks):
