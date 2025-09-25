@@ -40,7 +40,10 @@ def get_traj(az0, az1, el0, el1, wrap_north=False):
 def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
     # Returns the timestamp until which the move from
     # (az0, alt0) to (az1, alt1) is sunsafe.
-    sun_tracker = get_sun_tracker(u.dt2ct(t0), policy=sun_policy)
+
+    t0 = np.round(t0.timestamp(), 1)
+
+    sun_tracker = get_sun_tracker(t0, policy=sun_policy)
 
     if block0 is not None and hasattr(block0, 'block'):
         block0 = block0.block
@@ -62,12 +65,12 @@ def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
             el1 = (az[:,None]*0 + el[None,:]).ravel()
             az, el = az1, el1
 
-    sun_safety = sun_tracker.check_trajectory(t=u.dt2ct(t0), az=az, el=el)
+    sun_safety = sun_tracker.check_trajectory(t=t0, az=az, el=el)
     if (sun_safety['sun_time'] <= sun_policy['min_sun_time']
         or sun_safety['sun_dist_min'] <= sun_policy['min_angle']):
-        return t0
+        return u.ct2dt(t0)
 
-    return u.ct2dt(u.dt2ct(t0) + sun_safety['sun_time'])
+    return u.ct2dt(t0 + sun_safety['sun_time'])
 
 def get_socs_policy(sun_policy):
     policy = avoidance.DEFAULT_POLICY
@@ -87,7 +90,7 @@ def get_traj_ok_time_socs_scan(az0, az1, alt0, alt1, t0, sun_policy, block0=None
     # returns t0 if no move could be found
     policy = get_socs_policy(sun_policy)
 
-    t0 = t0.timestamp()
+    t0 = np.round(t0.timestamp(), 1)
 
     if block0 is not None and hasattr(block0, 'block'):
         subtype = block0.subtype
@@ -151,7 +154,7 @@ def get_traj_ok_time_socs_move(az0, az1, alt0, alt1, t0, sun_policy, block0=None
     # returns t0 if no move could be found
     policy = get_socs_policy(sun_policy)
 
-    t0 = t0.timestamp()
+    t0 = np.round(t0.timestamp(), 1)
 
     if block0 is not None and hasattr(block0, 'block'):
         subtype = block0.subtype
