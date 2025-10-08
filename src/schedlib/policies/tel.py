@@ -275,6 +275,7 @@ def cmb_scan(state, block):
         block.az_accel != state.az_accel_now or
         block.el_freq != state.el_freq_now
     ):
+
         commands = [
             f"run.acu.set_scan_params(az_speed={block.az_speed}, az_accel={block.az_accel}, el_freq={block.el_freq})"
         ]
@@ -464,7 +465,7 @@ class TelPolicy:
             )
             blocks = core.seq_map(
                 lambda b: b.replace(
-                    el_freq=self.el_freq if b.scan_type==3 else self.el_freq
+                    el_freq=self.el_freq if b.scan_type==3 else b.el_freq
                 ), blocks
             )
         return blocks
