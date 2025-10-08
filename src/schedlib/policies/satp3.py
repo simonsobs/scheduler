@@ -90,7 +90,6 @@ commands_uxm_relock = [
     "####################### Relock #######################",
     "run.smurf.zero_biases()",
     "time.sleep(120)",
-    "run.smurf.take_noise(concurrent=True, tag='res_check')",
     "run.smurf.uxm_relock(concurrent=True)",
     "run.smurf.take_bgmap(concurrent=True)",
     "################## Relock Over #######################",
@@ -103,7 +102,6 @@ commands_det_setup = [
     "################### Detector Setup######################",
     "with disable_trace():",
     "    run.initialize()",
-    "run.smurf.take_bgmap(concurrent=True)",
     "run.smurf.iv_curve(concurrent=True)",
     "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
     "time.sleep(300)",
@@ -489,6 +487,7 @@ class SATP3Policy(SATPolicy):
                     f" {t0}"
                 )
                 state = state.replace(curr_time = t0)
+
             return state
 
         return State(

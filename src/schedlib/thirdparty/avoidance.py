@@ -41,7 +41,7 @@ DEFAULT_POLICY = {
     'response_time': HOUR * 4,
 }
 
-REFRESH_INTERVAL = HOUR * 6
+REFRESH_INTERVAL = HOUR * 1
 
 def get_sun_tracker(t_lookup, policy=None) -> "SunTracker":
     """
@@ -84,6 +84,7 @@ class SunAvoidance(core.MappableRule):
             # At each minute, assess sun-safety
             t, az_left, az_right, alt_min, alt_max = \
                 block.get_az_alt_extent(time_step=self.time_step * 60)
+
             # Confirm alt is constant...
             alt = alt_min[0]
             assert np.all(alt == np.array([alt_max, alt_min]))

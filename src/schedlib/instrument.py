@@ -7,8 +7,11 @@ import numpy as np
 from functools import reduce
 from dataclasses import dataclass
 from so3g.proj import quat
+import uuid
+import logging
 
 from . import core, utils as u
+from . import source, rules
 
 @dataclass(frozen=True)
 class CalTarget:
@@ -332,6 +335,109 @@ def _escape_string(input_string):
         input_string = input_string.replace(char, escape)
     return input_string
 
+def generate_cal_blocks(
+    t0: dt.datetime,
+    t1: dt.datetime, 
+    source_list: List[str],
+    scan_elevations: Dict[str, float],
+    focal_plane_radius: float,
+    solar_avoidance_angle: float, 
+    moon_avoidance_angle: float=20,
+) -> core.Blocks:
+    """
+    see generate_cal_target_list for arguments. Returns the Blocks and not
+    the calibration targets. 
+    """
+    sun_rule = rules.SunAvoidance(solar_avoidance_angle)
+    moon_rule = rules.SunAvoidance(moon_avoidance_angle)
+
+    all_blocks = []
+
+    for src in source_list:
+        logging.info(
+            f"Running calculations for {src} at el={scan_elevations[src]} deg."
+        )
+        alt_rule = rules.AltRange( alt_range=(
+            scan_elevations[src]-focal_plane_radius,
+            scan_elevations[src]+focal_plane_radius,
+        ))
+
+        ## generate list of rising / setting scans for source
+        blocks = source.source_gen_seq(src, t0, t1)
+        ## remove / cut blocks to only times the source is within range
+        ## of the focal plane
+        blocks = core.seq_flatten(alt_rule(blocks))
+        ## remove times source is too close to the sun
+        blocks = core.seq_flatten(sun_rule(blocks))
+        if src.lower() != "moon":
+            ## remove times source is too close to the sun
+            blocks = core.seq_flatten(moon_rule(blocks))
+        all_blocks.append(blocks)
+        
+    ## sort blocks by time able flatten
+    blocks = core.seq_sort(all_blocks, flatten=True)
+    return blocks
+
+def generate_cal_target_list(
+    t0: dt.datetime,
+    t1: dt.datetime, 
+    source_list: List[str],
+    scan_elevations: Dict[str, float],
+    focal_plane_radius: float,
+    solar_avoidance_angle: float, 
+    moon_avoidance_angle: float=20,
+) -> List[CalTarget]:
+    """
+    Generate a list of calibration targets. Intended to match the output of 
+    parse_sequence_from_toast_sat but to calculate it on the fly
+
+    Parameters
+    ----------
+    t0 : datetime
+        beginning of time range
+    t1: datetime
+        end of time range
+    source list: list[str]
+        a list of sources to put in the observation list. can't have repeats.
+    scan_elevations: dict[str, float]
+        for each source in source list, an elevation at which to scan them
+    focal_plane_radius: float
+        radius of the focal plane in degrees, sets the range of elevations
+        for the source transit calculations
+    solar_avoidance_angle: float
+        distance, in degrees, the source should be from the sun to scan it
+    moon_avoidance_angle: float
+        distance, in degrees, a non-moon source should be away from the moon
+        in order to scan it.         
+
+    Returns
+    -------
+    cal_targets: List[CalTargets]
+        list of calibration target options
+        
+    """
+    
+    blocks = generate_cal_blocks(
+        t0, t1, source_list, scan_elevation, focal_plane_radius, 
+        solar_avoidance_angle, moon_avoidance_angle
+    )
+
+    cal_targets = []
+
+    for block in blocks:
+        cal_targets.append( CalTarget(
+            t0=block.t0,
+            t1=block.t1,
+            source=block.name,
+            el_bore=scan_elevations[block.name],
+            source_direction=block.mode,
+            array_query=None,
+            tag=f"uid-{uuid.uuid4()}",
+            allow_partial=False, ## do I want this false? tbh
+            from_table=True, ## do I want this true? tbd
+        ))
+    return cal_targets
+
 def parse_sequence_from_toast_sat(ifile):
     """
     Parameters
@@ -384,7 +490,7 @@ def parse_cal_targets_from_toast_sat(ifile):
         columns = ["start_utc", "stop_utc", "target", "direction", "rot",
             "ra", "dec", "el", "uid"
         ]
-
+    
         # count the number of lines to skip
         with open(ifile) as f:
             for i, l in enumerate(f):
@@ -403,12 +509,15 @@ def parse_cal_targets_from_toast_sat(ifile):
                     raise ValueError(
                         f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
                     )
-    except:
+    
+    except ValueError:
         columns = ["start_utc", "stop_utc", "target", "direction",
             "ra", "dec", "el", "uid"
         ]
 
-    df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
+    df = pd.read_csv(
+        ifile, skiprows=i, delimiter="|", names=columns, comment='#'
+    )
     cal_targets = []
 
     for _, row in df.iterrows():

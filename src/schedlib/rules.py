@@ -1,7 +1,8 @@
 from typing import Tuple, Dict, List, Optional
 import numpy as np
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import logging
 
 from . import core, source as src, instrument as inst, utils
 
@@ -251,13 +252,15 @@ class MakeSourcePlan(core.MappableRule):
         if len(blocks) == 1: return blocks[0]
 
 @dataclass(frozen=True)
-class SunAvoidance(core.MappableRule):
-    """Avoid sources that are too close to the Sun. This rule is
+class SourceAvoidance(core.MappableRule):
+    """Avoid sources that are too close to another source. This rule is
     applicable to both source and scan blocks. Note that any other
     block types will automatically passthrough.
 
     Parameters
     ----------
+    avoid_source: string
+        Source to avoid
     min_angle : float
         The minimum angle in degrees for the azimuth.
     time_step : int, optional
@@ -276,6 +279,7 @@ class SunAvoidance(core.MappableRule):
 
     """
     min_angle: float
+    avoid_source: str = field(kw_only=True)
     time_step: int = 1
     cut_buffer: int = 60
 
@@ -287,9 +291,16 @@ class SunAvoidance(core.MappableRule):
         """
         if not isinstance(block, (inst.ScanBlock, src.SourceBlock)):
             return block
+        
+        if isinstance(block, inst.ScanBlock):
+            logging.warning(
+                "schedlib.rules.SourceAvoidance being called for a ScanBlock " 
+                "but is not optimized for ScanBlocks"
+            )
 
-        # get locations of the Sun
-        sun_block = src.block_get_matching_sun_block(block)
+        # get locations of the Sun. Being lazing and not changing
+        # variable names from "sun"
+        sun_block = src.block_get_matching_src_block(block, self.avoid_source)
 
         if isinstance(block, inst.ScanBlock):
             time_step = self.time_step
@@ -324,6 +335,14 @@ class SunAvoidance(core.MappableRule):
 
         # otherwise, split it up into safe intervals
         return [block.replace(t0=utils.ct2dt(t[i0]), t1=utils.ct2dt(t[i1-1])) for i0, i1 in safe_intervals]
+
+@dataclass(frozen=True)
+class SunAvoidance(SourceAvoidance):
+    avoid_source: str = field(default="sun")
+
+@dataclass(frozen=True)
+class MoonAvoidance(SourceAvoidance):
+    avoid_source: str = field(default="moon")
 
 @dataclass(frozen=True)
 class MakeSourceScan(core.MappableRule):
@@ -404,6 +423,7 @@ RULES = {
     'min-duration': MinDuration,
     'rephase-first': RephaseFirst,
     'sun-avoidance': SunAvoidance,
+    'moon-avoidance': MoonAvoidance,
     'make-source-plan': MakeSourcePlan,
     'make-source-scan': MakeSourceScan,
     'make-drift-scan': MakeCESourceScan,
