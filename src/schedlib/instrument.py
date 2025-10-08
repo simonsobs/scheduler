@@ -79,7 +79,7 @@ class ScanBlock(core.NamedBlock):
     az_drift: float = 0. # deg / s
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
-    el_freq: float = None
+    el_freq: float = 0.
     scan_type: int = 1 # scan type (1, 2, or 3)
     az_offset: float = 0. # deg
     alt_offset: float = 0. # deg
@@ -337,16 +337,16 @@ def _escape_string(input_string):
 
 def generate_cal_blocks(
     t0: dt.datetime,
-    t1: dt.datetime, 
+    t1: dt.datetime,
     source_list: List[str],
     scan_elevations: Dict[str, float],
     focal_plane_radius: float,
-    solar_avoidance_angle: float, 
+    solar_avoidance_angle: float,
     moon_avoidance_angle: float=20,
 ) -> core.Blocks:
     """
     see generate_cal_target_list for arguments. Returns the Blocks and not
-    the calibration targets. 
+    the calibration targets.
     """
     sun_rule = rules.SunAvoidance(solar_avoidance_angle)
     moon_rule = rules.SunAvoidance(moon_avoidance_angle)
@@ -373,22 +373,22 @@ def generate_cal_blocks(
             ## remove times source is too close to the sun
             blocks = core.seq_flatten(moon_rule(blocks))
         all_blocks.append(blocks)
-        
+
     ## sort blocks by time able flatten
     blocks = core.seq_sort(all_blocks, flatten=True)
     return blocks
 
 def generate_cal_target_list(
     t0: dt.datetime,
-    t1: dt.datetime, 
+    t1: dt.datetime,
     source_list: List[str],
     scan_elevations: Dict[str, float],
     focal_plane_radius: float,
-    solar_avoidance_angle: float, 
+    solar_avoidance_angle: float,
     moon_avoidance_angle: float=20,
 ) -> List[CalTarget]:
     """
-    Generate a list of calibration targets. Intended to match the output of 
+    Generate a list of calibration targets. Intended to match the output of
     parse_sequence_from_toast_sat but to calculate it on the fly
 
     Parameters
@@ -408,17 +408,17 @@ def generate_cal_target_list(
         distance, in degrees, the source should be from the sun to scan it
     moon_avoidance_angle: float
         distance, in degrees, a non-moon source should be away from the moon
-        in order to scan it.         
+        in order to scan it.
 
     Returns
     -------
     cal_targets: List[CalTargets]
         list of calibration target options
-        
+
     """
-    
+
     blocks = generate_cal_blocks(
-        t0, t1, source_list, scan_elevation, focal_plane_radius, 
+        t0, t1, source_list, scan_elevation, focal_plane_radius,
         solar_avoidance_angle, moon_avoidance_angle
     )
 
@@ -490,7 +490,7 @@ def parse_cal_targets_from_toast_sat(ifile):
         columns = ["start_utc", "stop_utc", "target", "direction", "rot",
             "ra", "dec", "el", "uid"
         ]
-    
+
         # count the number of lines to skip
         with open(ifile) as f:
             for i, l in enumerate(f):
@@ -509,7 +509,7 @@ def parse_cal_targets_from_toast_sat(ifile):
                     raise ValueError(
                         f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
                     )
-    
+
     except ValueError:
         columns = ["start_utc", "stop_utc", "target", "direction",
             "ra", "dec", "el", "uid"

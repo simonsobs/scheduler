@@ -335,6 +335,7 @@ def source_scan(state, block):
         f"    stop_time='{block.t1.isoformat(timespec='seconds')}', ",
         f"    width={round(block.throw,3)}, ",
         f"    az_drift={round(block.az_drift,5)}, ",
+        f"    type={block.scan_type},",
         f"    subtype='{block.subtype}',",
         f"    tag='{block.tag}',",
         ")",
@@ -414,7 +415,7 @@ class TelPolicy:
     az_motion_override: bool = False
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
-    el_freq: float = None
+    el_freq: float = 0.
     az_offset: float = 0.
     el_offset: float = 0.
     iv_cadence : float = 4 * u.hour
@@ -459,6 +460,11 @@ class TelPolicy:
             blocks = core.seq_map(
                 lambda b: b.replace(
                     az_accel=self.az_accel
+                ), blocks
+            )
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    el_freq=self.el_freq if b.scan_type==3 else self.el_freq
                 ), blocks
             )
         return blocks

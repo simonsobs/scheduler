@@ -388,7 +388,7 @@ def make_config(
     bias_step_cadence,
     max_cmb_scan_duration,
     cal_targets,
-    el_freq=None,
+    el_freq=0.,
     elevations_under_90=False,
     remove_cmb_targets=[],
     remove_cal_targets=[],
@@ -537,7 +537,6 @@ class LATPolicy(tel.TelPolicy):
             lambda b: b.replace(
                 az_speed=round( self.az_speed/np.cos(np.radians(b.alt if b.alt <= 90 else 180 - b.alt)),2),
                 az_accel=self.az_accel,
-                el_freq=self.el_freq,
             ), blocks
         )
 
@@ -573,7 +572,7 @@ class LATPolicy(tel.TelPolicy):
         state_file=None,
         az_speed=0.8,
         az_accel=1.5,
-        el_freq=None,
+        el_freq=0.,
         iv_cadence=4*u.hour,
         bias_step_cadence=0.5*u.hour,
         max_cmb_scan_duration=1*u.hour,
