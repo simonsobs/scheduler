@@ -873,6 +873,12 @@ class LATPolicy(tel.TelPolicy):
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
 
+        # add scan type
+        blocks = core.seq_map(
+            lambda block: block.replace(tag=f"{block.tag},type{block.scan_type}"),
+            blocks
+        )
+
         # add az and el offsets (not used in calculations)
         blocks = core.seq_map(
             lambda block: block.replace(
