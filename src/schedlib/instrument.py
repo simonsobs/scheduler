@@ -79,6 +79,7 @@ class ScanBlock(core.NamedBlock):
     az_drift: float = 0. # deg / s
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
+    el_amp: float = 0.
     el_freq: float = 0.
     scan_type: int = 1 # scan type (1, 2, or 3)
     az_offset: float = 0. # deg
@@ -610,6 +611,7 @@ def parse_sequence_from_toast_lat(ifile):
             throw=np.abs(row['az_max'] - row['az_min']),
             az_speed=row['rate'],
             az_accel=row['accel'],
+            el_amp=row['el_amp'],
             el_freq=row['el_freq'],
             priority=1,
             scan_type=int(re.search(r'\d+', row["type"]).group()),
