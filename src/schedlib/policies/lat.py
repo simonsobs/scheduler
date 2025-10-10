@@ -77,7 +77,7 @@ def boresight_to_corotator(el, boresight):
 class State(tel.State):
     """
     State relevant to LAT operation scheduling. Inherits other fields:
-    (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`)
+    (`curr_time`, `az_now`, `el_now`, `az_speed_now`, `az_accel_now`, 'el_freq_now')
     from the base State defined in `schedlib.commands`. And others from
     `tel.State`
 
@@ -305,6 +305,7 @@ def make_cal_target(
 def make_operations(
     az_speed,
     az_accel,
+    el_freq,
     az_motion_override,
     iv_cadence=4*u.hour,
     bias_step_cadence=0.5*u.hour,
@@ -321,7 +322,8 @@ def make_operations(
     pre_session_ops = [
         { 'name': 'lat.preamble'        , 'sched_mode': SchedMode.PreSession, 'open_shutter': open_shutter},
         { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
-        { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel, 'az_motion_override': az_motion_override},
+        { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel,
+                                          'el_freq': el_freq, 'az_motion_override': az_motion_override},
     ]
 
     cal_ops = []
@@ -386,6 +388,7 @@ def make_config(
     bias_step_cadence,
     max_cmb_scan_duration,
     cal_targets,
+    el_freq=0.,
     elevations_under_90=False,
     remove_cmb_targets=[],
     remove_cal_targets=[],
@@ -408,9 +411,12 @@ def make_config(
     det_setup_duration = 20*u.minute
 
     operations = make_operations(
-        az_speed, az_accel,
+        az_speed,
+        az_accel,
+        el_freq,
         az_motion_override,
-        iv_cadence, bias_step_cadence,
+        iv_cadence,
+        bias_step_cadence,
         det_setup_duration,
         **op_cfg
     )
@@ -462,6 +468,7 @@ def make_config(
         'remove_cal_targets': remove_cal_targets,
         'az_speed': az_speed,
         'az_accel': az_accel,
+        'el_freq': el_freq,
         'az_offset': az_offset,
         'el_offset': el_offset,
         'iv_cadence': iv_cadence,
@@ -565,6 +572,7 @@ class LATPolicy(tel.TelPolicy):
         state_file=None,
         az_speed=0.8,
         az_accel=1.5,
+        el_freq=0.,
         iv_cadence=4*u.hour,
         bias_step_cadence=0.5*u.hour,
         max_cmb_scan_duration=1*u.hour,
@@ -589,14 +597,15 @@ class LATPolicy(tel.TelPolicy):
             cal_targets = []
 
         x = cls(**make_config(
-            master_file,
-            state_file,
-            az_speed,
-            az_accel,
-            iv_cadence,
-            bias_step_cadence,
-            max_cmb_scan_duration,
-            cal_targets,
+            master_file=master_file,
+            state_file=state_file,
+            az_speed=az_speed,
+            az_accel=az_accel,
+            el_freq=el_freq,
+            iv_cadence=iv_cadence,
+            bias_step_cadence=bias_step_cadence,
+            max_cmb_scan_duration=max_cmb_scan_duration,
+            cal_targets=cal_targets,
             elevations_under_90=elevations_under_90,
             az_stow=az_stow,
             el_stow=el_stow,
