@@ -292,7 +292,7 @@ def cmb_scan(state, block):
         f"run.seq.scan(",
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
-        f"    width={round(block.throw,3)}, az_drift=0,",
+        f"    width={round(block.throw, 3)}" + (", az_drift=0" if block.scan_type == 1 else "") + ",",
         f"    el_amp={block.el_amp},",
         f"    type={block.scan_type},",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
@@ -501,8 +501,8 @@ class TelPolicy:
         def check_blocks(block, blocks):
             assert blocks[0].t0 == block.t0, f"{block} division failed. t0 does not match."
             assert blocks[-1].t1 == block.t1, f"{block} division failed. t1 does not match."
-            assert (sum([b.duration.total_seconds() for b in blocks]) == block.duration.total_seconds(),
-                    f"{block} division failed. duration does not match.")
+            assert sum(b.duration.total_seconds() for b in blocks) == block.duration.total_seconds(), \
+                f"{block} division failed. duration does not match."
 
         # add iteration number for divided block to uid
         def update_uid(blocks):
