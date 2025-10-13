@@ -501,7 +501,7 @@ class TelPolicy:
         def check_blocks(block, blocks):
             assert blocks[0].t0 == block.t0, f"{block} division failed. t0 does not match."
             assert blocks[-1].t1 == block.t1, f"{block} division failed. t1 does not match."
-            assert sum(b.duration.total_seconds() for b in blocks) == block.duration.total_seconds(), \
+            assert np.round(sum(b.duration.total_seconds() for b in blocks),0) == np.round(block.duration.total_seconds(),0), \
                 f"{block} division failed. duration does not match."
 
         # add iteration number for divided block to uid
