@@ -108,11 +108,15 @@ class SunCrawler:
                 stop = datetime.datetime.fromisoformat(l.split("stop_time='")[1].rstrip("', \n")).timestamp()
             if 'width' in l and 'drift' in l:
                 width = float(l.split(', ')[0].split('=')[1])
-                drift = float(l.split(', ')[1].split('=')[1].rstrip(', \n'))
+                drift_str = l.split(', ')[1].split('=')[1].rstrip(', \n')
+                if drift_str != 'None':
+                    drift = float(drift_str)
             elif 'width' in l and 'drift' not in l:
                 width = float(l.split('=')[1].rstrip(', \n'))
             elif 'drift' in l and 'width' not in l:
-                drift = float(l.split('=')[1].rstrip(', \n'))
+                drift_str = l.split(', ')[1].split('=')[1].rstrip(', \n')
+                if drift_str != 'None':
+                    drift = float(drift_str)
 
         init_az_range = [self.cur_az, self.cur_az + width]
         drifted_az = self.cur_az + drift * (stop - self.cur_time)
