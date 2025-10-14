@@ -375,7 +375,7 @@ class SATP1Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None, ignore_wafers=None):
+    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, ignore_wafers=None):
         # get cal targets
         if cfile is not None:
             cal_targets = parse_cal_targets_from_toast_sat(cfile)
@@ -384,6 +384,17 @@ class SATP1Policy(SATPolicy):
 
             # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
+
+                # remove ignored wafers
+                if ignore_wafers is not None:
+                    wafers = cal_target.array_query.split(',')
+                    filtered = [w for w in wafers if w not in ignore_wafers]
+                    if filtered:
+                        cal_targets[i] = replace(cal_targets[i], array_query=",".join(filtered))
+                    else:
+                        cal_targets[i] = None
+                        continue
+
                 if cal_target.boresight_rot is None:
                     candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
                     if candidates:
@@ -407,7 +418,7 @@ class SATP1Policy(SATPolicy):
                 cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
-            self.cal_targets += cal_targets
+            self.cal_targets += [target for target in cal_targets if target is not None]
 
         # get wiregrid file
         if wgfile is not None and not self.disable_hwp:
