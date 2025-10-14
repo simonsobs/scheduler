@@ -114,7 +114,7 @@ class SunCrawler:
             elif 'width' in l and 'drift' not in l:
                 width = float(l.split('=')[1].rstrip(', \n'))
             elif 'drift' in l and 'width' not in l:
-                drift_str = l.split(', ')[1].split('=')[1].rstrip(', \n')
+                drift_str = l.split('=')[1].rstrip(', \n')
                 if drift_str != 'None':
                     drift = float(drift_str)
 
