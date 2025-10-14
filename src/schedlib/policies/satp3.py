@@ -387,22 +387,7 @@ class SATP3Policy(SATPolicy):
     def add_cal_target(self, *args, **kwargs):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
-    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, anchor_time=None, ignore_wafers=None):
-        # wafer -> allow_partial
-        array_focus = {
-                'ws0': False,
-                'ws1': False,
-                'ws2': False,
-                'ws3': False,
-                'ws4': False,
-                'ws5': False,
-                'ws6': False,
-        }
-
-        if ignore_wafers is not None:
-            for wafer in ignore_wafers:
-                array_focus.pop(wafer, None)
-
+    def init_cal_seqs(self, cfile, wgfile, blocks, t0, t1, ignore_wafers=None):
         # get cal targets
         if cfile is not None:
             cal_targets = parse_cal_targets_from_toast_sat(cfile)
@@ -411,7 +396,19 @@ class SATP3Policy(SATPolicy):
 
             # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
+
+                # remove ignored wafers
+                if ignore_wafers is not None:
+                    wafers = cal_target.array_query.split(',')
+                    filtered = [w for w in wafers if w not in ignore_wafers]
+                    if filtered:
+                        cal_targets[i] = replace(cal_targets[i], array_query=",".join(filtered))
+                    else:
+                        cal_targets[i] = None
+                        continue
+
                 candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
+
                 if candidates:
                     block = max(candidates, key=lambda x: x.t0)
                 else:
@@ -421,28 +418,12 @@ class SATP3Policy(SATPolicy):
                     else:
                         raise ValueError("Cannot find nearby block")
 
-                # get wafers to observe based on date
-                if cal_target.array_query is None:
-                    # get wafers to observe based on date
-                    focus_str = array_focus
-                    index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
-                    # order list so current date's array_query is tried first
-                    array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                    #array_query = list(focus_str.keys())[index]
-                    cal_targets[i] = replace(cal_targets[i], array_query=array_query)
-
-                    allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                else:
-                    allow_partial = False
-
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
-
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
-            self.cal_targets += cal_targets
+            self.cal_targets += [target for target in cal_targets if target is not None]
 
         # get wiregrid file
         if wgfile is not None and not self.disable_hwp:

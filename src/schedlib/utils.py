@@ -16,13 +16,6 @@ day = 24 * hour
 sidereal_day = 0.997269566 * day
 deg = np.pi / 180
 
-def get_cycle_option(t, options, anchor=None):
-    if anchor is None:
-        anchor = str2datetime("1970-01-01T00:00:00+00:00")
-    delta_days = (t - anchor).days
-    index = delta_days % len(options)
-    return index
-
 def str2ctime(time_str):
     ctime = (pd.Timestamp(time_str).tz_localize(None) - pd.Timestamp("1970-01-01")) // pd.Timedelta('1s')
     return ctime
