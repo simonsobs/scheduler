@@ -350,7 +350,7 @@ def start_time(state):
 
 @operation(name='set_scan_params', duration=0)
 def set_scan_params(state, az_speed, az_accel, el_freq=0, az_motion_override=False):
-    if az_speed != state.az_speed_now or az_accel != state.az_accel_now or el_freq != el_freq_now or az_motion_override:
+    if az_speed != state.az_speed_now or az_accel != state.az_accel_now or el_freq != statel.el_freq_now or az_motion_override:
         state = state.replace(az_speed_now=az_speed, az_accel_now=az_accel, el_freq_now=el_freq)
         return state, [ f"run.acu.set_scan_params(az_speed={az_speed}, az_accel={az_accel}, el_freq={el_freq})"]
     return state, []
