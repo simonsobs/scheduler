@@ -167,8 +167,7 @@ def source_scan(state, block):
 def stimulator(state):
     cmd = [
         "# run stimulator",
-        f"run.stimulator.calibrate_tau()",
-        f"run.stimulator.calibrate_gain()",
+        f"run.stimulator.calibrate_gain_tau()"
         ""
     ]
     return state, STIMULATOR_DURATION, cmd
