@@ -315,7 +315,7 @@ def bias_step(state, block, bias_step_cadence=None):
     return tel.bias_step(state, block, bias_step_cadence)
 
 @cmd.operation(name='sat.wiregrid', return_duration=True)
-def wiregrid(state, block, min_wiregrid_el=47.5):
+def wiregrid(state, block, min_wiregrid_el=49.9):
     assert state.hwp_spinning == True, "hwp is not spinning"
     assert block.alt >= min_wiregrid_el, f"Block {block} is below the minimum wiregrid elevation of {min_wiregrid_el} degrees."
 
@@ -381,7 +381,7 @@ class SATPolicy(tel.TelPolicy):
     max_hwp_el: float = 60 # deg
     boresight_override: Optional[float] = None
     wiregrid_az: float = 180
-    wiregrid_el: float = 48
+    wiregrid_el: float = 50
 
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
