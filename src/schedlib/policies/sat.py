@@ -871,14 +871,17 @@ class SATPolicy(tel.TelPolicy):
             'pinned': True  # remain unchanged during multi-pass
         }
 
-        # move to stow position if specified, otherwise keep final position
+        # move to a stow position if specified, otherwise find a stow position or stay in final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
             if not self.stages['build_op']['plan_moves']['stow_position']:
                 az_start = 180
                 alt_start = 60
                 # add a buffer to start and end to be safe
-                t_start = t0 - dt.timedelta(seconds=300)
+                if len(seq) > 0:
+                    t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)
+                else:
+                    t_start = t0 - dt.timedelta(seconds=300)
                 t_end = t1 + dt.timedelta(seconds=300)
                 az_stow, alt_stow, _, _ = get_parking(t_start, t_end, alt_start, self.stages['build_op']['plan_moves']['sun_policy'])
                 logger.info(f"found sun safe stow position at ({az_stow}, {alt_stow})")
