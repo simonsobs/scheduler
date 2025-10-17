@@ -378,82 +378,9 @@ class SATP2Policy(SATPolicy):
         self.cal_targets.append(make_cal_target(*args, **kwargs))
 
     def init_cal_seqs(
-        self, cfile, wgfile, blocks, 
-        t0, t1, anchor_time=None, 
-        ignore_wafers=None
+        self, cfile, wgfile, blocks,
+        t0, t1, ignore_wafers=None
     ):
-        # source -> boresight -> allow_partial
-        array_focus = {
-            'jupiter': {
-                0 : {
-                    'ws6': True,
-                    'ws1,ws0': True,
-                    'ws2': True
-                },
-                -45 : {
-                    'ws6,ws0': True,
-                    'ws5': True,
-                },
-                45 : {
-                    'ws2,ws0': True,
-                    'ws3': True,
-                }
-            },
-            'taua': {
-                0 : {
-                    'ws6': True,
-                    'ws1,ws0': True,
-                    'ws2': True
-                },
-                -45 : {
-                    'ws6,ws0': True,
-                    'ws5': True,
-                },
-                45 : {
-                    'ws2,ws0': True,
-                    'ws3': True,
-                }
-            },
-            'saturn': {
-                0 : {'ws0,ws4': True, 'ws2,ws3': True, 'ws5,ws6': True},
-                -45 : {'ws0,ws3': True, 'ws1,ws2': True, 'ws4,ws5': True,},
-                45 : {'ws0,ws5': True, 'ws3,ws4': True, 'ws1,ws6': True},
-            },
-
-            'moon': {
-                0 : {
-                    'ws3,ws2': False,
-                    'ws0,ws1,ws4': False,
-                    'ws5,ws6': False,
-                    'ws1,ws2,ws6': False,
-                },
-                45 : {
-                    'ws3,ws4': False,
-                    'ws2,ws0,ws5': False,
-                    'ws1,ws6': False,
-                    'ws1,ws2,ws3': False,
-                },
-                -45 : {
-                    'ws1,ws2': False,
-                    'ws6,ws0,ws3': False,
-                    'ws4,ws5': False,
-                    'ws1,ws6,ws5': False,
-                },
-            }
-        }
-
-        if ignore_wafers is not None:
-            for outer_key in list(array_focus.keys()):
-                for inner_key in list(array_focus[outer_key].keys()):
-                    new_entries = {}
-                    for wafers_str, val in array_focus[outer_key][inner_key].items():
-                        wafers = wafers_str.split(',')
-                        filtered = [w for w in wafers if w not in ignore_wafers]
-                        if filtered:
-                            new_key = ','.join(filtered)
-                            new_entries[new_key] = val
-                    array_focus[outer_key][inner_key] = new_entries
-
         # get cal targets
         if cfile is not None:
             if type(cfile) == str:
@@ -464,11 +391,20 @@ class SATP2Policy(SATPolicy):
 
             # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
-            # ensure cal_target source is in array_focus
-            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.source in array_focus.keys()]
 
             # find nearest cmb block either before or after the cal target
             for i, cal_target in enumerate(cal_targets):
+
+                # remove ignored wafers
+                if ignore_wafers is not None:
+                    wafers = cal_target.array_query.split(',')
+                    filtered = [w for w in wafers if w not in ignore_wafers]
+                    if filtered:
+                        cal_targets[i] = replace(cal_targets[i], array_query=",".join(filtered))
+                    else:
+                        cal_targets[i] = None
+                        continue
+
                 if cal_target.boresight_rot is None:
                     candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
                     if candidates:
@@ -486,27 +422,13 @@ class SATP2Policy(SATPolicy):
                 else:
                     cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
 
-                # get wafers to observe based on source name and boresight
-                if cal_target.array_query is None:
-                    focus_str = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot]
-                    index = u.get_cycle_option(cal_target.t0, list(focus_str.keys()), anchor_time)
-                    # order list so current date's array_query is tried first
-                    array_query = list(focus_str.keys())[index:] + list(focus_str.keys())[:index]
-                    #array_query = list(focus_str.keys())[index]
-                    cal_targets[i] = replace(cal_targets[i], array_query=array_query)
-
-                    allow_partial = list(focus_str.values())[index:] + list(focus_str.values())[:index]
-                else:
-                    allow_partial = array_focus[cal_targets[i].source][cal_targets[i].boresight_rot][cal_target.array_query]
-                cal_targets[i] = replace(cal_targets[i], allow_partial=allow_partial)
-
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
                 cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
-            self.cal_targets += cal_targets
+            self.cal_targets += [target for target in cal_targets if target is not None]
 
         # get wiregrid file
         if wgfile is not None and not self.disable_hwp:
