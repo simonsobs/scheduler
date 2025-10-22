@@ -305,8 +305,8 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
     _, idx = np.unique(az_range, return_index=True)
     az_range = az_range[np.sort(idx)]
 
-    for az_test in az_range:
-        for alt_test in alt_range:
+    for alt_test in alt_range:
+        for az_test in az_range:
             logger.info(f"trying to park at ({np.round(az_test,1)}, {alt_test}) with max_delay={max_delay}")
             # try parking position at (az_test, alt_test)
             parking = get_parking(block0.t1, block1.t0, block0.alt, sun_policy,
