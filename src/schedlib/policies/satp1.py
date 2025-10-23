@@ -202,7 +202,7 @@ def make_config(
     allow_partial_override=False,
     drift_override=True,
     wiregrid_az=180,
-    wiregrid_el=48,
+    wiregrid_el=50,
     **op_cfg
 ):
     blocks = make_blocks(master_file, 'sat-cmb')
@@ -335,7 +335,7 @@ class SATP1Policy(SATPolicy):
         allow_partial_override=False,
         drift_override=True,
         wiregrid_az=180,
-        wiregrid_el=60,
+        wiregrid_el=50,
         **op_cfg
     ):
         if cal_targets is None:
