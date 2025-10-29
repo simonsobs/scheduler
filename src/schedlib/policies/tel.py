@@ -293,7 +293,7 @@ def cmb_scan(state, block):
         f"    description='{block.name}',",
         f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    width={round(block.throw, 3)}" + (", az_drift=0" if block.scan_type == 1 else ", az_drift=None") + ",",
-        f"    el_amp={block.el_amp},",
+        f"    el_amp={block.el_amp}" + (", turnaround_method='three_leg'" if block.scan_type in [2, 3] else ", turnaround_method='standard'") + ",",
         f"    type={block.scan_type},",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
