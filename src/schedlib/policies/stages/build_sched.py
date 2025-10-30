@@ -11,10 +11,8 @@ class BuildSched:
         init_state = state
         commands = []
         for ir in irs:
-            print('----',state.curr_time == ir.t0, state.curr_time, ir.t0, ir.t1)
             assert state.curr_time == ir.t0
             state, _, command = self._apply_ops(state, ir.operations, block=ir.block)
-            print('=====',state.curr_time == ir.t1, state.curr_time, ir.t0, ir.t1)
             assert state.curr_time == ir.t1
             commands += command
         return commands
@@ -59,10 +57,8 @@ class BuildSched:
         if (az is None or alt is None) and (block is not None):
             az, alt = block.az, block.alt
 
-        print('op_cfgs', op_cfgs)
         for op_cfg_ in op_cfgs:
             op_cfg = op_cfg_.copy() # important!
-            #print('op_cfg0', op_cfg)
             # sanity check
             for k in ['name', 'sched_mode']:
                 assert k in op_cfg, f"operation config must have a '{k}' key"
@@ -80,25 +76,18 @@ class BuildSched:
 
             # add block to the operation config if provided
             block_cfg = {'block': block} if block is not None else {}
-            #print('op_cfg1', op_cfg)
 
             op_cfg = {**op_cfg, **block_cfg}  # make copy
 
             # apply operation
             op = cmd.make_op(op_name, **op_cfg)
-            print('ops_cfg', op_cfg)
-            #print('op', op)
-            #print('state', state)
             state, dur, command = op(state)
 
             if indent:
                 command = [' '*indent+c for c in command]
 
             duration += dur
-            #print('state.curr_time before increment', state.curr_time)
-            #print(dur)
             state = state.increment_time(dt.timedelta(seconds=dur))
-            #print('state.curr_time after increment', state.curr_time)
             commands += command
 
             if divider:

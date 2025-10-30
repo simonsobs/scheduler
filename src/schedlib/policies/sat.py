@@ -797,7 +797,7 @@ class SATPolicy(tel.TelPolicy):
                 logger.warn(f"wiregrid block {wiregrid_block} has overlap with cal scans. removing.")
                 wiregrid_blocks[i] = None
 
-        #cal_blocks += wiregrid_blocks
+        cal_blocks += wiregrid_blocks
         cal_blocks += sunbreak_blocks
 
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
@@ -818,9 +818,6 @@ class SATPolicy(tel.TelPolicy):
         wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
         sunbreak_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Sunbreak]
-        #print('cmb_pre', cmb_pre)
-        #print('cmb_in', cmb_in)
-        #print('sunbreak_in', sunbreak_in)
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -851,7 +848,6 @@ class SATPolicy(tel.TelPolicy):
                     'priority': -2
                 }
             elif block.subtype == 'sunbreak':
-                print('sunbreak block', block)
                 return {
                     'name': block.name,
                     'block': block,
@@ -913,11 +909,7 @@ class SATPolicy(tel.TelPolicy):
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
-        #print('start_block', start_block)
-        #print('seq', seq)
-        print('before build_op.apply')
         ops, state = build_op.apply(seq, t0, t1, state)
-        print('after build_op.apply')
         if return_state:
             return ops, state
         return ops
