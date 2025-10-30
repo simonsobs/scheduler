@@ -655,6 +655,10 @@ class BuildOpSimple:
                     pre_ops=b['pre'], post_ops=b['post'], in_ops=b['in'],
                     causal=not(b['priority'] == priority)
                 )
+                if b['name'] == 'NO OBSERVATIONS':
+                    print('b', b)
+                    print('ir', ir)
+                    print('state', state)
                 if len(ir) == 0:
                     logger.info(f"--> block {b['block']} has nothing that can be planned, skipping...")
                     continue
@@ -822,6 +826,10 @@ class BuildOpSimple:
             The sequence of operations planned for the block.
 
         """
+        print('=========================')
+        print('block.t0', block.t0)
+        print('block.t1', block.t1)
+        print('state.curr_time', state.curr_time)
         # fast forward to within the constrained time block
         # state = state.replace(curr_time=min(constraint.t0, block.t0))
         # - during causal planning: fast forward state is allowed
@@ -837,16 +845,23 @@ class BuildOpSimple:
             logger.info(f"--> skipping block {block.name} because it's already past")
             return state, []
 
-        shift = 10
-        safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
-        while safet <= state.curr_time:
-            state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
+        if block.name != 'NO OBSERVATIONS':
+            shift = 10
+            print('block.az alt', block.az, block.az, block.alt, block.alt)
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+            print('safet', safet)
+            while safet <= state.curr_time:
+                state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
+                safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
-        # for how long is this block sun-safe
-        _, sun_safe, _ = get_traj_ok_time_socs_scan(block.az, block.az, block.alt, block.alt, block.t1,
-                                       self.plan_moves['sun_policy'], block0=block, return_all=True)
-        final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe['sun_time'])
+            # for how long is this block sun-safe
+            _, sun_safe, _ = get_traj_ok_time_socs_scan(block.az, block.az, block.alt, block.alt, block.t1,
+                                        self.plan_moves['sun_policy'], block0=block, return_all=True)
+
+            final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe['sun_time'])
+        else:
+            print('NO OBSERVATION block, skip sun-safe check')
+            final_safet = u.ct2dt(u.dt2ct(block.t1) + dt.timedelta(days=10).total_seconds())
 
         initial_state = state
 
@@ -861,6 +876,11 @@ class BuildOpSimple:
         logger.debug(f"--> planning pre-block operations")
 
         state, pre_dur, _ = self._apply_ops(state, pre_ops, block=block)
+
+        print('--------------')
+        print('block.t0', block.t0)
+        print('block.t1', block.t1)
+        print('state.curr_time', state.curr_time)
 
         logger.debug(f"---> pre-block ops duration: {pre_dur} seconds")
         logger.debug(f"---> pre-block curr state: {u.pformat(state)}")

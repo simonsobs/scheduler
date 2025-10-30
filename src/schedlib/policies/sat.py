@@ -74,7 +74,7 @@ class SchedMode(tel.SchedMode):
     """
     PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
-    PostWiregrid = 'post_wiregrid'
+    Sunbreak = 'sunbreak'
 
 
 def make_geometry(xi_offset=0., eta_offset=0.):
@@ -772,21 +772,24 @@ class SATPolicy(tel.TelPolicy):
             state = self.init_state(t0)
 
         # pick up NO OBSERVATION time period and cut NO OBSERVATION blocks
-        nseq = []
-        for iseq in seq:
-            if iseq.name == 'NO OBSERVATIONS':
-                noobs_it0 = iseq.t0
-                noobs_it1 = iseq.t1
-            else:
-                nseq.append(iseq)
-        seq = nseq
+        #nseq = []
+        #for iseq in seq:
+        #    if iseq.name == 'NO OBSERVATIONS':
+        #        noobs_it0 = iseq.t0
+        #        noobs_it1 = iseq.t1
+        #    else:
+        #        nseq.append(iseq)
+        #seq = nseq
 
         # load building stage
         build_op = get_build_stage('build_op', {'policy_config': self, **self.stages.get('build_op', {})})
 
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
-        cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+        #cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb'))
+        cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb' and b.name != 'NO OBSERVATIONS', seq))
+        sunbreak_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb' and b.name == 'NO OBSERVATIONS', seq))
+        sunbreak_blocks = [iblock.replace(subtype = 'sunbreak') for iblock in sunbreak_blocks]
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
 
         for i, wiregrid_block in enumerate(wiregrid_blocks):
@@ -794,7 +797,8 @@ class SATPolicy(tel.TelPolicy):
                 logger.warn(f"wiregrid block {wiregrid_block} has overlap with cal scans. removing.")
                 wiregrid_blocks[i] = None
 
-        cal_blocks += wiregrid_blocks
+        #cal_blocks += wiregrid_blocks
+        cal_blocks += sunbreak_blocks
 
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
@@ -813,8 +817,10 @@ class SATPolicy(tel.TelPolicy):
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
         wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        sunbreak_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Sunbreak]
         #print('cmb_pre', cmb_pre)
         #print('cmb_in', cmb_in)
+        #print('sunbreak_in', sunbreak_in)
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -843,6 +849,16 @@ class SATPolicy(tel.TelPolicy):
                     'in': wiregrid_in,
                     'post': [],
                     'priority': -2
+                }
+            elif block.subtype == 'sunbreak':
+                print('sunbreak block', block)
+                return {
+                    'name': block.name,
+                    'block': block,
+                    'pre': [],
+                    'in': sunbreak_in,
+                    'post': [],
+                    'priority': 20
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
