@@ -467,7 +467,8 @@ def parse_sequence_from_toast_sat(ifile):
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
-        if _escape_string(row['type'].strip()) != "None":
+        #if _escape_string(row['type'].strip()) != "None":
+        if True:
             block = ScanBlock(
                 name=_escape_string(row['patch'].strip()),
                 t0=u.str2datetime(row['start_utc']),
@@ -483,6 +484,22 @@ def parse_sequence_from_toast_sat(ifile):
                 hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
             )
             blocks.append(block)
+        #if _escape_string(row['type'].strip()) == "None":
+        #    block = StareBlock(
+        #        name=_escape_string(row['patch'].strip()),
+        #        t0=u.str2datetime(row['start_utc']),
+        #        t1=u.str2datetime(row['stop_utc']),
+        #        alt=row['el'],
+        #        az=row['az_min'],
+        #        az_speed=row['speed'],
+        #        az_accel=row['accel'],
+        #        throw=np.abs(row['az_max'] - row['az_min']),
+        #        boresight_angle=row['rotation'],
+        #        priority=row['priority'],
+        #        tag=_escape_string(row['uid'].strip()),
+        #        hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+        #    )
+        #    blocks.append(block)
     return blocks
 
 def parse_cal_targets_from_toast_sat(ifile):

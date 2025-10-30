@@ -74,6 +74,7 @@ class SchedMode(tel.SchedMode):
     """
     PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
+    PostWiregrid = 'post_wiregrid'
 
 
 def make_geometry(xi_offset=0., eta_offset=0.):
@@ -770,6 +771,16 @@ class SATPolicy(tel.TelPolicy):
         if state is None:
             state = self.init_state(t0)
 
+        # pick up NO OBSERVATION time period and cut NO OBSERVATION blocks
+        nseq = []
+        for iseq in seq:
+            if iseq.name == 'NO OBSERVATIONS':
+                noobs_it0 = iseq.t0
+                noobs_it1 = iseq.t1
+            else:
+                nseq.append(iseq)
+        seq = nseq
+
         # load building stage
         build_op = get_build_stage('build_op', {'policy_config': self, **self.stages.get('build_op', {})})
 
@@ -802,6 +813,8 @@ class SATPolicy(tel.TelPolicy):
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
         wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        #print('cmb_pre', cmb_pre)
+        #print('cmb_in', cmb_in)
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -884,8 +897,11 @@ class SATPolicy(tel.TelPolicy):
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
-
+        #print('start_block', start_block)
+        #print('seq', seq)
+        print('before build_op.apply')
         ops, state = build_op.apply(seq, t0, t1, state)
+        print('after build_op.apply')
         if return_state:
             return ops, state
         return ops

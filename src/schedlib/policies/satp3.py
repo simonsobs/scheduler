@@ -176,7 +176,7 @@ def make_operations(
         wiregrid_ops += [
             { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreWiregrid, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,},
             { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreWiregrid, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
-            { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
+            { 'name': 'sat.wiregrid'        , 'sched_mode': SchedMode.Wiregrid },
         ]
     return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
 

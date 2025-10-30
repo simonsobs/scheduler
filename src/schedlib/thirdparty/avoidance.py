@@ -111,6 +111,9 @@ class SunAvoidance(core.MappableRule):
                 len(t)),
             len(t))
 
+        if block.name == 'NO OBSERVATIONS':
+            print('block name is No observaiotn')
+            return block
         # it's possible that adding the buffer will make entire block unsafe
         if len(safe_intervals) == 0:
             return None
