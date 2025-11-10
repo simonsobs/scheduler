@@ -855,7 +855,7 @@ class SATPolicy(tel.TelPolicy):
             # find an alt, az that is sun-safe for the entire duration of the schedule.
             if not self.stages['build_op']['plan_moves']['stow_position']:
                 az_start = 180
-                alt_start = 60
+                alt_start = self.elevation_override if self.elevation_override is not None else 60
                 # add a buffer to start and end to be safe
                 if len(seq) > 0:
                     t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)

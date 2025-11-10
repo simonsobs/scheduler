@@ -416,6 +416,7 @@ class TelPolicy:
     cal_targets: List[CalTarget] = field(default_factory=list)
     scan_tag: Optional[str] = None
     az_motion_override: bool = False
+    elevation_override: Optional[float] = None
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s^2
     el_freq: float = 0.
@@ -470,6 +471,12 @@ class TelPolicy:
                     el_freq=self.el_freq if b.scan_type==3 else b.el_freq
                 ), blocks
             )
+        if self.elevation_override is not None:
+            blocks = core.seq_map(
+                    lambda b: b.replace(
+                        alt=self.elevation_override
+                    ), blocks
+                )
         return blocks
 
 
