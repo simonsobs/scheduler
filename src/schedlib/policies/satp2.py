@@ -243,14 +243,19 @@ def make_config(
         'az_range': [-45, 405]
     }
 
-    if force_max_hwp_el and max_hwp_el is not None:
-        max_el  = max_hwp_el
-    else:
-        max_el = 90
-
-    el_range = {
-        'el_range': [40, max_el]
+    if elevation_override is not None:
+        el_range = {
+        'el_range': [elevation_override, elevation_override]
     }
+    else:
+        if force_max_hwp_el and max_hwp_el is not None:
+                max_el  = max_hwp_el
+        else:
+            max_el = 90
+
+        el_range = {
+            'el_range': [40, max_el]
+        }
 
     config = {
         'state_file': state_file,
@@ -428,6 +433,9 @@ class SATP2Policy(SATPolicy):
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+
+                if self.elevation_override is not None:
+                    cal_targets[i] = replace(cal_targets[i], el_bore=self.elevation_override)
 
                 cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
