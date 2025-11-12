@@ -7,7 +7,7 @@ from typing import Optional
 from ..thirdparty import SunAvoidance
 from .. import config as cfg, core, source as src, rules as ru
 from .. import source as src, utils as u
-from .sat import SATPolicy, State, SchedMode, make_geometry
+from .sat import SATPolicy, State, SchedMode, make_geometry as default_make_geometry
 from .tel import make_blocks, CalTarget
 from ..instrument import WiregridTarget, StareBlock, parse_cal_targets_from_toast_sat, parse_wiregrid_targets_from_file
 
@@ -18,6 +18,33 @@ logger = u.init_logger(__name__)
 #         setup satp2 specific configs
 # ----------------------------------------------------
 
+def make_geometry(xi_offset=0., eta_offset=0.):
+    geo = default_make_geometry(xi_offset, eta_offset)
+    new_geo = {}
+
+    quadrant_radius = 3
+    quadrant_offset = 1.5
+
+    for wafer, pos in geo.items():
+        new_geo[wafer] = pos
+
+        new_geo[f'{wafer}n'] = {
+            'center': [pos['center'][0], pos['center'][1]+quadrant_offset],
+            'radius': quadrant_radius,
+        }
+        new_geo[f'{wafer}s'] = {
+            'center': [pos['center'][0], pos['center'][1]-quadrant_offset],
+            'radius': quadrant_radius,
+        }
+        new_geo[f'{wafer}e'] = {
+            'center': [pos['center'][0]+quadrant_offset, pos['center'][1]],
+            'radius': quadrant_radius,
+        }
+        new_geo[f'{wafer}w'] = {
+            'center': [pos['center'][0]+quadrant_offset, pos['center'][1]],
+            'radius': quadrant_radius,
+        }
+    return new_geo
 
 def make_cal_target(
     source: str,
