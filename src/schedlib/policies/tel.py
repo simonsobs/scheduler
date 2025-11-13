@@ -423,10 +423,10 @@ class TelPolicy:
             )
         if self.elevation_override is not None:
             blocks = core.seq_map(
-                    lambda b: b.replace(
-                        alt=self.elevation_override
-                    ), blocks
-                )
+                lambda b: b.replace(
+                    alt=self.elevation_override
+                ), blocks
+            )
         return blocks
 
     def make_blocks(self, cmb_plan_type):

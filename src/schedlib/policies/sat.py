@@ -13,7 +13,7 @@ from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
 from .tel import SchedMode
-from ..instrument import CalTarget, WiregridTarget
+from ..instrument import CalTarget, StareBlock, WiregridTarget
 
 
 logger = u.init_logger(__name__)
@@ -334,19 +334,20 @@ class SATPolicy(tel.TelPolicy):
             },
         }
 
-    def make_operations(self):
+    def make_operations(self, hwp_cfg=None, cmds_uxm_relock=None, cmds_det_setup=None):
         cmb_ops = []
         cal_ops = []
         wiregrid_ops = []
         post_session_ops = []
 
-        hwp_cfg = {
-            'gripper': 'hwp-gripper',
-            'hwp-pmx': 'pmx',
-            'iboot2': 'power-iboot-hwp-2',
-            'pid': 'hwp-pid',
-            'pmx': 'hwp-pmx',
-        }
+        if hwp_cfg is None:
+            hwp_cfg = {
+                'gripper': 'hwp-gripper',
+                'hwp-pmx': 'pmx',
+                'iboot2': 'power-iboot-hwp-2',
+                'pid': 'hwp-pid',
+                'pmx': 'hwp-pmx',
+            }
         pre_session_ops = [
             {
                 'name': 'sat.preamble',
@@ -374,7 +375,8 @@ class SATPolicy(tel.TelPolicy):
                     {
                         'name': 'sat.ufm_relock',
                         'sched_mode': sched_mode,
-                        'relock_cadence': self.relock_cadence
+                        'relock_cadence': self.relock_cadence,
+                        'commands': cmds_uxm_relock,
                     }
                 ]
 
@@ -399,6 +401,7 @@ class SATPolicy(tel.TelPolicy):
                     'apply_boresight_rot': self.apply_boresight_rot,
                     'iv_cadence': self.iv_cadence,
                     'det_setup_duration': self.det_setup_duration,
+                    'commands': cmds_det_setup,
                 },
                 {
                     'name': 'sat.hwp_spin_up',
@@ -557,7 +560,7 @@ class SATPolicy(tel.TelPolicy):
 
         # get wiregrid plan
         if self.wiregrid_plan is not None and not self.disable_hwp:
-            wiregrid_candidates = parse_wiregrid_targets_from_file(wgfile)
+            wiregrid_candidates = inst.parse_wiregrid_targets_from_file(self.wiregrid_plan)
             wiregrid_candidates[:] = [
                 wg for wg in wiregrid_candidates
                 if wg.t0 >= t0 and wg.t1 <= t1

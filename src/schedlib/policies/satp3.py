@@ -15,7 +15,38 @@ class SATP3Policy(SATPolicy):
             logger.warning("Boresight Override does nothing for SATp3")
             self.boresight_override = None
 
-        super().__post_init__()
+        cmds_uxm_relock = [
+            "",
+            "####################### Relock #######################",
+            "run.smurf.zero_biases()",
+            "time.sleep(120)",
+            "run.smurf.uxm_relock(concurrent=True)",
+            "run.smurf.take_bgmap(concurrent=True)",
+            "################## Relock Over #######################",
+            "",
+        ]
+
+        cmds_det_setup = [
+            "",
+            "################### Detector Setup######################",
+            "with disable_trace():",
+            "    run.initialize()",
+            "run.smurf.iv_curve(concurrent=True)",
+            "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
+            "time.sleep(300)",
+            "run.smurf.bias_step(concurrent=True)",
+            "#################### Detector Setup Over ####################",
+            "",
+        ]
+
+        self.blocks = self.make_blocks('sat-cmb')
+        self.geometries = self.make_geometry()
+        self.operations = self.make_operations(cmds_uxm_relock=cmds_uxm_relock, cmds_det_setup=cmds_det_setup)
+
+        if self.elevation_override is not None:
+            self.stages["build_op"]["plan_moves"]["el_limits"] = 2*[self.elevation_override]
+        elif self.force_max_hwp_el and self.max_hwp_el is not None:
+            self.stages["build_op"]["plan_moves"]["el_limits"][1] = self.max_hwp_el
 
     def add_cal_target(self, *args, **kwargs):
         array_focus = {
