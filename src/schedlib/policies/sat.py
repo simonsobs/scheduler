@@ -255,6 +255,7 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake
 
 @dataclass
 class SATPolicy(tel.TelPolicy):
+    wiregrid_plan: str = None
     hwp_override: bool = None
     brake_hwp: bool = True
     disable_hwp: bool = False
@@ -497,7 +498,7 @@ class SATPolicy(tel.TelPolicy):
         Parameters
         ----------
         blocks : core.BlocksTree:
-            The CMB block sequence from init_cmb_seq
+            The CMB block sequence from init_cmb_seq.
         t0 : datetime.datetime
             The start time of the sequences.
         t1 : datetime.datetime

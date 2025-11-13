@@ -198,12 +198,15 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
 #                  Base LAT Policy
 # ----------------------------------------------------
 
+@dataclass
 class LATPolicy(tel.TelPolicy):
     platform: str = "lat"
     corotator_override: float = None
     elevations_under_90: bool = False
     apply_corotator_rot: bool = True
     corotator_offset: float = 0.0
+    el_freq: float = 0.0
+    run_stimulator: bool = False
     open_shutter: bool = False
     close_shutter: bool = False
     det_setup_duration: float = 20.0*u.minute
@@ -308,7 +311,7 @@ class LATPolicy(tel.TelPolicy):
         sched_modes = [SchedMode.PreSession, SchedMode.PreObs, SchedMode.PreCal]
 
         if self.relock_cadence is not None:
-            for op, sched_mode in zip(ops, sched_mode):
+            for op, sched_mode in zip(ops, sched_modes):
                 op += [
                     {
                         'name': 'lat.ufm_relock',
@@ -325,7 +328,7 @@ class LATPolicy(tel.TelPolicy):
                 {
                     'name': 'lat.setup_corotator',
                     'sched_mode': sched_mode,
-                    'apply_boresight_rot': self.apply_corotator_rot,
+                    'apply_corotator_rot': self.apply_corotator_rot,
                     'cryo_stabilization_time': self.cryo_stabilization_time,
                     'corotator_offset': self.corotator_offset,
                 },
@@ -361,7 +364,7 @@ class LATPolicy(tel.TelPolicy):
         cal_ops += [
             {
                 'name': 'lat.source_scan',
-                'sched_mode': SchedMode.InObs
+                'sched_mode': SchedMode.InCal
             },
             {
                 'name': 'lat.bias_step',
@@ -420,30 +423,32 @@ class LATPolicy(tel.TelPolicy):
             corotator_now=0,
         )
 
-    def init_cal_seqs(self, t0, t1, blocks):
+    def init_cal_seqs(self, blocks, t0, t1):
         """
-        Initialize the cal and wiregrid sequences for the scheduler to process.
+        Initialize the cal sequences for the scheduler to process.
 
         Parameters
         ----------
+        blocks : core.BlocksTree:
+            The CMB block sequence from init_cmb_seq.
         t0 : datetime.datetime
             The start time of the sequences.
         t1 : datetime.datetime
             The end time of the sequences.
-        blocks : core.BlocksTree:
-            The CMB block sequence from init_cmb_seq
 
         Returns
         -------
         BlocksTree (nested dict / list of blocks)
-            The initialized CMB, cal, and wiregrid sequences
+            The initialized CMB and cal sequences
         """
 
         # get cal targets
         if self.cal_plan is not None:
-            cal_targets = parse_cal_targets_from_toast_lat(self.cal_plan)
+            cal_targets = inst.parse_cal_targets_from_toast_lat(self.cal_plan)
             # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+        else:
+            cal_targets = []
 
         for i, cal_target in enumerate(cal_targets):
             if cal_target.el_bore > 90:
@@ -455,14 +460,13 @@ class LATPolicy(tel.TelPolicy):
                 boresight = corotator_to_boresight(cal_targets[i].el_bore, corotator)
             else:
                 boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
-                cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
+            cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
 
             if self.az_branch_override is not None:
                 cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
-            self.cal_targets += cal_targets
-
+        self.cal_targets += [target for target in cal_targets if target is not None]
         self.cal_targets = [cal_target for cal_target in self.cal_targets if cal_target.source not in self.remove_cal_targets]
 
         # by default add calibration blocks specified in cal_targets if not already specified

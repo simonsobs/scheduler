@@ -356,7 +356,6 @@ def bias_step(state, block, bias_step_cadence=None):
 class TelPolicy:
     cmb_plan: str
     cal_plan: str
-    wiregrid_plan: str
     stages: Dict[str, Any]
     rules: Dict[str, core.Rule]
     state_file: str = None
