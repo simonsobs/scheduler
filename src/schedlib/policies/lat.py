@@ -1,32 +1,35 @@
-"""A production-level implementation of the LAT policy
-
-"""
 import numpy as np
-import yaml
-import os.path as op
+import datetime as dt
 from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
-
-import datetime as dt
 from typing import List, Union, Optional, Dict, Any, Tuple
-import jax.tree_util as tu
-from functools import reduce, partial
+import datetime as dt
 
-from .. import config as cfg, core, source as src, rules as ru
-from .. import commands as cmd, instrument as inst, utils as u
+from .. import core, utils as u, source as src, rules as ru
+from .. import commands as cmd, instrument as inst
 from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from .tel import State, make_blocks, SchedMode
+from .tel import SchedMode
 from ..instrument import CalTarget
 
+
 logger = u.init_logger(__name__)
+
+
+# ----------------------------------------------------
+#                  LAT Command Durations
+# ----------------------------------------------------
 
 COROTATOR_DURATION = 1*u.minute
 STIMULATOR_DURATION = 4*u.minute
 
-def el_to_locked_corotator(el):
+# ----------------------------------------------------
+#                   Utilities
+# ----------------------------------------------------
+
+def el_to_locked_corotator(el: float) -> float:
     """
     Calculates the locked corotator angle for a given elevation.  The
     corotator angle is set to 0 deg at elevations of 60 deg and 120 deg.
@@ -41,7 +44,8 @@ def el_to_locked_corotator(el):
     else:
         return el - 120
 
-def corotator_to_boresight(el, corotator):
+
+def corotator_to_boresight(el: float, corotator: float) -> float:
     """
     Calculates the boresight angle (-roll) from the corotator angle.
     When the corotator is locked, The corotator angle is determined from
@@ -57,7 +61,8 @@ def corotator_to_boresight(el, corotator):
     """
     return -(el - 60 - corotator)
 
-def boresight_to_corotator(el, boresight):
+
+def boresight_to_corotator(el: float, boresight: float) -> float:
     """
     Calculates the corotator angle from the boresight (-roll) angle.
     The boresight angle is determined from the function ``corotator_to_boresight``
@@ -71,6 +76,11 @@ def boresight_to_corotator(el, boresight):
         The rotation angle of the boresight (-roll) angle in degrees.
     """
     return boresight + el - 60
+
+
+# ----------------------------------------------------
+#                  LAT State
+# ----------------------------------------------------
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -93,41 +103,8 @@ class State(tel.State):
 
 
 # ----------------------------------------------------
-#                  Register operations
+#                  SAT Operations
 # ----------------------------------------------------
-# Note: to avoid naming collisions. Use appropriate prefixes
-# whenver necessary. For example, all lat specific
-# operations should start with `lat`.
-#
-# Registered operations can be three kinds of functions:
-#
-# 1. for operations with static duration, it can be defined as a function
-#    that returns a list of commands, with the static duration specified in
-#    the decorator
-# 2. for operations with dynamic duration, meaning the duration is determined
-#    at runtime, it can be defined as a function that returns a tuple of
-#    duration and commands; the decorator should be informed with the option
-#    `return_duration=True`
-# 3. for operations that depends and/or modifies the state, the operation
-#    function should take the state as the first argument (no renaming allowed)
-#    and return a new state before the rest of the return values
-#
-# For example the following are all valid definitions:
-#  @cmd.operation(name='my-op', duration=10)
-#  def my_op():
-#      return ["do something"]
-#
-#  @cmd.operation(name='my-op', return_duration=True)
-#  def my_op():
-#      return 10, ["do something"]
-#
-#  @cmd.operation(name='my-op')
-#  def my_op(state):
-#      return state, ["do something"]
-#
-#  @cmd.operation(name='my-op', return_duration=True)
-#  def my_op(state):
-#      return state, 10, ["do something"]
 
 @cmd.operation(name="lat.preamble", duration=0)
 def preamble(open_shutter=False):
@@ -216,288 +193,27 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=0, force=False):
 
     return state, 0, cmd
 
+
 # ----------------------------------------------------
-#         setup LAT specific configs
+#                  Base LAT Policy
 # ----------------------------------------------------
 
-def make_geometry(xi_offset=0., eta_offset=0.):
-    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
-    return {
-        "c1_ws0": {"center": [-0.3710+xi_offset, 0+eta_offset], "radius": 0.3,},
-        "c1_ws1": {"center": [ 0.1815+xi_offset, 0.3211+eta_offset], "radius": 0.3,},
-        "c1_ws2": {"center": [ 0.1815+xi_offset,-0.3211+eta_offset], "radius": 0.3,},
-        "i1_ws0": {"center": [-1.9112+xi_offset,-0.9052+eta_offset], "radius": 0.3,},
-        "i1_ws1": {"center": [-1.3584+xi_offset,-0.5704+eta_offset], "radius": 0.3,},
-        "i1_ws2": {"center": [-1.3587+xi_offset,-1.2133+eta_offset], "radius": 0.3,},
-        "i3_ws0": {"center": [ 1.1865+xi_offset,-0.8919+eta_offset], "radius": 0.3,},
-        "i3_ws1": {"center": [ 1.7326+xi_offset,-0.5705+eta_offset], "radius": 0.3,},
-        "i3_ws2": {"center": [ 1.7333+xi_offset,-1.2135+eta_offset], "radius": 0.3,},
-        "i4_ws0": {"center": [ 1.1732+xi_offset, 0.9052+eta_offset], "radius": 0.3,},
-        "i4_ws1": {"center": [ 1.7332+xi_offset, 1.2135+eta_offset], "radius": 0.3,},
-        "i4_ws2": {"center": [ 1.7326+xi_offset, 0.5705+eta_offset], "radius": 0.3,},
-        "i5_ws0": {"center": [-0.3655+xi_offset, 1.7833+eta_offset], "radius": 0.3,},
-        "i5_ws1": {"center": [ 0.1879+xi_offset, 2.1045+eta_offset], "radius": 0.3,},
-        "i5_ws2": {"center": [ 0.1867+xi_offset, 1.4620+eta_offset], "radius": 0.3,},
-        "i6_ws0": {"center": [-1.9082+xi_offset, 0.8920+eta_offset], "radius": 0.3,},
-        "i6_ws1": {"center": [-1.3577+xi_offset, 1.2133+eta_offset], "radius": 0.3,},
-        "i6_ws2": {"center": [-1.3584+xi_offset, 0.5854+eta_offset], "radius": 0.3,},
-    }
-
-def make_cal_target(
-    source: str,
-    elevation: float,
-    focus: str,
-    corotator: float=None,
-    allow_partial=False,
-    drift=True,
-    az_branch=None,
-    az_speed=None,
-    az_accel=None,
-    source_direction=None,
-) -> CalTarget:
-
-    ## focus = 'all' will concatenate all of the tubes
-    array_focus = {
-        'c1' : 'c1_ws0,c1_ws1,c1_ws2',
-        'i1' : 'i1_ws0,i1_ws1,i1_ws2',
-        'i3' : 'i3_ws0,i3_ws1,i3_ws2',
-        'i4' : 'i4_ws0,i4_ws1,i4_ws2',
-        'i5' : 'i5_ws0,i5_ws1,i5_ws2',
-        'i6' : 'i6_ws0,i6_ws1,i6_ws2',
-    }
-    elevation = float(elevation)
-    if corotator is None:
-        corotator = el_to_locked_corotator(elevation)
-    boresight = corotator_to_boresight(elevation, float(corotator))
-
-    focus = focus.lower()
-
-    focus_str = None
-    if focus == 'all':
-        focus_str = ','.join( [v for k,v in array_focus.items()] )
-    elif focus in array_focus.keys():
-        focus_str = array_focus[focus]
-    else:
-        focus_str = focus
-
-    sources = src.get_source_list()
-    assert source in sources, f"source should be one of {sources.keys()}"
-
-    if az_branch is None:
-        az_branch = 180.
-
-    return CalTarget(
-        source=source,
-        array_query=focus_str,
-        el_bore=elevation,
-        boresight_rot=boresight,
-        tag=focus_str,
-        allow_partial=allow_partial,
-        drift=drift,
-        az_branch=az_branch,
-        az_speed=az_speed,
-        az_accel=az_accel,
-        source_direction=source_direction,
-        from_table=False,
-    )
-
-def make_operations(
-    az_speed,
-    az_accel,
-    el_freq,
-    az_motion_override,
-    iv_cadence=4*u.hour,
-    bias_step_cadence=0.5*u.hour,
-    det_setup_duration=20*u.minute,
-    apply_corotator_rot=True,
-    cryo_stabilization_time=180*u.second,
-    corotator_offset=0.,
-    open_shutter=False,
-    close_shutter=False,
-    relock_cadence=24*u.hour,
-    run_stimulator=True,
-):
-
-    pre_session_ops = [
-        { 'name': 'lat.preamble'        , 'sched_mode': SchedMode.PreSession, 'open_shutter': open_shutter},
-        { 'name': 'start_time'          , 'sched_mode': SchedMode.PreSession},
-        { 'name': 'set_scan_params'     , 'sched_mode': SchedMode.PreSession, 'az_speed': az_speed, 'az_accel': az_accel,
-                                          'el_freq': el_freq, 'az_motion_override': az_motion_override},
-    ]
-
-    cal_ops = []
-    cmb_ops = []
-
-    if relock_cadence is not None:
-        pre_session_ops += [
-            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence}
-        ]
-        cal_ops += [
-            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence}
-        ]
-        cmb_ops += [
-            { 'name': 'lat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence}
-        ]
-
-    # cal
-    cal_ops += [
-        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot,
-        'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence }
-    ]
-    if run_stimulator:
-        cal_ops += [
-            { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PreCal, }
-        ]
-    cal_ops += [
-        { 'name': 'lat.source_scan'     , 'sched_mode': SchedMode.InCal, },
-        { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
-    ]
-    if run_stimulator:
-        cal_ops += [
-            { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PostCal, }
-        ]
-    # cmb
-    cmb_ops += [
-        { 'name': 'lat.setup_corotator' , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot,
-        'cryo_stabilization_time': cryo_stabilization_time, 'corotator_offset': corotator_offset},
-        { 'name': 'lat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_corotator_rot': apply_corotator_rot, 'iv_cadence':iv_cadence},
-        { 'name': 'lat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
-    ]
-    if run_stimulator:
-        cmb_ops += [
-            { 'name': 'lat.stimulator'      , 'sched_mode': SchedMode.PreObs, }
-        ]
-    cmb_ops += [
-        { 'name': 'lat.cmb_scan'        , 'sched_mode': SchedMode.InObs, },
-    ]
-
-    post_session_ops = [
-        { 'name': 'lat.wrap_up'   , 'sched_mode': SchedMode.PostSession, 'close_shutter': close_shutter},
-    ]
-
-    return pre_session_ops + cal_ops + cmb_ops + post_session_ops
-
-def make_config(
-    master_file,
-    state_file,
-    az_speed,
-    az_accel,
-    iv_cadence,
-    bias_step_cadence,
-    max_cmb_scan_duration,
-    cal_targets,
-    el_freq=0.,
-    elevations_under_90=False,
-    remove_cmb_targets=[],
-    remove_cal_targets=[],
-    az_stow=None,
-    el_stow=None,
-    az_offset=0.,
-    el_offset=0.,
-    xi_offset=0.,
-    eta_offset=0.,
-    corotator_override=None,
-    az_motion_override=False,
-    az_branch_override=None,
-    allow_partial_override=False,
-    drift_override=True,
-    **op_cfg
-):
-    blocks = make_blocks(master_file, 'lat-cmb')
-    geometries = make_geometry(xi_offset, eta_offset)
-
-    det_setup_duration = 20*u.minute
-
-    operations = make_operations(
-        az_speed,
-        az_accel,
-        el_freq,
-        az_motion_override,
-        iv_cadence,
-        bias_step_cadence,
-        det_setup_duration,
-        **op_cfg
-    )
-
-    sun_policy = {
-        'min_angle': 21,
-        'min_sun_time': 1801,
-        'min_el': 0,
-        'max_el': 180,
-        'min_az': -180+10,
-        'max_az': 360-10
-    }
-
-    if az_stow is None or el_stow is None:
-        stow_position = {}
-    else:
-        stow_position = {
-            'az_stow': az_stow,
-            'el_stow': el_stow,
-        }
-
-    az_range = {
-        'trim': False,
-        'az_range': [-180+10, 360-10],
-    }
-
-    el_range = {
-        'el_range': [0, 180]
-    }
-
-    config = {
-        'state_file': state_file,
-        'blocks': blocks,
-        'geometries': geometries,
-        'rules': {
-            'min-duration': {
-                'min_duration': 60
-            },
-            'sun-avoidance': sun_policy,
-            'az-range': az_range,
-        },
-        'operations': operations,
-        'cal_targets': cal_targets,
-        'scan_tag': None,
-        'corotator_override': corotator_override,
-        'elevations_under_90': elevations_under_90,
-        'az_motion_override': az_motion_override,
-        'remove_cmb_targets': remove_cmb_targets,
-        'remove_cal_targets': remove_cal_targets,
-        'az_speed': az_speed,
-        'az_accel': az_accel,
-        'el_freq': el_freq,
-        'az_offset': az_offset,
-        'el_offset': el_offset,
-        'iv_cadence': iv_cadence,
-        'bias_step_cadence': bias_step_cadence,
-        'max_cmb_scan_duration': max_cmb_scan_duration,
-        'az_branch_override': az_branch_override,
-        'allow_partial_override': allow_partial_override,
-        'drift_override': drift_override,
-        'stages': {
-            'build_op': {
-                'plan_moves': {
-                    'stow_position': stow_position,
-                    'sun_policy': sun_policy,
-                    'alt_step': 10,
-                    'az_limits': az_range['az_range'],
-                    'el_limits': el_range['el_range'],
-                }
-            }
-        }
-    }
-    return config
-
-@dataclass
 class LATPolicy(tel.TelPolicy):
-    """a more realistic LAT policy.
-    """
-    corotator_override: Optional[float] = None
-    elevations_under_90: Optional[bool] = False
+    platform: str = "lat"
+    corotator_override: float = None
+    elevations_under_90: bool = False
+    apply_corotator_rot: bool = True
+    corotator_offset: float = 0.0
+    open_shutter: bool = False
+    close_shutter: bool = False
+    det_setup_duration: float = 20.0*u.minute
     remove_cmb_targets: Optional[Tuple] = ()
     remove_cal_targets: Optional[Tuple] = ()
+
+    def __post_init__(self):
+        self.blocks = self.make_blocks('lat-cmb')
+        self.geometries = self.make_geometry()
+        self.operations = self.make_operations()
 
     def apply_overrides(self, blocks):
 
@@ -540,136 +256,173 @@ class LATPolicy(tel.TelPolicy):
 
         return super().apply_overrides(blocks)
 
-    @classmethod
-    def from_config(cls, config: Union[Dict[str, Any], str]):
+    def make_geometry(self):
+        logger.info(f"making geometry with xi offset={self.xi_offset}, eta offset={self.eta_offset}")
+        radius = 0.3
+        return {
+            "c1_ws0": {"center": [-0.3710+self.xi_offset, 0.0000+self.eta_offset], "radius": radius,},
+            "c1_ws1": {"center": [ 0.1815+self.xi_offset, 0.3211+self.eta_offset], "radius": radius,},
+            "c1_ws2": {"center": [ 0.1815+self.xi_offset, -0.3211+self.eta_offset], "radius": radius,},
+            "i1_ws0": {"center": [-1.9112+self.xi_offset, -0.9052+self.eta_offset], "radius": radius,},
+            "i1_ws1": {"center": [-1.3584+self.xi_offset, -0.5704+self.eta_offset], "radius": radius,},
+            "i1_ws2": {"center": [-1.3587+self.xi_offset, -1.2133+self.eta_offset], "radius": radius,},
+            "i3_ws0": {"center": [ 1.1865+self.xi_offset, -0.8919+self.eta_offset], "radius": radius,},
+            "i3_ws1": {"center": [ 1.7326+self.xi_offset, -0.5705+self.eta_offset], "radius": radius,},
+            "i3_ws2": {"center": [ 1.7333+self.xi_offset, -1.2135+self.eta_offset], "radius": radius,},
+            "i4_ws0": {"center": [ 1.1732+self.xi_offset, 0.9052+self.eta_offset], "radius": radius,},
+            "i4_ws1": {"center": [ 1.7332+self.xi_offset, 1.2135+self.eta_offset], "radius": radius,},
+            "i4_ws2": {"center": [ 1.7326+self.xi_offset, 0.5705+self.eta_offset], "radius": radius,},
+            "i5_ws0": {"center": [-0.3655+self.xi_offset, 1.7833+self.eta_offset], "radius": radius,},
+            "i5_ws1": {"center": [ 0.1879+self.xi_offset, 2.1045+self.eta_offset], "radius": radius,},
+            "i5_ws2": {"center": [ 0.1867+self.xi_offset, 1.4620+self.eta_offset], "radius": radius,},
+            "i6_ws0": {"center": [-1.9082+self.xi_offset, 0.8920+self.eta_offset], "radius": radius,},
+            "i6_ws1": {"center": [-1.3577+self.xi_offset, 1.2133+self.eta_offset], "radius": radius,},
+            "i6_ws2": {"center": [-1.3584+self.xi_offset, 0.5854+self.eta_offset], "radius": radius,},
+        }
+
+    def make_operations(self):
+        cal_ops = []
+        cmb_ops = []
+        post_session_ops = []
+        pre_session_ops = [
+            {
+                'name': 'lat.preamble',
+                'sched_mode': SchedMode.PreSession,
+                'open_shutter': self.open_shutter
+            },
+            {
+                'name': 'start_time',
+                'sched_mode': SchedMode.PreSession
+            },
+            {
+                'name': 'set_scan_params',
+                'sched_mode': SchedMode.PreSession,
+                'az_speed': self.az_speed,
+                'az_accel': self.az_accel,
+                'el_freq': self.el_freq,
+                'az_motion_override': self.az_motion_override
+            },
+        ]
+
+        ops = [pre_session_ops, cmb_ops, cal_ops]
+        sched_modes = [SchedMode.PreSession, SchedMode.PreObs, SchedMode.PreCal]
+
+        if self.relock_cadence is not None:
+            for op, sched_mode in zip(ops, sched_mode):
+                op += [
+                    {
+                        'name': 'lat.ufm_relock',
+                        'sched_mode': sched_mode,
+                        'relock_cadence': self.relock_cadence
+                    }
+                ]
+
+        ops = [cmb_ops, cal_ops]
+        sched_modes = [SchedMode.PreObs, SchedMode.PreCal]
+
+        for op, sched_mode in zip(ops, sched_modes):
+            op += [
+                {
+                    'name': 'lat.setup_corotator',
+                    'sched_mode': sched_mode,
+                    'apply_boresight_rot': self.apply_corotator_rot,
+                    'cryo_stabilization_time': self.cryo_stabilization_time,
+                    'corotator_offset': self.corotator_offset,
+                },
+                {
+                    'name': 'lat.det_setup',
+                    'sched_mode': sched_mode,
+                    'apply_corotator_rot': self.apply_corotator_rot,
+                    'iv_cadence': self.iv_cadence,
+                    'det_setup_duration': self.det_setup_duration,
+                }
+            ]
+
+            if self.run_stimulator:
+                op += [
+                    {
+                        'name': 'lat.stimulator',
+                        'sched_mode': sched_mode,
+                    },
+                ]
+
+        cmb_ops += [
+            {
+                'name': 'lat.bias_step',
+                'sched_mode': SchedMode.PreObs,
+                'bias_step_cadence': self.bias_step_cadence
+            },
+            {
+                'name': 'lat.cmb_scan',
+                'sched_mode': SchedMode.InObs
+            },
+        ]
+
+        cal_ops += [
+            {
+                'name': 'lat.source_scan',
+                'sched_mode': SchedMode.InObs
+            },
+            {
+                'name': 'lat.bias_step',
+                'sched_mode': SchedMode.PostCal,
+                'bias_step_cadence': self.bias_step_cadence
+            },
+        ]
+
+        if self.run_stimulator:
+             cal_ops += [
+                {
+                    'name': 'lat.stimulator',
+                    'sched_mode': SchedMode.PostCal,
+                },
+             ]
+
+        post_session_ops = [
+            {
+                'name': 'lat.wrap_up',
+                'sched_mode': SchedMode.PostSession,
+                'close_shutter': self.close_shutter,
+            },
+        ]
+
+        return pre_session_ops + cal_ops + cmb_ops + post_session_ops
+
+    def init_state(self, t0: dt.datetime) -> State:
         """
-        Constructs a policy object from a YAML configuration file, a YAML string, or a dictionary.
+        Customize typical initial state, if needed
 
         Parameters
         ----------
-        config : Union[dict, str]
-            The configuration to populate the policy object.
+        t0 : datetime.datetime
+            The start time of the sequences.
 
         Returns
         -------
-        The constructed policy object.
+        lat.State :
+            The initial LAT State object
         """
-        if isinstance(config, str):
-            loader = cfg.get_loader()
-            if op.isfile(config):
-                with open(config, "r") as f:
-                    config = yaml.load(f.read(), Loader=loader)
-            else:
-                config = yaml.load(config, Loader=loader)
-        return cls(**config)
+        if self.state_file is not None:
+            logger.info(f"using state from {self.state_file}")
+            state = State.load(self.state_file)
+            if state.curr_time != t0:
+                logger.info(
+                    f"Loaded state is at {state.curr_time}. Updating time to"
+                    f" {t0}"
+                )
+                state = state.replace(curr_time = t0)
+            return state
 
-    @classmethod
-    def from_defaults(
-        cls,
-        master_file,
-        state_file=None,
-        az_speed=0.8,
-        az_accel=1.5,
-        el_freq=0.,
-        iv_cadence=4*u.hour,
-        bias_step_cadence=0.5*u.hour,
-        max_cmb_scan_duration=1*u.hour,
-        cal_targets=None,
-        az_stow=None,
-        el_stow=None,
-        az_offset=0.,
-        el_offset=0.,
-        xi_offset=0.,
-        eta_offset=0.,
-        elevations_under_90=False,
-        corotator_override=None,
-        az_motion_override=False,
-        az_branch_override=None,
-        allow_partial_override=False,
-        drift_override=True,
-        remove_cmb_targets=(),
-        remove_cal_targets=(),
-        **op_cfg
-    ):
-        if cal_targets is None:
-            cal_targets = []
-
-        x = cls(**make_config(
-            master_file=master_file,
-            state_file=state_file,
-            az_speed=az_speed,
-            az_accel=az_accel,
-            el_freq=el_freq,
-            iv_cadence=iv_cadence,
-            bias_step_cadence=bias_step_cadence,
-            max_cmb_scan_duration=max_cmb_scan_duration,
-            cal_targets=cal_targets,
-            elevations_under_90=elevations_under_90,
-            az_stow=az_stow,
-            el_stow=el_stow,
-            az_offset=az_offset,
-            el_offset=el_offset,
-            xi_offset=xi_offset,
-            eta_offset=eta_offset,
-            corotator_override=corotator_override,
-            az_motion_override=az_motion_override,
-            az_branch_override=az_branch_override,
-            allow_partial_override=allow_partial_override,
-            drift_override=drift_override,
-            remove_cmb_targets=remove_cmb_targets,
-            remove_cal_targets=remove_cal_targets,
-            **op_cfg
-        ))
-
-        return x
-
-    def make_source_scans(self, target, blocks, sun_rule):
-        # digest array_query: it could be a fnmatch pattern matching the path
-        # in the geometry dict, or it could be looked up from a predefined
-        # wafer_set dict. Here we account for the latter case:
-        # look up predefined query in wafer_set
-        if target.array_query in self.wafer_sets:
-            array_query = self.wafer_sets[target.array_query]
-        else:
-            array_query = target.array_query
-
-        # build array geometry information based on the query
-        array_info = inst.array_info_from_query(self.geometries, array_query)
-        logger.debug(f"-> array_info: {array_info}")
-
-        # apply MakeCESourceScan rule to transform known observing windows into
-        # actual scan blocks
-        rule = ru.MakeCESourceScan(
-            array_info=array_info,
-            el_bore=target.el_bore,
-            drift=target.drift,
-            boresight_rot=target.boresight_rot,
-            allow_partial=target.allow_partial,
-            az_branch=target.az_branch,
-            source_direction=target.source_direction,
+        return State(
+            curr_time=t0,
+            az_now=180,
+            el_now=40,
+            corotator_now=0,
         )
-        source_scans = rule(blocks['calibration'][target.source])
 
-        # sun check again: previous sun check ensure source is not too
-        # close to the sun, but our scan may still get close enough to
-        # the sun, in which case we will trim it or delete it depending
-        # on whether allow_partial is True
-        if target.allow_partial:
-            logger.info("-> allow_partial = True: trimming scan options by sun rule")
-            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-            source_scans = min_dur_rule(sun_rule(source_scans))
-        else:
-            logger.info("-> allow_partial = False: filtering scan options by sun rule")
-            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
-
-        # flatten and sort
-        source_scans = core.seq_sort(source_scans, flatten=True)
-
-        return source_scans
-
-    def init_seqs(self, cfile: str, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+    def init_cal_seqs(self, t0, t1, blocks):
         """
-        Initialize the sequences for the scheduler to process.
+        Initialize the cal and wiregrid sequences for the scheduler to process.
 
         Parameters
         ----------
@@ -677,39 +430,35 @@ class LATPolicy(tel.TelPolicy):
             The start time of the sequences.
         t1 : datetime.datetime
             The end time of the sequences.
+        blocks : core.BlocksTree:
+            The CMB block sequence from init_cmb_seq
 
         Returns
         -------
         BlocksTree (nested dict / list of blocks)
-            The initialized sequences
+            The initialized CMB, cal, and wiregrid sequences
         """
 
-        # construct seqs by traversing the blocks definition dict
-        blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1),
-            self.blocks,
-            is_leaf=lambda x: isinstance(x, dict) and 'type' in x
-        )
-
         # get cal targets
-        if cfile is not None:
-            cal_targets = inst.parse_cal_targets_from_toast_lat(cfile)
+        if self.cal_plan is not None:
+            cal_targets = parse_cal_targets_from_toast_lat(self.cal_plan)
+            # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
 
-            for i, cal_target in enumerate(cal_targets):
-                if cal_target.el_bore > 90:
-                    if self.elevations_under_90:
-                        cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
+        for i, cal_target in enumerate(cal_targets):
+            if cal_target.el_bore > 90:
+                if self.elevations_under_90:
+                    cal_targets[i] = replace(cal_targets[i], el_bore=180-cal_targets[i].el_bore)
 
-                if self.corotator_override is None:
-                    corotator = el_to_locked_corotator(cal_targets[i].el_bore)
-                    boresight = corotator_to_boresight(cal_targets[i].el_bore, corotator)
-                else:
-                    boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
+            if self.corotator_override is None:
+                corotator = el_to_locked_corotator(cal_targets[i].el_bore)
+                boresight = corotator_to_boresight(cal_targets[i].el_bore, corotator)
+            else:
+                boresight = corotator_to_boresight(cal_target.el_bore, float(self.corotator_override))
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=boresight)
 
-                if self.az_branch_override is not None:
-                    cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+            if self.az_branch_override is not None:
+                cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += cal_targets
@@ -722,19 +471,6 @@ class LATPolicy(tel.TelPolicy):
                 source = cal_target.source
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
-
-        # trim to given time range
-        blocks = core.seq_trim(blocks, t0, t1)
-
-        # ok to drop Nones
-        blocks = tu.tree_map(
-            lambda x: [x_ for x_ in x if x_ is not None],
-            blocks,
-            is_leaf=lambda x: isinstance(x, list)
-        )
-
-        # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
 
@@ -757,7 +493,7 @@ class LATPolicy(tel.TelPolicy):
         # -----------------------------------------------------------------
         # step 1: preliminary sun avoidance
         #   - get rid of source observing windows too close to the sun
-        #   - likely won't affect scan blocks because master schedule already
+        #   - likely won't affect scan blocks because ref plan already
         #     takes care of this
         # -----------------------------------------------------------------
         if 'sun-avoidance' in self.rules:
@@ -906,26 +642,6 @@ class LATPolicy(tel.TelPolicy):
 
         return blocks
 
-    def init_state(self, t0: dt.datetime) -> State:
-        """customize typical initial state for lat, if needed"""
-        if self.state_file is not None:
-            logger.info(f"using state from {self.state_file}")
-            state = State.load(self.state_file)
-            if state.curr_time != t0:
-                logger.info(
-                    f"Loaded state is at {state.curr_time}. Updating time to"
-                    f" {t0}"
-                )
-                state = state.replace(curr_time = t0)
-            return state
-
-        return State(
-            curr_time=t0,
-            az_now=180,
-            el_now=40,
-            corotator_now=0,
-        )
-
     def seq2cmd(
         self,
         seq,
@@ -948,18 +664,18 @@ class LATPolicy(tel.TelPolicy):
         Parameters
         ----------
         seq : core.Blocks
-            A tree-like sequence of Blocks representing the observation schedule
+            A tree-like sequence of Blocks representing the observation schedule.
         t0 : datetime.datetime
             The starting datetime for the command sequence.
         t1 : datetime.datetime
-            The ending datetime for the command sequence
+            The ending datetime for the command sequence.
         state : Optional[State], optional
-            The initial state of the observatory, by default None
+            The initial state of the observatory, by default None.
 
         Returns
         -------
-        list of Operation
-
+        ops : list
+            The list of operations.
         """
         if state is None:
             state = self.init_state(t0)
@@ -974,7 +690,14 @@ class LATPolicy(tel.TelPolicy):
 
         # divide cmb blocks
         if self.max_cmb_scan_duration is not None:
-            seq = core.seq_flatten(core.seq_map(lambda b: self.divide_blocks(b, dt.timedelta(seconds=self.max_cmb_scan_duration)) if b.subtype=='cmb' else b, seq))
+            seq = core.seq_flatten(
+                core.seq_map(
+                    lambda b: self.divide_blocks(b, dt.timedelta(seconds=self.max_cmb_scan_duration))
+                    if b.subtype == 'cmb'
+                    else b,
+                    seq,
+                )
+            )
 
         # compile operations
         cal_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreCal]
@@ -1023,7 +746,10 @@ class LATPolicy(tel.TelPolicy):
         # move to a stow position if specified, otherwise find a stow position or stay in final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
-            if not self.stages['build_op']['plan_moves']['stow_position']:
+            if (not self.stages['build_op']['plan_moves']['stow_position'] or
+                self.stages['build_op']['plan_moves']['stow_position']['az_stow'] is None or
+                self.stages['build_op']['plan_moves']['stow_position']['el_stow'] is None
+            ):
                 az_start = 180
                 alt_start = 60
                 # add a buffer to start and end to be safe
@@ -1045,8 +771,8 @@ class LATPolicy(tel.TelPolicy):
             alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset, alt_offset=self.el_offset,
-                                    t0=t1-dt.timedelta(seconds=1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset,
+                                    alt_offset=self.el_offset, t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
@@ -1060,5 +786,62 @@ class LATPolicy(tel.TelPolicy):
             return ops, state
         return ops
 
-    def add_cal_target(self, *args, **kwargs):
-        self.cal_targets.append(make_cal_target(*args, **kwargs))
+    def add_cal_target(
+        self,
+        source: str,
+        corotator: int,
+        elevation: int,
+        focus: str,
+        allow_partial=False,
+        drift=True,
+        az_branch=None,
+        az_speed=None,
+        az_accel=None,
+        source_direction=None
+    ):
+        array_focus = {
+            'c1': 'c1_ws0,c1_ws1,c1_ws2',
+            'i1': 'i1_ws0,i1_ws1,i1_ws2',
+            'i3': 'i3_ws0,i3_ws1,i3_ws2',
+            'i4': 'i4_ws0,i4_ws1,i4_ws2',
+            'i5': 'i5_ws0,i5_ws1,i5_ws2',
+            'i6': 'i6_ws0,i6_ws1,i6_ws2',
+        }
+
+        elevation = float(elevation)
+        if corotator is None:
+            corotator = el_to_locked_corotator(elevation)
+        boresight = corotator_to_boresight(elevation, float(corotator))
+
+        focus = focus.lower()
+
+        focus_str = None
+        if focus == 'all':
+            focus_str = ','.join( [v for k,v in array_focus.items()] )
+        elif focus in array_focus.keys():
+            focus_str = array_focus[focus]
+        else:
+            focus_str = focus
+
+        sources = src.get_source_list()
+        assert source in sources, f"source should be one of {sources.keys()}"
+
+        if az_branch is None:
+            az_branch = 180.
+
+        self.cal_targets.append(
+            CalTarget(
+                source=source,
+                array_query=focus_str,
+                el_bore=elevation,
+                boresight_rot=boresight,
+                tag=focus_str,
+                allow_partial=allow_partial,
+                drift=drift,
+                az_branch=az_branch,
+                az_speed=az_speed,
+                az_accel=az_accel,
+                source_direction=source_direction,
+                from_table=False,
+            )
+        )

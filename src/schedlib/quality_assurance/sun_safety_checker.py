@@ -13,29 +13,8 @@ logger = u.init_logger(__name__)
 ## Code to check sun safety
 
 class SunCrawler:
-    def __init__(self, platform, path=None, cmd_txt=None, az_offset=0., el_offset=0.):
-        assert platform in ['satp1', 'satp2', 'satp3', 'lat'], (
-            f"{platform} is not an implemented platform, choose from satp1, "
-             "satp2, or satp3"
-        )
-
-        match platform:
-            case "satp1":
-                from schedlib.policies.satp1 import make_config
-            case "satp2":
-                from schedlib.policies.satp2 import make_config
-            case "satp3":
-                from schedlib.policies.satp3 import make_config
-            case "lat":
-                from schedlib.policies.lat import make_config
-
-        self.configs = make_config(
-            master_file='None',
-            state_file=None,
-            az_speed=None, az_accel=None,
-            iv_cadence=None, bias_step_cadence=None,
-            max_cmb_scan_duration=None, cal_targets=None,
-        )['rules']['sun-avoidance']
+    def __init__(self, configs, path=None, cmd_txt=None, az_offset=0., el_offset=0.,):
+        self.configs = configs
 
         self.az_offset = az_offset
         self.el_offset = el_offset

@@ -40,7 +40,6 @@ def get_traj(az0, az1, el0, el1, wrap_north=False):
 def get_traj_ok_time(az0, az1, alt0, alt1, t0, sun_policy, block0=None):
     # Returns the timestamp until which the move from
     # (az0, alt0) to (az1, alt1) is sunsafe.
-
     t0 = t0.isoformat(timespec='seconds')
     t0 = dt.datetime.fromisoformat(t0).timestamp()
 
