@@ -652,7 +652,7 @@ class TelPolicy:
         commands = build_sched.apply(irs, t0, t1, state)
         return '\n'.join(commands)
 
-    def build_schedule(self, t0: dt.datetime, t1: dt.datetime, state: State = None):
+    def build_schedule(self, t0: dt.datetime, t1: dt.datetime, state: State=None):
         """
         Run entire scheduling process to build a schedule for a given time range.
 

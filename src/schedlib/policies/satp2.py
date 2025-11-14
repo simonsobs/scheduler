@@ -39,7 +39,7 @@ class SATP2Policy(SATPolicy):
         }
 
         if 'boresight' in kwargs:
-            array_focus = array_focus[kwargs[boresight]]
+            array_focus = array_focus[kwargs['boresight']]
         elif len(args) >= 3:
             array_focus = array_focus[args[2]]
         else:
