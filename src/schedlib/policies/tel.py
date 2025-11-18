@@ -157,7 +157,6 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
                 "run.smurf.zero_biases()",
                 "time.sleep(120)",
                 "run.smurf.uxm_relock(concurrent=True)",
-                "run.smurf.take_bgmap(concurrent=True)",
                 "################## Relock Over #######################",
                 ""
             ]
@@ -381,8 +380,9 @@ class TelPolicy:
     bias_step_cadence: float = 0.5 * u.hour
     relock_cadence: float = 24 * u.hour
     max_cmb_scan_duration: float = 1 * u.hour
-    cryo_stabilization_time: float = 180 * u.second
+    cryo_stabilization_time: float = 0 * u.second
     home_at_end: bool = False
+    stow_position: Dict[str, Any] = field(default_factory=dict)
     rng: np.random.Generator = field(init=False, default=None)
 
     def construct_seq(self, loader_cfg, t0, t1):

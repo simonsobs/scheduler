@@ -905,30 +905,27 @@ class SATPolicy(tel.TelPolicy):
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': -1,
+            'priority': -1, # for now cal, wiregrid, presession and postsession must have the same priority
             'pinned': True  # remain unchanged during multi-pass
         }
 
         # move to a stow position if specified, otherwise find a stow position or stay in final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
-            if (not self.stages['build_op']['plan_moves']['stow_position'] or
-                self.stages['build_op']['plan_moves']['stow_position']['az_stow'] is None or
-                self.stages['build_op']['plan_moves']['stow_position']['el_stow'] is None
-            ):
+            if all(self.stow_position.get(k) is not None for k in ("az_stow", "el_stow")):
+                az_stow = self.stow_position['az_stow']
+                alt_stow = self.stow_position['el_stow']
+            else:
                 az_start = 180.0
                 alt_start = self.elevation_override if self.elevation_override is not None else 60.0
                 # add a buffer to start and end to be safe
                 if len(seq) > 0:
                     t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)
                 else:
-                    t_start = t0 - dt.timedelta(seconds=300)
-                t_end = t1 + dt.timedelta(seconds=300)
+                    t_start = t0 - dt.timedelta(seconds=3600)
+                t_end = t1 + dt.timedelta(seconds=3600)
                 az_stow, alt_stow, _, _ = get_parking(t_start, t_end, alt_start, self.stages['build_op']['plan_moves']['sun_policy'])
                 logger.info(f"found sun safe stow position at ({az_stow}, {alt_stow})")
-            else:
-                az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
-                alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
         elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt

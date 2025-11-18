@@ -21,7 +21,6 @@ class SATP3Policy(SATPolicy):
             "run.smurf.zero_biases()",
             "time.sleep(120)",
             "run.smurf.uxm_relock(concurrent=True)",
-            "run.smurf.take_bgmap(concurrent=True)",
             "################## Relock Over #######################",
             "",
         ]
