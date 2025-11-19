@@ -118,11 +118,26 @@ class SchedMode(tel.SchedMode):
 #                  SAT Operations
 # ----------------------------------------------------
 
-@cmd.operation(name="sat.preamble", duration=0)
-def preamble():
+@cmd.operation(name="sat.preamble", return_duration=True)
+def preamble(state):
     base = tel.preamble()
-    append = ["sup = OCSClient('hwp-supervisor')", "",]
-    return base + append
+    append = [
+        "################### Basic Checks ###################",
+        "acu_data = acu.monitor.status().session['data']",
+        "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
+        "",
+        f"assert np.round(acu_data['StatusDetailed']['Boresight current position'], 1) == {state.boresight_rot_now}",
+        f"assert hwp_state['is_spinning'] == {state.hwp_spinning}",
+    ]
+    if state.hwp_spinning:
+        append += [
+            f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}",
+        ]
+    append += [
+        "################### Checks  Over ###################",
+        "",
+        ]
+    return state, 0, base + append
 
 @cmd.operation(name='sat.wrap_up', duration=0)
 def wrap_up(state, block):

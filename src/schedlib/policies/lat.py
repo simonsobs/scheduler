@@ -106,15 +106,23 @@ class State(tel.State):
 #                  SAT Operations
 # ----------------------------------------------------
 
-@cmd.operation(name="lat.preamble", duration=0)
-def preamble(open_shutter=False):
+@cmd.operation(name="lat.preamble", return_duration=True)
+def preamble(state, open_shutter=False):
     cmd = tel.preamble()
     cmd += ["acu.clear_faults()"]
+    cmd += [
+        "################### Basic Checks ###################",
+        "acu_data = acu.monitor.status().session['data']",
+        "",
+        f"assert np.round(acu_data['Status3rdAxis']['Co-Rotator current position'], 1) == {state.corotator_now}",
+        "################### Checks  Over ###################",
+        "",
+        ]
     if open_shutter:
         cmd += ["acu.stop_and_clear()",
                 "run.acu.set_shutter(action='open')"
             ]
-    return cmd
+    return state, 0, cmd
 
 @cmd.operation(name='lat.wrap_up', duration=0)
 def wrap_up(state, block, close_shutter=False):

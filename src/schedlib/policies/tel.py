@@ -6,6 +6,7 @@ from typing import List, Union, Optional, Dict, Any, Tuple
 import jax.tree_util as tu
 import datetime as dt
 from functools import partial
+from importlib.metadata import version
 
 from .. import core, source as src, utils as u, rules as ru
 from .. import commands as cmd, instrument as inst
@@ -119,6 +120,7 @@ class SchedMode:
 
 def preamble():
     return [
+        f"# schedlib version: {version('schedlib')}",
         "from nextline import disable_trace",
         "import time",
         "",
