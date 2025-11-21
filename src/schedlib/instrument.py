@@ -59,6 +59,8 @@ class ScanBlock(core.NamedBlock):
         Azimuth speed in degrees per second (default is 1).
     az_accel : float, optional
         Azimuth acceleration in degrees per second squared (default is 2).
+    turnaround_method : str, optional
+        Which turnaround profile to use.  Options are None, standard, standard_gen.
     boresight_angle : float, optional
         Boresight angle in degrees (default is None).
     corotator_angle : float, optional
@@ -79,6 +81,7 @@ class ScanBlock(core.NamedBlock):
     az_drift: float = 0. # deg / s
     az_speed: float = 1. # deg / s
     az_accel: float = 2. # deg / s**2
+    turnaround_method: str = "standard"
     el_amp: float = 0.
     el_freq: float = 0.
     scan_type: int = 1 # scan type (1, 2, or 3)
@@ -601,6 +604,7 @@ def parse_sequence_from_toast_lat(ifile):
     )
     blocks = []
     for _, row in df.iterrows():
+        scan_type = int(re.search(r'\d+', row["type"]).group())
         block = ScanBlock(
             name=_escape_string(row['target'].strip()),
             t0=u.str2datetime(row['start_utc']),
@@ -611,10 +615,11 @@ def parse_sequence_from_toast_lat(ifile):
             throw=np.abs(row['az_max'] - row['az_min']),
             az_speed=row['rate'],
             az_accel=row['accel'],
+            turnaround_method="standard" if scan_type == 1 else "standard_gen",
             el_amp=row['el_amp'],
             el_freq=row['el_freq'],
             priority=1,
-            scan_type=int(re.search(r'\d+', row["type"]).group()),
+            scan_type=scan_type,
             tag=_escape_string(
                 str(row['target']).strip()+","+
                 "uid-"+str(int(row['uid'])).strip()

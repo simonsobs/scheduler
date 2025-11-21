@@ -32,6 +32,8 @@ class State:
         The current azimuth speed in degrees per second. Default is None.
     az_accel_now : Optional[float], optional
         The current azimuth acceleration in degrees per second squared. Default is None.
+    turnaround_method_now : str, optional
+        The current turnaround method.  Options are None, standard, standard_gen.
     prev_state : Optional[State], optional
         A reference to the previous state for tracking state evolution. Default is None and not included in string representation.
 
@@ -51,6 +53,7 @@ class State:
     az_speed_now: Optional[float] = None
     az_accel_now: Optional[float] = None
     el_freq_now: Optional[float] = None
+    turnaround_method_now: Optional[float] = None
     prev_state: Optional["State"] = field(default=None, repr=False)
 
     def clear_history(self):
