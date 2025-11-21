@@ -194,6 +194,7 @@ def make_config(
     xi_offset=0.,
     eta_offset=0.,
     boresight_override=None,
+    elevation_override=None,
     hwp_override=None,
     brake_hwp=True,
     disable_hwp=False,
@@ -222,7 +223,7 @@ def make_config(
     sun_policy = {
         'min_angle': 41,
         'min_sun_time': 1980,
-        'min_el': 48,
+        'min_el': 40,
         'max_el': 90,
         'min_az': -45,
         'max_az': 405,
@@ -241,14 +242,19 @@ def make_config(
         'az_range': [-45, 405]
     }
 
-    if force_max_hwp_el and max_hwp_el is not None:
-        max_el  = max_hwp_el
-    else:
-        max_el = 90
-
-    el_range = {
-        'el_range': [40, max_el]
+    if elevation_override is not None:
+        el_range = {
+        'el_range': [elevation_override, elevation_override]
     }
+    else:
+        if force_max_hwp_el and max_hwp_el is not None:
+            max_el  = max_hwp_el
+        else:
+            max_el = 90
+
+        el_range = {
+            'el_range': [40, max_el]
+        }
 
     config = {
         'state_file': state_file,
@@ -265,6 +271,7 @@ def make_config(
         'cal_targets': cal_targets,
         'scan_tag': None,
         'boresight_override': boresight_override,
+        'elevation_override': elevation_override,
         'hwp_override': hwp_override,
         'brake_hwp': brake_hwp,
         'disable_hwp': disable_hwp,
@@ -327,6 +334,7 @@ class SATP1Policy(SATPolicy):
         xi_offset=0.,
         eta_offset=0.,
         boresight_override=None,
+        elevation_override=None,
         hwp_override=None,
         brake_hwp=True,
         disable_hwp=False,
@@ -359,6 +367,7 @@ class SATP1Policy(SATPolicy):
             xi_offset,
             eta_offset,
             boresight_override,
+            elevation_override,
             hwp_override,
             brake_hwp,
             disable_hwp,
@@ -414,6 +423,9 @@ class SATP1Policy(SATPolicy):
 
                 if self.az_branch_override is not None:
                     cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+
+                if self.elevation_override is not None:
+                    cal_targets[i] = replace(cal_targets[i], el_bore=self.elevation_override)
 
                 cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
