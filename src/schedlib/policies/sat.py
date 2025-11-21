@@ -133,6 +133,10 @@ def preamble(state):
         append += [
             f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}",
         ]
+    else:
+        append += [
+            f"assert hwp_state['grip_state'] == 'ungripped'",
+        ]
     append += [
         "################### Checks  Over ###################",
         "",
