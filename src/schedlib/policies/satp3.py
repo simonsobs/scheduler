@@ -85,30 +85,6 @@ def make_cal_target(
     )
 
 
-commands_uxm_relock = [
-    "",
-    "####################### Relock #######################",
-    "run.smurf.zero_biases()",
-    "time.sleep(120)",
-    "run.smurf.uxm_relock(concurrent=True)",
-    "################## Relock Over #######################",
-    "",
-]
-
-
-commands_det_setup = [
-    "",
-    "################### Detector Setup######################",
-    "with disable_trace():",
-    "    run.initialize()",
-    "run.smurf.iv_curve(concurrent=True)",
-    "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
-    "time.sleep(300)",
-    "run.smurf.bias_step(concurrent=True)",
-    "#################### Detector Setup Over ####################",
-    "",
-]
-
 def make_operations(
     az_speed,
     az_accel,
@@ -138,24 +114,24 @@ def make_operations(
 
     if relock_cadence is not None:
         pre_session_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence, 'commands': commands_uxm_relock,}
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreSession, 'relock_cadence': relock_cadence,}
         ]
         cal_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence, 'commands': commands_uxm_relock,}
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreCal, 'relock_cadence': relock_cadence,}
         ]
         cmb_ops += [
-            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence, 'commands': commands_uxm_relock,}
+            { 'name': 'sat.ufm_relock'      , 'sched_mode': SchedMode.PreObs, 'relock_cadence': relock_cadence,}
         ]
 
     cal_ops += [
-        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot,
+        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreCal, 'apply_boresight_rot': apply_boresight_rot,
         'det_setup_duration': det_setup_duration},
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreCal, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.source_scan'     , 'sched_mode': SchedMode.InCal, },
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PostCal, 'bias_step_cadence': bias_step_cadence},
     ]
     cmb_ops += [
-        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
+        { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreObs, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,
         'det_setup_duration': det_setup_duration},
         { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreObs, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
         { 'name': 'sat.bias_step'       , 'sched_mode': SchedMode.PreObs, 'bias_step_cadence': bias_step_cadence},
@@ -173,7 +149,7 @@ def make_operations(
     wiregrid_ops = []
     if not disable_hwp:
         wiregrid_ops += [
-            { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreWiregrid, 'commands': commands_det_setup, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,},
+            { 'name': 'sat.det_setup'       , 'sched_mode': SchedMode.PreWiregrid, 'apply_boresight_rot': apply_boresight_rot, 'iv_cadence':iv_cadence,},
             { 'name': 'sat.hwp_spin_up'     , 'sched_mode': SchedMode.PreWiregrid, 'disable_hwp': disable_hwp, 'brake_hwp': brake_hwp},
             { 'name': 'sat.wiregrid', 'sched_mode': SchedMode.Wiregrid }
         ]
