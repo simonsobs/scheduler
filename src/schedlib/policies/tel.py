@@ -296,8 +296,16 @@ def cmb_scan(state, block):
         f"    scan_type={block.scan_type},",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
-        ")",
     ])
+    # add extra type3 params
+    if block.scan_type == 3:
+        commands += [
+            f"    az_start='mid_dec',",
+            f"    step_time=.05,",
+        ]
+
+    commands += [")"]
+
     return state, (block.t1 - state.curr_time).total_seconds(), commands
 
 def source_scan(state, block):
