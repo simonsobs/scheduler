@@ -407,7 +407,7 @@ def make_config(
     blocks = make_blocks(master_file, 'lat-cmb')
     geometries = make_geometry(xi_offset, eta_offset)
 
-    det_setup_duration = 20*u.minute
+    det_setup_duration = 17*u.minute
 
     operations = make_operations(
         az_speed,
