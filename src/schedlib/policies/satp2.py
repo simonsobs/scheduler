@@ -437,7 +437,7 @@ class SATP2Policy(SATPolicy):
                 if self.elevation_override is not None:
                     cal_targets[i] = replace(cal_targets[i], el_bore=self.elevation_override)
 
-                cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=1.0)
+                cal_targets[i] = replace(cal_targets[i], az_speed=0.8, az_accel=0.25)
                 cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
 
             self.cal_targets += [target for target in cal_targets if target is not None]
