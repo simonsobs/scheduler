@@ -861,7 +861,7 @@ class SATPolicy(tel.TelPolicy):
                     t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)
                 else:
                     t_start = t0 - dt.timedelta(seconds=300)
-                t_end = t1 + dt.timedelta(seconds=300)
+                t_end = t1 + dt.timedelta(seconds=3600)
                 az_stow, alt_stow, _, _ = get_parking(t_start, t_end, alt_start, self.stages['build_op']['plan_moves']['sun_policy'])
                 logger.info(f"found sun safe stow position at ({az_stow}, {alt_stow})")
             else:
