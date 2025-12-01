@@ -375,8 +375,8 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     continue
 
             if t1_parking > block1.t0:
-                logger.warning(f"sun-safe parking delays move from {block0} ({block0.block.name}) to "
-                               f"{block1} ({block1.block.name}) by "
+                logger.warning(f"sun-safe parking delays move from {block0} ({block0.name}) to "
+                               f"{block1} ({block1.name}) by "
                                f"{(t1_parking - block1.t0).total_seconds()} seconds")
 
             return [IR(name='gap', subtype=IRMode.Gap, t0=block0.t1, t1=t0_parking,

@@ -241,16 +241,20 @@ def cmb_scan(state, block):
     if (
         block.az_speed != state.az_speed_now or
         block.az_accel != state.az_accel_now or
-        block.el_freq != state.el_freq_now
+        block.el_freq != state.el_freq_now or
+        block.turnaround_method != state.turnaround_method_now
     ):
-
         commands = [
-            f"run.acu.set_scan_params(az_speed={block.az_speed}, az_accel={block.az_accel}, el_freq={block.el_freq})"
+            f"run.acu.set_scan_params(az_speed={block.az_speed}, "
+            f"az_accel={block.az_accel}, el_freq={block.el_freq}, "
+            f"turnaround_method='{block.turnaround_method}')"
+
         ]
         state = state.replace(
             az_speed_now=block.az_speed,
             az_accel_now=block.az_accel,
-            el_freq_now=block.el_freq
+            el_freq_now=block.el_freq,
+            turnaround_method_now=block.turnaround_method
         )
     else:
         commands = []
@@ -262,11 +266,19 @@ def cmb_scan(state, block):
         f"    stop_time='{block.t1.isoformat(timespec='seconds')}',",
         f"    width={round(block.throw, 3)}" + (", az_drift=0" if block.scan_type == 1 else ", az_drift=None") + ",",
         f"    el_amp={block.el_amp},",
-        f"    type={block.scan_type},",
+        f"    scan_type={block.scan_type},",
         f"    subtype='{block.subtype}', tag='{block.tag}',",
         f"    min_duration=600,",
-        ")",
     ])
+    # add extra type3 params
+    if block.scan_type == 3:
+        commands += [
+            f"    az_start='mid_dec',",
+            f"    step_time=.05,",
+        ]
+
+    commands += [")"]
+
     return state, (block.t1 - state.curr_time).total_seconds(), commands
 
 def source_scan(state, block):
@@ -276,15 +288,20 @@ def source_scan(state, block):
     if (
         block.az_speed != state.az_speed_now or
         block.az_accel != state.az_accel_now or
-        block.el_freq != state.el_freq_now
+        block.el_freq != state.el_freq_now or
+        block.turnaround_method != state.turnaround_method_now
     ):
         commands = [
-            f"run.acu.set_scan_params(az_speed={block.az_speed}, az_accel={block.az_accel}, el_freq={block.el_freq})"
+            f"run.acu.set_scan_params(az_speed={block.az_speed}, "
+            f"az_accel={block.az_accel}, el_freq={block.el_freq}, "
+            f"turnaround_method='{block.turnaround_method}')"
+
         ]
         state = state.replace(
             az_speed_now=block.az_speed,
             az_accel_now=block.az_accel,
-            el_freq_now=block.el_freq
+            el_freq_now=block.el_freq,
+            turnaround_method_now=block.turnaround_method
         )
     else:
         commands = []
@@ -306,7 +323,7 @@ def source_scan(state, block):
         f"    width={round(block.throw,3)}, ",
         f"    az_drift={round(block.az_drift,5)}, ",
         f"    el_amp={block.el_amp},",
-        f"    type={block.scan_type},",
+        f"    scan_type={block.scan_type},",
         f"    subtype='{block.subtype}',",
         f"    tag='{block.tag}',",
         ")",
