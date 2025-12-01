@@ -222,7 +222,7 @@ def make_config(
     )
 
     sun_policy = {
-        'min_angle': 49,
+        'min_angle': 41,
         'min_sun_time': 1980,
         'min_el': 40,
         'max_el': 90,
