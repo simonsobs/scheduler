@@ -126,6 +126,7 @@ def preamble(state):
         "acu_data = acu.monitor.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
         "",
+        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}",
         f"assert np.round(acu_data['StatusDetailed']['Boresight current position'], 1) == {state.boresight_rot_now}",
         f"assert hwp_state['is_spinning'] == {state.hwp_spinning}",
     ]
@@ -602,7 +603,7 @@ class SATPolicy(tel.TelPolicy):
                         t1=cal_target.t1,
                         az=self.wiregrid_az,
                         alt=self.wiregrid_el,
-                        tag=cal_target.tag,
+                        tag='',
                         subtype='wiregrid',
                         hwp_dir=self.hwp_override if self.hwp_override is not None else None
                     )
