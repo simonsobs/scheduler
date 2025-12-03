@@ -37,6 +37,7 @@ class WiregridTarget:
     name: str
     t0: dt.datetime
     t1: dt.datetime
+    tag: str
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
