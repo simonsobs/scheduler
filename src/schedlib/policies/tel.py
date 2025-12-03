@@ -249,12 +249,12 @@ def det_setup(
                 "run.smurf.iv_curve(concurrent=True, ",
                 "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
                 "run.smurf.bias_dets(concurrent=True)",
-                "time.sleep(180)",
+                "time.sleep(300)",
                 "run.smurf.bias_step(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
                 "#################### Detector Setup Over ####################",
                 "",
             ]
+
         state = state.replace(
             is_det_setup=True,
             last_iv = state.curr_time,
