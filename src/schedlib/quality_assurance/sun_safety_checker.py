@@ -13,29 +13,11 @@ logger = u.init_logger(__name__)
 ## Code to check sun safety
 
 class SunCrawler:
-    def __init__(self, platform, path=None, cmd_txt=None, az_offset=0., el_offset=0.):
-        assert platform in ['satp1', 'satp2', 'satp3', 'lat'], (
-            f"{platform} is not an implemented platform, choose from satp1, "
-             "satp2, or satp3"
-        )
-
-        match platform:
-            case "satp1":
-                from schedlib.policies.satp1 import make_config
-            case "satp2":
-                from schedlib.policies.satp2 import make_config
-            case "satp3":
-                from schedlib.policies.satp3 import make_config
-            case "lat":
-                from schedlib.policies.lat import make_config
-
-        self.configs = make_config(
-            master_file='None',
-            state_file=None,
-            az_speed=None, az_accel=None,
-            iv_cadence=None, bias_step_cadence=None,
-            max_cmb_scan_duration=None, cal_targets=None,
-        )['rules']['sun-avoidance']
+    """
+    Class to walk through a schedule and evalulate sun-safety of moves, waits, and scans.
+    """
+    def __init__(self, configs, path=None, cmd_txt=None, az_offset=0., el_offset=0.,):
+        self.configs = configs
 
         self.az_offset = az_offset
         self.el_offset = el_offset
@@ -64,7 +46,7 @@ class SunCrawler:
         self._generate_sun_solution()
         #self._test_sungod()
 
-    def next_line(self):
+    def _next_line(self):
         if self.from_cmds:
             if self.cmd_n == len(self.cmd_list):
                 return ''
@@ -73,14 +55,14 @@ class SunCrawler:
             l = self.schedf.readline()
         self.cmd_n += 1
         if len(l)>0 and l[0] == "#":
-            l = self.next_line()
+            l = self._next_line()
         return l
 
     def _move_to_parse(self, l):
         try:
             az = float(l.split('az=')[1].split(',')[0]) - self.az_offset
         except IndexError:
-            print('Bad input!', l)
+            logger.error(f"Bad input! {l}")
             az = None
 
         try:
@@ -89,7 +71,7 @@ class SunCrawler:
             try:
                 el = float(l.split(',')[1].rstrip(',\n').rstrip(')\n')) - self.el_offset
             except IndexError:
-                print('Bad input!', l)
+                logger.error(f"Bad input! {l}")
                 el = None
 
         return az, el
@@ -123,7 +105,7 @@ class SunCrawler:
         end_az_range = [drifted_az, drifted_az + width]
 
         if self.cur_time - self.sungod.base_time > self.MAX_SUN_MAP_TDELTA:
-            print('Resetting sun god!')
+            logger.info("Resetting sun god!")
             self.sungod.reset(base_time=self.cur_time-100.)
 
         d1 = self.sungod.check_trajectory(init_az_range, [self.cur_el, self.cur_el], t=self.cur_time)
@@ -131,8 +113,8 @@ class SunCrawler:
         assert((d1['sun_dist_min'] > self.policy['exclusion_radius']) and (d2['sun_dist_min'] > self.policy['exclusion_radius']))
         assert((d1['sun_time'] > self.policy['min_sun_time']) and (d2['sun_time'] > self.policy['min_sun_time']))
 
-        #print('Min scan distance to sun at start', d1['sun_dist_min'])
-        print('Min scan distance to sun at end', d2['sun_dist_min'])
+        logger.info(f"Min scan distance to sun at start: {d1['sun_dist_min']}")
+        logger.info(f"Min scan distance to sun at end', {d2['sun_dist_min']}")
 
         logger.debug(f"azimuth : {self.cur_az} --> {drifted_az + width}")
         logger.debug(f"timestamp : {self.cur_time} --> {stop}")
@@ -154,7 +136,7 @@ class SunCrawler:
         time_flag = False
         pos_flag = False
         while True:
-            l = self.next_line()
+            l = self._next_line()
             if 'move_to' in l:
                 az, el = self._move_to_parse(l)
                 self.cur_az = az
@@ -185,7 +167,6 @@ class SunCrawler:
 
     def _test_sungod(self):
         out = self.sungod.get_sun_pos(t=self.cur_time+500.)
-        print(out)
 
     def _get_traj(self, az, el, wrap_north=False):
         if az == 0:
@@ -198,7 +179,7 @@ class SunCrawler:
             else:
                 az += -360.
                 mid_az = np.mean([self.cur_az, az])
-                print('Special az wrap to north', mid_az, az)
+                logger.debug(f"Special az wrap to north: {mid_az}, {az}")
         elif self.cur_az > 180 and az <= 180: # cw wrap
             mid_az = np.mean([self.cur_az, az])
         else:
@@ -214,7 +195,7 @@ class SunCrawler:
         scan_flag = False
 
         while True:
-            l = self.next_line()
+            l = self._next_line()
 
             if 'wait_until' in l:
                 ts = self._wait_parse(l)
@@ -247,7 +228,6 @@ class SunCrawler:
                     self.cur_az = self.next_az
                     self.cur_el = el
 
-                #print('Ranges', az_range, el_range)
                 if self.cur_time - self.sungod.base_time > self.MAX_SUN_MAP_TDELTA:
                     logger.info('Resetting sun god!')
                     self.sungod.reset(base_time=self.cur_time-100.)

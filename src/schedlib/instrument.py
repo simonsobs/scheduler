@@ -16,7 +16,7 @@ from . import source, rules
 @dataclass(frozen=True)
 class CalTarget:
     source: str
-    array_query: Union(str, list)
+    array_query: str
     el_bore: float
     tag: str
     t0: dt.datetime = None
@@ -24,7 +24,7 @@ class CalTarget:
     ra: float = None
     dec: float = None
     boresight_rot: float = None
-    allow_partial: Union(bool, list) = False
+    allow_partial: bool = False
     drift: bool = True
     az_branch: Optional[float] = None
     az_speed: Optional[float]= None
@@ -37,8 +37,6 @@ class WiregridTarget:
     name: str
     t0: dt.datetime
     t1: dt.datetime
-    tag: str
-    boresight_rot: float = None
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -213,7 +211,17 @@ class ScanBlock(core.NamedBlock):
         return t, left, right, alt, alt
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.name}, {self.t0.strftime('%y-%m-%d %H:%M:%S')} -> {self.t1.strftime('%y-%m-%d %H:%M:%S')}, az={self.az:.2f}, el={self.alt:.2f}, throw={self.throw:.2f}, drift={self.az_drift:.5f}))"
+        return (
+            f"{self.__class__.__name__}("
+            f"{self.name}, "
+            f"{self.t0.strftime('%y-%m-%d %H:%M:%S')} -> "
+            f"{self.t1.strftime('%y-%m-%d %H:%M:%S')}, "
+            f"az={self.az:.2f}, "
+            f"el={self.alt:.2f}, "
+            f"throw={self.throw:.2f}, "
+            f"drift={self.az_drift:.5f}"
+            f")"
+        )
 
 @dataclass(frozen=True)
 class StareBlock(ScanBlock):
@@ -566,7 +574,6 @@ def parse_wiregrid_targets_from_file(ifile):
             name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
-            tag=f"{'uid-'+row['uid'].strip()}",
         )
         wiregrid_targets.append(wiregrid_target)
 
