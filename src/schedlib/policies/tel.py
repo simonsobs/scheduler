@@ -1,24 +1,30 @@
 import numpy as np
-import yaml
-import os.path as op
+import datetime as dt
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
-
-import datetime as dt
 from typing import List, Union, Optional, Dict, Any, Tuple
 import jax.tree_util as tu
-from functools import reduce
+from functools import partial
+from importlib.metadata import version
 
-from .. import config as cfg, core, source as src, rules as ru
-from .. import commands as cmd, instrument as inst, utils as u
-from ..thirdparty import SunAvoidance
+from .. import core, source as src, utils as u, rules as ru
+from .. import commands as cmd, instrument as inst
 from .stages import get_build_stage
-from .stages.build_op import get_parking
 from ..instrument import CalTarget
+
 
 logger = u.init_logger(__name__)
 
+# ----------------------------------------------------
+#                  Shared Command Durations
+# ----------------------------------------------------
+
 RELOCK_DURATION = 15*u.minute
+
+
+# ----------------------------------------------------
+#                  Base Telescope State
+# ----------------------------------------------------
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -66,6 +72,11 @@ class State(cmd.State):
             "get_boresight must be defined by child classes"
         )
 
+
+# ----------------------------------------------------
+#                  Base SchedMode
+# ----------------------------------------------------
+
 class SchedMode:
     """
     Enumerate different options for scheduling operations in SATPolicy.
@@ -99,50 +110,6 @@ class SchedMode:
     PreSession = 'pre_session'
     PostSession = 'post_session'
 
-def make_blocks(master_file, master_file_type):
-    assert master_file_type in ['sat-cmb', 'lat-cmb']
-    return {
-        'baseline': {
-            'cmb': {
-                'type': master_file_type,
-                'file': master_file,
-            }
-        },
-        'calibration': {
-            'saturn': {
-                'type' : 'source',
-                'name' : 'saturn',
-            },
-            'jupiter': {
-                'type' : 'source',
-                'name' : 'jupiter',
-            },
-            'moon': {
-                'type' : 'source',
-                'name' : 'moon',
-            },
-            'uranus': {
-                'type' : 'source',
-                'name' : 'uranus',
-            },
-            'neptune': {
-                'type' : 'source',
-                'name' : 'neptune',
-            },
-            'mercury': {
-                'type' : 'source',
-                'name' : 'mercury',
-            },
-            'venus': {
-                'type' : 'source',
-                'name' : 'venus',
-            },
-            'mars': {
-                'type' : 'source',
-                'name' : 'mars',
-            }
-        },
-    }
 
 # ----------------------------------------------------
 #                Operation Helpers
@@ -152,6 +119,7 @@ def make_blocks(master_file, master_file_type):
 
 def preamble():
     return [
+        f"# schedlib version: {version('schedlib')}",
         "from nextline import disable_trace",
         "import time",
         "",
@@ -391,64 +359,48 @@ def bias_step(state, block, bias_step_cadence=None):
             last_bias_step_elevation = block.alt,
             last_bias_step_boresight = block.boresight_angle,
         )
-        return state, 60, [ "run.smurf.bias_step(concurrent=True)",
-                            f"run.wait_until('{(state.curr_time + dt.timedelta(seconds=60)).isoformat(timespec='seconds')}')"]
+        return state, 60, ["run.smurf.bias_step(concurrent=True)",
+                        f"run.wait_until('{(state.curr_time + dt.timedelta(seconds=60)).isoformat(timespec='seconds')}')"]
     else:
         return state, 0, []
 
+
+# ----------------------------------------------------
+#                  Base Telescope State
+# ----------------------------------------------------
+
 @dataclass
 class TelPolicy:
-    """Base Policy class for SATs and LAT
-
-    Parameters
-    ----------
-    state_file : str
-        a string that provides the path to the state file
-    blocks : dict
-        a dict of blocks, with keys 'baseline' and 'calibration'
-    rules : dict
-        a dict of rules, specifies rule cfgs for e.g., 'sun-avoidance', 'az-range', 'min-duration'
-    geometries : dict
-        a dict of geometries, with the leave node being dict with keys 'center' and 'radius'
-    cal_targets : list[CalTarget]
-        a list of calibration target each described by CalTarget object
-    cal_policy : str
-        calibration policy: default to round-robin
-    scan_tag : str
-        a tag to be added to all scans
-    az_speed : float
-        the az speed in deg / s
-    az_accel : float
-        the az acceleration in deg / s^2
-    wafer_sets : dict[str, str]
-        a dict of wafer sets definitions
-    operations : List[Dict[str, Any]]
-        an orderred list of operation configurations
-    """
-    state_file: Optional[str] = None
+    cmb_plan: str
+    cal_plan: str
+    stages: Dict[str, Any]
+    rules: Dict[str, core.Rule]
+    state_file: str = None
     blocks: Dict[str, Any] = field(default_factory=dict)
-    rules: Dict[str, core.Rule] = field(default_factory=dict)
     geometries: List[Dict[str, Any]] = field(default_factory=list)
-    cal_targets: List[CalTarget] = field(default_factory=list)
-    scan_tag: Optional[str] = None
-    az_motion_override: bool = False
-    elevation_override: Optional[float] = None
-    az_speed: float = 1. # deg / s
-    az_accel: float = 2. # deg / s^2
-    el_freq: float = 0.
-    az_offset: float = 0.
-    el_offset: float = 0.
-    iv_cadence : float = 4 * u.hour
-    bias_step_cadence : float = 0.5 * u.hour
-    max_cmb_scan_duration : float = 1 * u.hour
-    allow_az_maneuver: bool = True
-    wafer_sets: Dict[str, Any] = field(default_factory=dict)
     operations: List[Dict[str, Any]] = field(default_factory=list)
-    stages: Dict[str, Any] = field(default_factory=dict)
+    cal_targets: List[CalTarget] = field(default_factory=list)
+    wafer_sets: Dict[str, Any] = field(default_factory=dict)
+    scan_tag: str = None
+    az_speed: float = 0.5 # deg / s
+    az_accel: float = 1.0 # deg / s^2
+    az_offset: float = 0.0 # deg
+    el_offset: float = 0.0 # deg
+    xi_offset: float = 0.0 # deg
+    eta_offset: float = 0.0 #deg
+    az_motion_override: bool = False
+    elevation_override: bool = False
     az_branch_override: float = None
     allow_partial_override: float = None
     drift_override: bool = True
-
+    allow_az_maneuver: bool = True
+    iv_cadence: float = 4 * u.hour
+    bias_step_cadence: float = 0.5 * u.hour
+    relock_cadence: float = 24 * u.hour
+    max_cmb_scan_duration: float = 1 * u.hour
+    cryo_stabilization_time: float = 0 * u.second
+    home_at_end: bool = False
+    stow_position: Dict[str, Any] = field(default_factory=dict)
     rng: np.random.Generator = field(init=False, default=None)
 
     def construct_seq(self, loader_cfg, t0, t1):
@@ -489,15 +441,44 @@ class TelPolicy:
             )
         if self.elevation_override is not None:
             blocks = core.seq_map(
-                    lambda b: b.replace(
-                        alt=self.elevation_override
-                    ), blocks
-                )
+                lambda b: b.replace(
+                    alt=self.elevation_override
+                ), blocks
+            )
         return blocks
 
+    def make_blocks(self, cmb_plan_type):
+        assert cmb_plan_type in ['sat-cmb', 'lat-cmb'], (
+            "Unrecognized cmb_plan_type.  Should be either sat-cmb or lat-cmb")
 
-    def divide_blocks(self, block, scan_dt=dt.timedelta(minutes=60),
-                      min_dt=dt.timedelta(minutes=15), max_dt=dt.timedelta(minutes=75)):
+        # CMB
+        blocks = {
+            'baseline': {
+                'cmb': {
+                    'type': cmb_plan_type,
+                    'file': self.cmb_plan,
+                }
+            },
+        }
+
+        # Cal
+        blocks['calibration'] = {}
+        for source in [
+            "saturn", "jupiter", "moon", "uranus",
+            "neptune", "mercury", "venus", "mars"
+        ]:
+            blocks['calibration'][source] = {
+                'type': 'source',
+                'name': source,
+            }
+
+        return blocks
+
+    def divide_blocks(self,
+                      block, scan_dt=dt.timedelta(minutes=60),
+                      min_dt=dt.timedelta(minutes=15),
+                      max_dt=dt.timedelta(minutes=75)
+                    ):
         """
         Divide CMB blocks into smaller sub-blocks.  If a block has a duration less than max_dt,
         it is returned unchanged.  This function will randomize the duration of the first block
@@ -585,6 +566,89 @@ class TelPolicy:
         check_blocks(block, blocks)
         return blocks
 
+    def init_cmb_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+        """
+        Initialize the CMB sequences for the scheduler to process.
+
+        Parameters
+        ----------
+        t0 : datetime.datetime
+            The start time of the sequences.
+        t1 : datetime.datetime
+            The end time of the sequences.
+
+        Returns
+        -------
+        BlocksTree (nested dict / list of blocks)
+            The initialized sequences
+        """
+
+        # construct seqs by traversing the blocks definition dict
+        blocks = tu.tree_map(
+            partial(self.construct_seq, t0=t0, t1=t1,),
+            self.blocks,
+            is_leaf=lambda x: isinstance(x, dict) and 'type' in x
+        )
+
+        # trim to given time range
+        blocks = core.seq_trim(blocks, t0, t1)
+
+        # ok to drop Nones
+        blocks = tu.tree_map(
+            lambda x: [x_ for x_ in x if x_ is not None],
+            blocks,
+            is_leaf=lambda x: isinstance(x, list)
+        )
+
+        # set the seed for shuffling blocks
+        self.rng = np.random.default_rng(int(t0.timestamp()))
+
+        return blocks
+
+    def make_source_scans(self, target, blocks, sun_rule):
+        # digest array_query: it could be a fnmatch pattern matching the path
+        # in the geometry dict, or it could be looked up from a predefined
+        # wafer_set dict. Here we account for the latter case:
+        # look up predefined query in wafer_set
+        if target.array_query in self.wafer_sets:
+            array_query = self.wafer_sets[target.array_query]
+        else:
+            array_query = target.array_query
+
+        # build array geometry information based on the query
+        array_info = inst.array_info_from_query(self.geometries, array_query)
+        logger.debug(f"-> array_info: {array_info}")
+
+        # apply MakeCESourceScan rule to transform known observing windows into
+        # actual scan blocks
+        rule = ru.MakeCESourceScan(
+            array_info=array_info,
+            el_bore=target.el_bore,
+            drift=target.drift,
+            boresight_rot=target.boresight_rot,
+            allow_partial=target.allow_partial,
+            az_branch=target.az_branch,
+            source_direction=target.source_direction,
+        )
+        source_scans = rule(blocks['calibration'][target.source])
+
+        # sun check again: previous sun check ensure source is not too
+        # close to the sun, but our scan may still get close enough to
+        # the sun, in which case we will trim it or delete it depending
+        # on whether allow_partial is True
+        if target.allow_partial:
+            logger.info("-> allow_partial = True: trimming scan options by sun rule")
+            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
+            source_scans = min_dur_rule(sun_rule(source_scans))
+        else:
+            logger.info("-> allow_partial = False: filtering scan options by sun rule")
+            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
+
+        # flatten and sort
+        source_scans = core.seq_sort(source_scans, flatten=True)
+
+        return source_scans
+
     def cmd2txt(self, irs, t0, t1, state=None):
         """
         Convert a sequence of operation blocks into a text representation.
@@ -606,7 +670,7 @@ class TelPolicy:
         commands = build_sched.apply(irs, t0, t1, state)
         return '\n'.join(commands)
 
-    def build_schedule(self, t0: dt.datetime, t1: dt.datetime, state: State = None):
+    def build_schedule(self, t0: dt.datetime, t1: dt.datetime, state: State=None):
         """
         Run entire scheduling process to build a schedule for a given time range.
 
@@ -641,96 +705,3 @@ class TelPolicy:
         schedule = self.cmd2txt(ir, t0, t1, state)
 
         return schedule
-
-# ------------------------
-# utilities
-# ------------------------
-
-def round_robin(seqs_q, seqs_v=None, sun_avoidance=None, overlap_allowance=60*u.second):
-    """
-    Perform a round robin scheduling over sequences of time blocks, yielding non-overlapping blocks.
-
-    This function goes through sequences of "query" time blocks (`seqs_q`) in a round robin fashion, checking for overlap
-    between the blocks. An optional sequence of "value" time blocks (`seqs_v`) can be provided, which will be returned
-    instead of the query blocks. The use case for having `seqs_v` different from `seqs_q` is that `seqs_q` can represent
-    buffered time blocks used for determining overlap conditions, while `seqs_v`, representing the actual unbuffered time
-    blocks, gets returned.
-
-    Parameters
-    ----------
-    seqs_q : list of lists
-        The query sequences. Each sub-list contains time blocks that are checked for overlap.
-    seqs_v : list of lists, optional
-        The value sequences. Each sub-list contains time blocks that are returned when their corresponding `seqs_q` block
-        doesn't overlap with existing blocks.
-    sun_avoidance : function / rule, optional
-        If provided, a block is scheduled only if it satisfies this condition, this means the block is unchanged after
-        the rule is applied.
-    overlap_allowance: int
-        minimum overlap to be considered in seconds, larger overlap will be rejected.
-
-    Yields
-    ------
-    block
-        Blocks from `seqs_v` that don't overlap with previously yielded blocks, as per the conditions defined.
-
-    Notes
-    -----
-    This generator function exhaustively attempts to yield all non-overlapping time blocks from the provided sequences
-    in a round robin order. The scheduling respects the order of sequences and the order of blocks within each sequence.
-    It supports an optional sun avoidance condition to filter out undesirable time blocks based on external criteria
-    (for example, blocks that are in direct sunlight).
-
-    Examples
-    --------
-    >>> seqs_q = [[block1, block2], [block3]]
-    >>> list(round_robin(seqs_q))
-    [block1, block3, block2]
-
-    """
-    if seqs_v is None:
-        seqs_v = seqs_q
-    assert len(seqs_q) == len(seqs_v)
-
-    n_seq = len(seqs_q)
-    seq_i = 0
-    block_i = [0] * n_seq
-
-    merged = []
-    while True:
-        # return if we have exhausted all scans in all seqs
-        if all([block_i[i] >= len(seqs_q[i]) for i in range(n_seq)]):
-            return
-
-        # cycle through seq -> add the latest non-overlaping block -> continue to next seq
-        # skip if we have exhaused all scans in a sequence
-        if block_i[seq_i] >= len(seqs_q[seq_i]):
-            seq_i = (seq_i + 1) % n_seq
-            continue
-
-        seq_q = seqs_q[seq_i]
-        seq_v = seqs_v[seq_i]
-        block_q = seq_q[block_i[seq_i]]
-        block_v = seq_v[block_i[seq_i]]
-
-        # can we schedule this block?
-        #  yes if:
-        #  - it doesn't overlap with existing blocks
-        #  - it satisfies sun avoidance condition if specified
-        overlap_ok = not core.seq_has_overlap_with_block(merged, block_q, allowance=overlap_allowance)
-        if not overlap_ok:
-            logger.info(f"-> Block {block_v} overlaps with existing block, skipping")
-
-        if sun_avoidance is not None:
-            sun_ok = block_q == sun_avoidance(block_q)
-            if not sun_ok:
-                logger.info(f"-> Block {block_v} fails sun check, skipping")
-
-        ok = overlap_ok * sun_ok
-        if ok:
-            # schedule and move on to next seq
-            yield block_v
-            merged += [block_q]
-            seq_i = (seq_i + 1) % n_seq
-
-        block_i[seq_i] += 1

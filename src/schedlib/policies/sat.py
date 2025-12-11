@@ -1,27 +1,26 @@
-"""A production-level implementation of the SAT policy
-
-"""
 import numpy as np
-import yaml
-import os.path as op
+import datetime as dt
 from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
-
-import datetime as dt
 from typing import List, Union, Optional, Dict, Any, Tuple
-import jax.tree_util as tu
-from functools import reduce, partial
+from functools import reduce
 
-from .. import config as cfg, core, source as src, rules as ru
-from .. import commands as cmd, instrument as inst, utils as u
+from .. import core, utils as u, source as src, rules as ru
+from .. import commands as cmd, instrument as inst
 from ..thirdparty import SunAvoidance
 from .stages import get_build_stage
 from .stages.build_op import get_parking
 from . import tel
-from ..instrument import CalTarget, WiregridTarget
+from .tel import SchedMode
+from ..instrument import CalTarget, StareBlock, WiregridTarget
 
 
 logger = u.init_logger(__name__)
+
+
+# ----------------------------------------------------
+#                  SAT Command Durations
+# ----------------------------------------------------
 
 HWP_SPIN_UP = 7*u.minute
 HWP_SPIN_DOWN = 15*u.minute
@@ -35,6 +34,35 @@ COMMANDS_HWP_STOP = [
     "run.hwp.spin_down(active=False)",
     "",
 ]
+
+
+# ----------------------------------------------------
+#                   Utilities
+# ----------------------------------------------------
+
+def simplify_hwp(op_seq):
+    # if hwp is spinning up and down right next to each other, we can just remove them
+    core.seq_assert_sorted(op_seq)
+    def rewriter(seq_prev, b_next):
+        if len(seq_prev) == 0:
+            return [b_next]
+        b_prev = seq_prev[-1]
+        if (b_prev.name == 'sat.hwp_spin_up' and b_next.name == 'sat.hwp_spin_down') or \
+           (b_prev.name == 'sat.hwp_spin_down' and b_next.name == 'sat.hwp_spin_up'):
+            return seq_prev[:-1] + [cmd.OperationBlock(
+                name='wait-until',
+                t0=b_prev.t0,
+                t1=b_next.t1,
+            )]
+        else:
+            return seq_prev+[b_next]
+    return reduce(rewriter, op_seq, [])
+
+
+
+# ----------------------------------------------------
+#                  SAT State
+# ----------------------------------------------------
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -63,168 +91,57 @@ class State(tel.State):
     def get_boresight(self):
         return self.boresight_rot_now
 
+
+# ----------------------------------------------------
+#                  SAT SchedMode
+# ----------------------------------------------------
+
 class SchedMode(tel.SchedMode):
     """
-    Enumerate different options for scheduling operations in SATPolicy.
+    Enumeration of scheduling modes for SATPolicy operations.
 
     Attributes
     ----------
+    PreWiregrid : str
+        'pre_wiregrid'; scheduling mode for wiregrid operations
+        that occur before the main wiregrid block.
     Wiregrid : str
-        'wiregrid'; Wiregrid observations scheduled between block.t0 and block.t1
+        'wiregrid'; scheduling mode for wiregrid observations
+        between block.t0 and block.t1.
     """
     PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
 
 
-def make_geometry(xi_offset=0., eta_offset=0.):
-    logger.info(f"making geometry with xi offset={xi_offset}, eta offset={eta_offset}")
-    ## default SAT optics offsets
-    d_xi = 10.9624
-    d_eta_side = 6.46363
-    d_eta_mid = 12.634
-
-    return {
-        'ws3': {
-            'center': [-d_xi + xi_offset, d_eta_side + eta_offset],
-            'radius': 6,
-        },
-        'ws2': {
-            'center': [-d_xi + xi_offset, -d_eta_side + eta_offset],
-            'radius': 6,
-        },
-        'ws4': {
-            'center': [0 + xi_offset, d_eta_mid + eta_offset],
-            'radius': 6,
-        },
-        'ws0': {
-            'center': [0 + xi_offset, 0 + eta_offset],
-            'radius': 6,
-        },
-        'ws1': {
-            'center': [0 + xi_offset, -d_eta_mid + eta_offset],
-            'radius': 6,
-        },
-        'ws5': {
-            'center': [d_xi + xi_offset, d_eta_side + eta_offset],
-            'radius': 6,
-        },
-        'ws6': {
-            'center': [d_xi + xi_offset, -d_eta_side + eta_offset],
-            'radius': 6,
-        },
-    }
-
-def make_cal_target(
-    source: str,
-    boresight: float,
-    elevation: float,
-    focus: str,
-    allow_partial=False,
-    drift=True,
-    az_branch=None,
-    az_speed=None,
-    az_accel=None,
-    source_direction=None,
-) -> CalTarget:
-    array_focus = {
-        0 : {
-            'left' : 'ws3,ws2',
-            'middle' : 'ws0,ws1,ws4',
-            'right' : 'ws5,ws6',
-            'bottom': 'ws1,ws2,ws6',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        45 : {
-            'left' : 'ws3,ws4',
-            'middle' : 'ws2,ws0,ws5',
-            'right' : 'ws1,ws6',
-            'bottom': 'ws1,ws2,ws3',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-        -45 : {
-            'left' : 'ws1,ws2',
-            'middle' : 'ws6,ws0,ws3',
-            'right' : 'ws4,ws5',
-            'bottom': 'ws1,ws6,ws5',
-            'all' : 'ws0,ws1,ws2,ws3,ws4,ws5,ws6',
-        },
-    }
-
-    boresight = float(boresight)
-    elevation = float(elevation)
-    focus = focus.lower()
-
-    focus_str = None
-    if int(boresight) not in array_focus:
-        logger.warning(
-            f"boresight not in {array_focus.keys()}, assuming {focus} is a wafer string"
-        )
-        focus_str = focus
-    else:
-        focus_str = array_focus[int(boresight)].get(focus, focus)
-
-    sources = src.get_source_list()
-    assert source in sources, f"source should be one of {sources.keys()}"
-
-    if az_branch is None:
-        az_branch = 180.
-
-    return CalTarget(
-        source=source,
-        array_query=focus_str,
-        el_bore=elevation,
-        boresight_rot=boresight,
-        tag=focus_str,
-        allow_partial=allow_partial,
-        drift=drift,
-        az_branch=az_branch,
-        az_speed=az_speed,
-        az_accel=az_accel,
-        source_direction=source_direction,
-    )
-
 # ----------------------------------------------------
-#                  Register operations
+#                  SAT Operations
 # ----------------------------------------------------
-# Note: to avoid naming collisions. Use appropriate prefixes
-# whenver necessary. For example, all satp1 specific
-# operations should start with `satp1`.
-#
-# Registered operations can be three kinds of functions:
-#
-# 1. for operations with static duration, it can be defined as a function
-#    that returns a list of commands, with the static duration specified in
-#    the decorator
-# 2. for operations with dynamic duration, meaning the duration is determined
-#    at runtime, it can be defined as a function that returns a tuple of
-#    duration and commands; the decorator should be informed with the option
-#    `return_duration=True`
-# 3. for operations that depends and/or modifies the state, the operation
-#    function should take the state as the first argument (no renaming allowed)
-#    and return a new state before the rest of the return values
-#
-# For example the following are all valid definitions:
-#  @cmd.operation(name='my-op', duration=10)
-#  def my_op():
-#      return ["do something"]
-#
-#  @cmd.operation(name='my-op', return_duration=True)
-#  def my_op():
-#      return 10, ["do something"]
-#
-#  @cmd.operation(name='my-op')
-#  def my_op(state):
-#      return state, ["do something"]
-#
-#  @cmd.operation(name='my-op', return_duration=True)
-#  def my_op(state):
-#      return state, 10, ["do something"]
 
-@cmd.operation(name="sat.preamble", duration=0)
-def preamble():
+@cmd.operation(name="sat.preamble", return_duration=True)
+def preamble(state):
     base = tel.preamble()
-    append = ["sup = OCSClient('hwp-supervisor')", "",]
-    return base + append
+    append = [
+        "################### Basic Checks ###################",
+        "acu_data = acu.monitor.status().session['data']",
+        "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
+        "",
+        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}",
+        f"assert np.round(acu_data['StatusDetailed']['Boresight current position'], 1) == {state.boresight_rot_now}",
+        f"assert hwp_state['is_spinning'] == {state.hwp_spinning}",
+    ]
+    if state.hwp_spinning:
+        append += [
+            f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}",
+        ]
+    else:
+        append += [
+            f"assert hwp_state['grip_state'] == 'ungripped'",
+        ]
+    append += [
+        "################### Checks  Over ###################",
+        "",
+        ]
+    return state, 0, base + append
 
 @cmd.operation(name='sat.wrap_up', duration=0)
 def wrap_up(state, block):
@@ -273,7 +190,6 @@ def hwp_spin_down(state, disable_hwp=False, brake_hwp=True):
         cmd = COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
         return state, HWP_SPIN_DOWN, cmd
 
-# per block operation: block will be passed in as parameter
 @cmd.operation(name='sat.det_setup', return_duration=True)
 def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
     return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup_duration)
@@ -309,7 +225,6 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo
 
     return state, duration, commands
 
-# passthrough any arguments, to be used in any sched-mode
 @cmd.operation(name='sat.bias_step', return_duration=True)
 def bias_step(state, block, bias_step_cadence=None):
     return tel.bias_step(state, block, bias_step_cadence)
@@ -324,7 +239,7 @@ def wiregrid(state, block, min_wiregrid_el=49.9):
             "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
         ]
     elif block.name == 'wiregrid_time_const':
-        # wiregrid time const reverses the hwp direction
+        # wiregrid time constant measurement reverses the hwp direction
         state = state.replace(hwp_dir=not state.hwp_dir)
         direction = "ccw (positive frequency)" if state.hwp_dir \
                 else "cw (negative frequency)"
@@ -352,36 +267,36 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake
 
     return state, duration, cmd
 
+
+# ----------------------------------------------------
+#                  Base SAT Policy
+# ----------------------------------------------------
+
 @dataclass
 class SATPolicy(tel.TelPolicy):
-    """a more realistic SAT policy.
-
-    Parameters
-    ----------
-    hwp_override : bool
-        a bool that specifies the hwp direction if overriding the master schedule.  True is forward
-        and False is reverse.
-    brake_hwp : bool
-        a bool that specifies whether or not active braking should be used for the hwp.
-    disable_hwp : bool
-        a bool that specifies whether or not to disable the hwp entirely.
-    min_hwp_el : float
-        the minimum elevation a move command to go to without stopping the hwp first
-    boresight_override : float
-        the angle of boresight to use if not None
-    wiregrid_az : float
-        azimuth to use for wiregrid measurements
-    wiregrid_el : float
-        elevation to use for wiregrid measurements
-    """
-    hwp_override: Optional[bool] = None
-    brake_hwp: Optional[bool] = True
+    wiregrid_plan: str = None
+    hwp_override: bool = None
+    brake_hwp: bool = True
     disable_hwp: bool = False
-    min_hwp_el: float = 48 # deg
-    max_hwp_el: float = 60 # deg
-    boresight_override: Optional[float] = None
-    wiregrid_az: float = 180
-    wiregrid_el: float = 50
+    min_hwp_el: float = 40.0
+    max_hwp_el: float = 60.0
+    force_max_hwp_el: bool = True
+    boresight_override: float = None
+    apply_boresight_rot: bool = True
+    det_setup_duration: float = 20.0*u.minute
+    wiregrid_az: float = 180.0 # deg
+    wiregrid_el: float = 50.0 # deg
+    ignore_wafers: list[str] = None
+
+    def __post_init__(self):
+        self.blocks = self.make_blocks('sat-cmb')
+        self.geometries = self.make_geometry()
+        self.operations = self.make_operations()
+
+        if self.elevation_override is not None:
+            self.stages["build_op"]["plan_moves"]["el_limits"] = 2*[self.elevation_override]
+        elif self.force_max_hwp_el and self.max_hwp_el is not None:
+            self.stages["build_op"]["plan_moves"]["el_limits"][1] = self.max_hwp_el
 
     def apply_overrides(self, blocks):
         if self.boresight_override is not None:
@@ -399,79 +314,213 @@ class SATPolicy(tel.TelPolicy):
             )
         return super().apply_overrides(blocks)
 
-    @classmethod
-    def from_config(cls, config: Union[Dict[str, Any], str]):
+    def make_geometry(self):
+        logger.info(f"making geometry with xi offset={self.xi_offset}, eta offset={self.eta_offset}")
+        # default SAT optics offsets
+        d_xi = 10.9624
+        d_eta_side = 6.46363
+        d_eta_mid = 12.634
+        radius = 6.0
+
+        return {
+            'ws0': {
+                'center': [0 + self.xi_offset, 0 + self.eta_offset],
+                'radius': radius,
+            },
+            'ws1': {
+                'center': [0 + self.xi_offset, -d_eta_mid + self.eta_offset],
+                'radius': radius,
+            },
+            'ws2': {
+                'center': [-d_xi + self.xi_offset, -d_eta_side + self.eta_offset],
+                'radius': radius,
+            },
+            'ws3': {
+                'center': [-d_xi + self.xi_offset, d_eta_side + self.eta_offset],
+                'radius': radius,
+            },
+            'ws4': {
+                'center': [0 + self.xi_offset, d_eta_mid + self.eta_offset],
+                'radius': radius,
+            },
+            'ws5': {
+                'center': [d_xi + self.xi_offset, d_eta_side + self.eta_offset],
+                'radius': radius,
+            },
+            'ws6': {
+                'center': [d_xi + self.xi_offset, -d_eta_side + self.eta_offset],
+                'radius': radius,
+            },
+        }
+
+    def make_operations(self, hwp_cfg=None, cmds_uxm_relock=None, cmds_det_setup=None):
+        cmb_ops = []
+        cal_ops = []
+        wiregrid_ops = []
+        post_session_ops = []
+
+        if hwp_cfg is None:
+            hwp_cfg = {
+                'gripper': 'hwp-gripper',
+                'hwp-pmx': 'pmx',
+                'iboot2': 'power-iboot-hwp-2',
+                'pid': 'hwp-pid',
+                'pmx': 'hwp-pmx',
+            }
+        pre_session_ops = [
+            {
+                'name': 'sat.preamble',
+                'sched_mode': SchedMode.PreSession,
+            },
+            {
+                'name': 'start_time',
+                'sched_mode': SchedMode.PreSession,
+            },
+            {
+                'name': 'set_scan_params',
+                'sched_mode': SchedMode.PreSession,
+                'az_speed': self.az_speed,
+                'az_accel': self.az_accel,
+                'az_motion_override': self.az_motion_override,
+            },
+        ]
+
+        ops = [pre_session_ops, cmb_ops, cal_ops]
+        sched_modes = [SchedMode.PreSession, SchedMode.PreObs, SchedMode.PreCal]
+
+        if self.relock_cadence is not None:
+            for op, sched_mode in zip(ops, sched_modes):
+                op += [
+                    {
+                        'name': 'sat.ufm_relock',
+                        'sched_mode': sched_mode,
+                        'relock_cadence': self.relock_cadence,
+                        'commands': cmds_uxm_relock,
+                    }
+                ]
+
+        ops = [cmb_ops, cal_ops]
+        sched_modes = [SchedMode.PreObs, SchedMode.PreCal]
+        if not self.disable_hwp:
+            ops += [wiregrid_ops]
+            sched_modes += [SchedMode.PreWiregrid]
+
+        for op, sched_mode in zip(ops, sched_modes):
+            op += [
+                {
+                    'name': 'sat.setup_boresight',
+                    'sched_mode': sched_mode,
+                    'apply_boresight_rot': self.apply_boresight_rot,
+                    'brake_hwp': self.brake_hwp,
+                    'cryo_stabilization_time': self.cryo_stabilization_time,
+                },
+                {
+                    'name': 'sat.det_setup',
+                    'sched_mode': sched_mode,
+                    'apply_boresight_rot': self.apply_boresight_rot,
+                    'iv_cadence': self.iv_cadence,
+                    'det_setup_duration': self.det_setup_duration,
+                    'commands': cmds_det_setup,
+                },
+                {
+                    'name': 'sat.hwp_spin_up',
+                    'sched_mode': sched_mode,
+                    'disable_hwp': self.disable_hwp,
+                    'brake_hwp': self.brake_hwp,
+                },
+            ]
+
+        cmb_ops += [
+            {
+                'name': 'sat.bias_step',
+                'sched_mode': SchedMode.PreObs,
+                'bias_step_cadence': self.bias_step_cadence
+            },
+            {
+                'name': 'sat.cmb_scan',
+                'sched_mode': SchedMode.InObs
+            },
+        ]
+
+        cal_ops += [
+            {
+                'name': 'sat.source_scan',
+                'sched_mode': SchedMode.InCal
+            },
+            {
+                'name': 'sat.bias_step',
+                'sched_mode': SchedMode.PostCal,
+                'bias_step_cadence': self.bias_step_cadence
+            },
+        ]
+
+        if not self.disable_hwp:
+            wiregrid_ops += [
+                {
+                    'name': 'sat.wiregrid',
+                    'sched_mode': SchedMode.Wiregrid
+                },
+            ]
+
+        if self.home_at_end:
+            post_session_ops += [
+                {'name': 'sat.hwp_spin_down',
+                'sched_mode': SchedMode.PostSession,
+                'disable_hwp': self.disable_hwp,
+                'brake_hwp': self.brake_hwp
+                },
+        ]
+        post_session_ops += [
+            {
+                'name': 'sat.wrap_up',
+                'sched_mode': SchedMode.PostSession
+            },
+        ]
+
+        return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
+
+    def init_state(self, t0: dt.datetime) -> State:
         """
-        Constructs a policy object from a YAML configuration file, a YAML string, or a dictionary.
+        Customize typical initial state, if needed
 
         Parameters
         ----------
-        config : Union[dict, str]
-            The configuration to populate the policy object.
+        t0 : datetime.datetime
+            The start time of the sequences.
 
         Returns
         -------
-        The constructed policy object.
+        sat.State :
+            The initial SAT State object
         """
-        if isinstance(config, str):
-            loader = cfg.get_loader()
-            if op.isfile(config):
-                with open(config, "r") as f:
-                    config = yaml.load(f.read(), Loader=loader)
-            else:
-                config = yaml.load(config, Loader=loader)
-        return cls(**config)
+        if self.state_file is not None:
+            logger.info(f"using state from {self.state_file}")
+            state = State.load(self.state_file)
+            if state.curr_time != t0:
+                logger.info(
+                    f"Loaded state is at {state.curr_time}. Updating time to"
+                    f" {t0}"
+                )
+                state = state.replace(curr_time = t0)
 
-    def make_source_scans(self, target, blocks, sun_rule):
-        # digest array_query: it could be a fnmatch pattern matching the path
-        # in the geometry dict, or it could be looked up from a predefined
-        # wafer_set dict. Here we account for the latter case:
-        # look up predefined query in wafer_set
-        if target.array_query in self.wafer_sets:
-            array_query = self.wafer_sets[target.array_query]
-        else:
-            array_query = target.array_query
+            return state
 
-        # build array geometry information based on the query
-        array_info = inst.array_info_from_query(self.geometries, array_query)
-        logger.debug(f"-> array_info: {array_info}")
-
-        # apply MakeCESourceScan rule to transform known observing windows into
-        # actual scan blocks
-        rule = ru.MakeCESourceScan(
-            array_info=array_info,
-            el_bore=target.el_bore,
-            drift=target.drift,
-            boresight_rot=target.boresight_rot,
-            allow_partial=target.allow_partial,
-            az_branch=target.az_branch,
-            source_direction=target.source_direction,
+        return State(
+            curr_time=t0,
+            az_now=180.0,
+            el_now=40.0,
+            boresight_rot_now=0.0,
+            hwp_spinning=False,
         )
-        source_scans = rule(blocks['calibration'][target.source])
 
-        # sun check again: previous sun check ensure source is not too
-        # close to the sun, but our scan may still get close enough to
-        # the sun, in which case we will trim it or delete it depending
-        # on whether allow_partial is True
-        if target.allow_partial:
-            logger.info("-> allow_partial = True: trimming scan options by sun rule")
-            min_dur_rule = ru.make_rule('min-duration', **self.rules['min-duration'])
-            source_scans = min_dur_rule(sun_rule(source_scans))
-        else:
-            logger.info("-> allow_partial = False: filtering scan options by sun rule")
-            source_scans = core.seq_filter(lambda b: b == sun_rule(b), source_scans)
-
-        # flatten and sort
-        source_scans = core.seq_sort(source_scans, flatten=True)
-
-        return source_scans
-
-    def init_cmb_seqs(self, t0: dt.datetime, t1: dt.datetime) -> core.BlocksTree:
+    def init_cal_seqs(self, blocks, t0, t1):
         """
-        Initialize the sequences for the scheduler to process.
+        Initialize the cal and wiregrid sequences for the scheduler to process.
 
         Parameters
         ----------
+        blocks : core.BlocksTree:
+            The CMB block sequence from init_cmb_seq.
         t0 : datetime.datetime
             The start time of the sequences.
         t1 : datetime.datetime
@@ -480,27 +529,85 @@ class SATPolicy(tel.TelPolicy):
         Returns
         -------
         BlocksTree (nested dict / list of blocks)
-            The initialized sequences
+            The initialized CMB, cal, and wiregrid sequences
         """
-        # construct seqs by traversing the blocks definition dict
-        blocks = tu.tree_map(
-            partial(self.construct_seq, t0=t0, t1=t1,),
-            self.blocks,
-            is_leaf=lambda x: isinstance(x, dict) and 'type' in x
-        )
+        # get cal targets
+        if self.cal_plan is not None:
+            cal_targets = inst.parse_cal_targets_from_toast_sat(self.cal_plan)
+            # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
+            cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
+        else:
+            cal_targets = []
 
-        # trim to given time range
-        blocks = core.seq_trim(blocks, t0, t1)
+        for i, cal_target in enumerate(cal_targets):
+            # remove ignored wafers
+            if self.ignore_wafers is not None:
+                wafers = cal_target.array_query.split(',')
+                filtered = [w for w in wafers if w not in self.ignore_wafers]
+                if filtered:
+                    cal_targets[i] = replace(cal_targets[i], array_query=",".join(filtered))
+                else:
+                    cal_targets[i] = None
+                    continue
 
-        # ok to drop Nones
-        blocks = tu.tree_map(
-            lambda x: [x_ for x_ in x if x_ is not None],
-            blocks,
-            is_leaf=lambda x: isinstance(x, list)
-        )
+            # find nearest cmb block either before or after the cal target
+            candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
 
-        # set the seed for shuffling blocks
-        self.rng = np.random.default_rng(int(t0.timestamp()))
+            if candidates:
+                block = max(candidates, key=lambda x: x.t0)
+            else:
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                if candidates:
+                    block = min(candidates, key=lambda x: x.t0)
+                else:
+                    raise ValueError("Cannot find nearby CMB block")
+
+            if cal_target.boresight_rot is None:
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
+
+            # overrides
+            if self.az_branch_override is not None:
+                cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
+
+            if self.elevation_override is not None:
+                cal_targets[i] = replace(cal_targets[i], el_bore=self.elevation_override)
+
+            if self.drift_override is not None:
+                cal_targets[i] = replace(cal_targets[i], drift=self.drift_override)
+
+        self.cal_targets += [target for target in cal_targets if target is not None]
+
+        # get wiregrid plan
+        if self.wiregrid_plan is not None and not self.disable_hwp:
+            wiregrid_candidates = inst.parse_wiregrid_targets_from_file(self.wiregrid_plan)
+            wiregrid_candidates[:] = [
+                wg for wg in wiregrid_candidates
+                if wg.t0 >= t0 and wg.t1 <= t1
+            ]
+            self.cal_targets += wiregrid_candidates
+
+        wiregrid_candidates = []
+
+        # by default add calibration blocks specified in cal_targets if not already specified
+        for cal_target in self.cal_targets:
+            if isinstance(cal_target, CalTarget):
+                source = cal_target.source
+                if source not in blocks['calibration']:
+                    blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
+            elif isinstance(cal_target, WiregridTarget):
+                wiregrid_candidates.append(
+                    StareBlock(
+                        name=cal_target.name,
+                        t0=cal_target.t0,
+                        t1=cal_target.t1,
+                        az=self.wiregrid_az,
+                        alt=self.wiregrid_el,
+                        tag='',
+                        subtype='wiregrid',
+                        hwp_dir=self.hwp_override if self.hwp_override is not None else None
+                    )
+                )
+        blocks['calibration']['wiregrid'] = wiregrid_candidates
 
         return blocks
 
@@ -519,11 +626,10 @@ class SATPolicy(tel.TelPolicy):
         blocks : BlocksTree
             New blocks tree after applying the specified observing rules.
         """
-
         # -----------------------------------------------------------------
         # step 1: preliminary sun avoidance
         #   - get rid of source observing windows too close to the sun
-        #   - likely won't affect scan blocks because master schedule already
+        #   - likely won't affect scan blocks because ref plan already
         #     takes care of this
         # -----------------------------------------------------------------
         if 'sun-avoidance' in self.rules:
@@ -698,40 +804,6 @@ class SATPolicy(tel.TelPolicy):
 
         return blocks
 
-    def init_state(self, t0: dt.datetime) -> State:
-        """
-        Initializes the observatory state with some reasonable guess.
-        In practice it should ideally be replaced with actual data
-        from the observatory controller.
-
-        Parameters
-        ----------
-        t0 : float
-            The initial time for the state, typically representing the current time in a specific format.
-
-        Returns
-        -------
-        State
-        """
-        if self.state_file is not None:
-            logger.info(f"using state from {self.state_file}")
-            state = State.load(self.state_file)
-            if state.curr_time != t0:
-                logger.info(
-                    f"Loaded state is at {state.curr_time}. Updating time to"
-                    f" {t0}"
-                )
-                state = state.replace(curr_time = t0)
-            return state
-
-        return State(
-            curr_time=t0,
-            az_now=180,
-            el_now=48,
-            boresight_rot_now=None,
-            hwp_spinning=False,
-        )
-
     def seq2cmd(
         self,
         seq,
@@ -754,18 +826,18 @@ class SATPolicy(tel.TelPolicy):
         Parameters
         ----------
         seq : core.Blocks
-            A tree-like sequence of Blocks representing the observation schedule
+            A tree-like sequence of Blocks representing the observation schedule.
         t0 : datetime.datetime
             The starting datetime for the command sequence.
         t1 : datetime.datetime
-            The ending datetime for the command sequence
+            The ending datetime for the command sequence.
         state : Optional[State], optional
-            The initial state of the observatory, by default None
+            The initial state of the observatory, by default None.
 
         Returns
         -------
-        list of Operation
-
+        ops : list
+            The list of operations.
         """
         if state is None:
             state = self.init_state(t0)
@@ -789,7 +861,16 @@ class SATPolicy(tel.TelPolicy):
 
         # divide cmb blocks
         if self.max_cmb_scan_duration is not None:
-            seq = core.seq_flatten(core.seq_map(lambda b: self.divide_blocks(b, dt.timedelta(seconds=self.max_cmb_scan_duration)) if b.subtype=='cmb' else b, seq))
+            # divide cmb blocks
+            if self.max_cmb_scan_duration is not None:
+                seq = core.seq_flatten(
+                    core.seq_map(
+                        lambda b: self.divide_blocks(b, dt.timedelta(seconds=self.max_cmb_scan_duration))
+                        if b.subtype == 'cmb'
+                        else b,
+                        seq,
+                    )
+                )
 
         # compile operations
         cal_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreCal]
@@ -811,7 +892,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cal_pre,
                     'in': cal_in,
                     'post': cal_post,
-                    'priority': -2
+                    'priority': -1
                 }
             elif block.subtype == 'cmb':
                 return {
@@ -829,44 +910,41 @@ class SATPolicy(tel.TelPolicy):
                     'pre': wiregrid_pre,
                     'in': wiregrid_in,
                     'post': [],
-                    'priority': -2
+                    'priority': -1
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
         seq = [map_block(b) for b in seq]
 
-        # check if any observations were added
-        #assert len(seq) != 0, "No observations fall within time-range"
-
         start_block = {
             'name': 'pre-session',
-            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, az_offset=self.az_offset, alt_offset=self.el_offset,
-                                     t0=t0, t1=t0+dt.timedelta(seconds=1)),
+            'block': inst.StareBlock(name="pre-session", az=state.az_now, alt=state.el_now, az_offset=self.az_offset,
+                                    alt_offset=self.el_offset, t0=t0, t1=t0+dt.timedelta(seconds=1)),
             'pre': [],
             'in': [],
             'post': pre_sess,  # scheduled after t0
-            'priority': -2,
+            'priority': -1, # for now cal, wiregrid, presession and postsession must have the same priority
             'pinned': True  # remain unchanged during multi-pass
         }
 
         # move to a stow position if specified, otherwise find a stow position or stay in final position
         if len(pos_sess) > 0:
             # find an alt, az that is sun-safe for the entire duration of the schedule.
-            if not self.stages['build_op']['plan_moves']['stow_position']:
-                az_start = 180
-                alt_start = self.elevation_override if self.elevation_override is not None else 60
+            if all(self.stow_position.get(k) is not None for k in ("az_stow", "el_stow")):
+                az_stow = self.stow_position['az_stow']
+                alt_stow = self.stow_position['el_stow']
+            else:
+                az_start = 180.0
+                alt_start = self.elevation_override if self.elevation_override is not None else 60.0
                 # add a buffer to start and end to be safe
                 if len(seq) > 0:
                     t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)
                 else:
-                    t_start = t0 - dt.timedelta(seconds=300)
-                t_end = t1 + dt.timedelta(seconds=300)
+                    t_start = t0 - dt.timedelta(seconds=3600)
+                t_end = t1 + dt.timedelta(seconds=3600)
                 az_stow, alt_stow, _, _ = get_parking(t_start, t_end, alt_start, self.stages['build_op']['plan_moves']['sun_policy'])
                 logger.info(f"found sun safe stow position at ({az_stow}, {alt_stow})")
-            else:
-                az_stow = self.stages['build_op']['plan_moves']['stow_position']['az_stow']
-                alt_stow = self.stages['build_op']['plan_moves']['stow_position']['el_stow']
         elif len(seq) > 0:
             az_stow = seq[-1]['block'].az
             alt_stow = seq[-1]['block'].alt
@@ -875,12 +953,12 @@ class SATPolicy(tel.TelPolicy):
             alt_stow = state.el_now
         end_block = {
             'name': 'post-session',
-            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset, alt_offset=self.el_offset,
-                                    t0=t1-dt.timedelta(seconds=1), t1=t1),
+            'block': inst.StareBlock(name="post-session", az=az_stow, alt=alt_stow, az_offset=self.az_offset,
+                                    alt_offset=self.el_offset, t0=t1-dt.timedelta(seconds=1), t1=t1),
             'pre': pos_sess, # scheduled before t1
             'in': [],
             'post': [],
-            'priority': -2,
+            'priority': -1,
             'pinned': True # remain unchanged during multi-pass
         }
         seq = [start_block] + seq + [end_block]
@@ -890,30 +968,58 @@ class SATPolicy(tel.TelPolicy):
             return ops, state
         return ops
 
-    def add_cal_target(self, *args, **kwargs):
-        self.cal_targets.append(make_cal_target(*args, **kwargs))
+    def make_cal_target(
+        self,
+        array_focus: Dict[str, str],
+        source: str,
+        boresight: int,
+        elevation: int,
+        focus: str,
+        allow_partial=False,
+        drift=True,
+        az_branch=None,
+        az_speed=None,
+        az_accel=None,
+        source_direction=None
+    ):
 
-    def add_wiregrid_target(self, el_target, hour_utc=12, az_target=180, **kwargs):
-        self.cal_targets.append(WiregridTarget(hour=hour_utc, az_target=az_target, el_target=el_target))
+        if self.ignore_wafers is not None:
+            keys_to_remove = []
+            for key, val in array_focus.items():
+                wafers = val.split(',')
+                cleaned = [w for w in wafers if w not in self.ignore_wafers]
+                if cleaned:
+                    array_focus[key] = ','.join(cleaned)
+                else:
+                    keys_to_remove.append(key)
 
-# ------------------------
-# utilities
-# ------------------------
+            for key in keys_to_remove:
+                array_focus.pop(key)
 
-def simplify_hwp(op_seq):
-    # if hwp is spinning up and down right next to each other, we can just remove them
-    core.seq_assert_sorted(op_seq)
-    def rewriter(seq_prev, b_next):
-        if len(seq_prev) == 0:
-            return [b_next]
-        b_prev = seq_prev[-1]
-        if (b_prev.name == 'sat.hwp_spin_up' and b_next.name == 'sat.hwp_spin_down') or \
-           (b_prev.name == 'sat.hwp_spin_down' and b_next.name == 'sat.hwp_spin_up'):
-            return seq_prev[:-1] + [cmd.OperationBlock(
-                name='wait-until',
-                t0=b_prev.t0,
-                t1=b_next.t1,
-            )]
-        else:
-            return seq_prev+[b_next]
-    return reduce(rewriter, op_seq, [])
+        boresight = int(boresight)
+        elevation = int(elevation)
+        focus = focus.lower()
+
+        focus_str = None
+        focus_str = array_focus.get(focus, focus)
+
+        sources = src.get_source_list()
+        assert source in sources, f"source should be one of {sources.keys()}"
+
+        if az_branch is None:
+            az_branch = 180.
+
+        return CalTarget(
+            source=source,
+            array_query=focus_str,
+            el_bore=elevation,
+            boresight_rot=boresight,
+            tag=focus_str,
+            allow_partial=allow_partial,
+            drift=drift,
+            az_branch=az_branch,
+            az_speed=az_speed,
+            az_accel=az_accel,
+            source_direction=source_direction,
+            from_table=False
+        )
