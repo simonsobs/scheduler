@@ -349,31 +349,42 @@ class LATPolicy(tel.TelPolicy):
                 }
             ]
 
-            if self.run_stimulator:
-                op += [
-                    {
-                        'name': 'lat.stimulator',
-                        'sched_mode': sched_mode,
-                    },
-                ]
-
         cmb_ops += [
             {
                 'name': 'lat.bias_step',
                 'sched_mode': SchedMode.PreObs,
                 'bias_step_cadence': self.bias_step_cadence
             },
+        ]
+
+        if self.run_stimulator:
+            cmb_ops += [
+                {
+                    'name': 'lat.stimulator',
+                    'sched_mode': SchedMode.PreObs,
+                },
+            ]
+        cmb_ops += [
             {
                 'name': 'lat.cmb_scan',
                 'sched_mode': SchedMode.InObs
             },
         ]
 
+        if self.run_stimulator:
+            cal_ops += [
+                {
+                    'name': 'lat.stimulator',
+                    'sched_mode': SchedMode.PreCal,
+                },
+            ]
         cal_ops += [
             {
                 'name': 'lat.source_scan',
                 'sched_mode': SchedMode.InCal
             },
+        ]
+        cal_ops += [
             {
                 'name': 'lat.bias_step',
                 'sched_mode': SchedMode.PostCal,
