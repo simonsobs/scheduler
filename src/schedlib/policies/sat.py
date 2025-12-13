@@ -125,17 +125,17 @@ def preamble(state):
         "acu_data = acu.monitor.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
         "",
-        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}",
-        f"assert np.round(acu_data['StatusDetailed']['Boresight current position'], 1) == {state.boresight_rot_now}",
-        f"assert hwp_state['is_spinning'] == {state.hwp_spinning}",
+        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}, 'Elevation check failed'",
+        f"assert np.round(acu_data['StatusDetailed']['Boresight current position'], 2) == {state.boresight_rot_now}, 'Boresight angle check failed'",
+        f"assert hwp_state['is_spinning'] == {state.hwp_spinning}, 'HWP spinning check failed'",
     ]
     if state.hwp_spinning:
         append += [
-            f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}",
+            f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}, 'HWP direction check failed'",
         ]
     else:
         append += [
-            f"assert hwp_state['grip_state'] == 'ungripped'",
+            f"assert hwp_state['grip_state'] == 'ungripped', 'HWP grip check failed'",
         ]
     append += [
         "################### Checks  Over ###################",
