@@ -135,7 +135,7 @@ def preamble(state):
         ]
     else:
         append += [
-            f"assert hwp_state['grip_state'] == 'ungripped'",
+            f"assert hwp_state['gripper']['grip_state'] == 'ungripped'",
         ]
     append += [
         "################### Checks  Over ###################",
