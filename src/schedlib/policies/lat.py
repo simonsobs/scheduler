@@ -113,8 +113,8 @@ def preamble(state, open_shutter=False):
         "################### Basic Checks ###################",
         "acu_data = acu.monitor.status().session['data']",
         "",
-        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}",
-        f"assert np.round(acu_data['Status3rdAxis']['Co-Rotator current position'], 1) == {state.corotator_now}",
+        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}, 'Elevation check failed'",
+        f"assert np.round(acu_data['Status3rdAxis']['Co-Rotator current position'], 1) == {state.corotator_now}, 'Corotator angle check failed'",
         "################### Checks  Over ###################",
         "",
         ]
