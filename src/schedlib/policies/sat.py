@@ -131,7 +131,7 @@ def preamble(state):
     ]
     if state.hwp_spinning:
         append += [
-            f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}",
+            f"assert (hwp_state['direction'] == 'ccw') == {state.hwp_dir}",
         ]
     else:
         append += [
