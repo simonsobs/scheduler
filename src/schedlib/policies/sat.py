@@ -131,11 +131,11 @@ def preamble(state):
     ]
     if state.hwp_spinning:
         append += [
-            f"assert (hwp_state['direction'] == 'cw') == {state.hwp_dir}, 'HWP direction check failed'",
+            f"assert (hwp_state['direction'] == 'ccw') == {state.hwp_dir}, 'HWP direction check failed'",
         ]
     else:
         append += [
-            f"assert hwp_state['grip_state'] == 'ungripped', 'HWP grip check failed'",
+            f"assert hwp_state['gripper']['grip_state'] == 'ungripped', 'HWP gripper check failed'",
         ]
     append += [
         "################### Checks  Over ###################",
