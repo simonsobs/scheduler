@@ -248,6 +248,24 @@ def wiregrid(state, block, min_wiregrid_el=49.9):
             f"# hwp direction reversed, now spinning " + direction,
             ]
 
+def sat_move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake_hwp=True, force=False):
+    if not force and (state.az_now == az and state.el_now == el):
+        return state, 0, []
+
+    duration = 0
+    cmd = []
+
+    if state.hwp_spinning and (el < min_el or el > max_el):
+        state = state.replace(hwp_spinning=False)
+        duration += HWP_SPIN_DOWN
+        cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
+    cmd += [
+        f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
+    ]
+    state = state.replace(az_now=az, el_now=el)
+
+    return state, duration, cmd
+
 
 # ----------------------------------------------------
 #                  Base SAT Policy
