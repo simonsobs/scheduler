@@ -243,18 +243,32 @@ def cmb_scan(state, block):
         block.el_freq != state.el_freq_now or
         block.turnaround_method != state.turnaround_method_now
     ):
-        commands = [
-            f"run.acu.set_scan_params(az_speed={block.az_speed}, "
-            f"az_accel={block.az_accel}, el_freq={block.el_freq}, "
-            f"turnaround_method='{block.turnaround_method}')"
-
+        args = [
+            f"az_speed={block.az_speed}",
+            f"az_accel={block.az_accel}, el_freq={block.el_freq}",
+            f"turnaround_method='{block.turnaround_method}'",
         ]
+
         state = state.replace(
             az_speed_now=block.az_speed,
             az_accel_now=block.az_accel,
             el_freq_now=block.el_freq,
             turnaround_method_now=block.turnaround_method
         )
+    else:
+        args = []
+
+    if block.el_mode != state.el_mode_now:
+        args.append(f"el_mode='{block.el_mode}'")
+
+        state = state.replace(
+            el_mode_now=block.el_mode
+        )
+
+    if args:
+        commands = [
+            f"run.acu.set_scan_params({', '.join(args)})"
+        ]
     else:
         commands = []
 
@@ -290,18 +304,32 @@ def source_scan(state, block):
         block.el_freq != state.el_freq_now or
         block.turnaround_method != state.turnaround_method_now
     ):
-        commands = [
-            f"run.acu.set_scan_params(az_speed={block.az_speed}, "
-            f"az_accel={block.az_accel}, el_freq={block.el_freq}, "
-            f"turnaround_method='{block.turnaround_method}')"
-
+        args = [
+            f"az_speed={block.az_speed}",
+            f"az_accel={block.az_accel}, el_freq={block.el_freq}",
+            f"turnaround_method='{block.turnaround_method}'",
         ]
+
         state = state.replace(
             az_speed_now=block.az_speed,
             az_accel_now=block.az_accel,
             el_freq_now=block.el_freq,
             turnaround_method_now=block.turnaround_method
         )
+    else:
+        args = []
+
+    if block.el_mode != state.el_mode_now:
+        args.append(f"el_mode='{block.el_mode}'")
+
+        state = state.replace(
+            el_mode_now=block.el_mode
+        )
+
+    if args:
+        commands = [
+            f"run.acu.set_scan_params({', '.join(args)})"
+        ]
     else:
         commands = []
 
@@ -390,6 +418,7 @@ class TelPolicy:
     eta_offset: float = 0.0 #deg
     az_motion_override: bool = False
     elevation_override: bool = False
+    el_mode_override: str = ''
     az_branch_override: float = None
     allow_partial_override: float = None
     drift_override: bool = True
@@ -443,6 +472,13 @@ class TelPolicy:
             blocks = core.seq_map(
                 lambda b: b.replace(
                     alt=self.elevation_override
+                ), blocks
+            )
+
+        if self.el_mode_override is not None:
+            blocks = core.seq_map(
+                lambda b: b.replace(
+                    el_mode=self.el_mode_override
                 ), blocks
             )
         return blocks

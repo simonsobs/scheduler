@@ -53,6 +53,7 @@ class State:
     az_speed_now: Optional[float] = None
     az_accel_now: Optional[float] = None
     el_freq_now: Optional[float] = None
+    el_mode_now: Optional[str] = None
     turnaround_method_now: Optional[float] = None
     prev_state: Optional["State"] = field(default=None, repr=False)
 
@@ -352,8 +353,29 @@ def start_time(state):
     ]
 
 @operation(name='set_scan_params', duration=0)
-def set_scan_params(state, az_speed, az_accel, el_freq=0, az_motion_override=False):
-    if az_speed != state.az_speed_now or az_accel != state.az_accel_now or el_freq != state.el_freq_now or az_motion_override:
+def set_scan_params(state, az_speed, az_accel, el_freq=0, az_motion_override=False, el_mode_override=None):
+    cmds = []
+    if (
+        az_speed != state.az_speed_now
+        or az_accel != state.az_accel_now
+        or el_freq != state.el_freq_now
+    ):
         state = state.replace(az_speed_now=az_speed, az_accel_now=az_accel, el_freq_now=el_freq)
-        return state, [ f"run.acu.set_scan_params(az_speed={az_speed}, az_accel={az_accel}, el_freq={el_freq})"]
-    return state, []
+        args = [
+            f"az_speed={az_speed}",
+            f"az_accel={az_accel}",
+            f"el_freq={el_freq}"
+        ]
+    else:
+        args = []
+
+    if el_mode_override != state.el_mode_now:
+        state = state.replace(el_mode_now=el_mode_override)
+        args.append(f"el_mode='{el_mode_override}'")
+
+    if args:
+        cmds = [
+            f"run.acu.set_scan_params({', '.join(args)})",
+        ]
+
+    return state, cmds
