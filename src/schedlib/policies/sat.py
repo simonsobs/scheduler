@@ -382,6 +382,7 @@ class SATPolicy(tel.TelPolicy):
                 'az_speed': self.az_speed,
                 'az_accel': self.az_accel,
                 'az_motion_override': self.az_motion_override,
+                'el_mode_override': self.el_mode_override,
             },
         ]
 
@@ -707,6 +708,12 @@ class SATPolicy(tel.TelPolicy):
             if self.hwp_override is not None:
                 cal_block = cal_block.replace(
                     hwp_dir=self.hwp_override
+                )
+
+            # override el mode
+            if self.el_mode_override is not None:
+                cal_block = cal_block.replace(
+                    el_mode=self.el_mode_override
                 )
 
             cal_blocks.append(cal_block)
