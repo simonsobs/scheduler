@@ -82,6 +82,7 @@ class ScanBlock(core.NamedBlock):
     turnaround_method: str = "standard"
     el_amp: float = 0.
     el_freq: float = 0.
+    el_mode: str = ''
     scan_type: int = 1 # scan type (1, 2, or 3)
     az_offset: float = 0. # deg
     alt_offset: float = 0. # deg
