@@ -479,7 +479,8 @@ def parse_sequence_from_toast_sat(ifile):
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
-        if _escape_string(row['type'].strip()) != "None":
+        #if _escape_string(row['type'].strip()) != "None":
+        if True: # to capture NO OBSERVATION BLOCK
             block = ScanBlock(
                 name=_escape_string(row['patch'].strip()),
                 t0=u.str2datetime(row['start_utc']),

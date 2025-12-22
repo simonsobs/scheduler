@@ -139,7 +139,7 @@ def wrap_up(state, block):
         "acu.stop_and_clear()"
     ]
 
-def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour, relock_cadence_sunbreak=12*u.hour):
 
     doit = False
     if state.last_ufm_relock is None:
@@ -149,6 +149,10 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
             doit = True
     if not doit and not state.has_active_channels:
         doit = True
+    if not doit and relock_cadence_sunbreak is not None:
+        if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence_sunbreak:
+            if state.is_sun_break:
+                doit = True
 
     if doit:
         if commands is None:

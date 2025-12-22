@@ -111,6 +111,8 @@ class SchedMode(tel.SchedMode):
     """
     PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
+    NoObs = 'noobs'
+
 
 
 # ----------------------------------------------------
@@ -357,6 +359,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_ops = []
         cal_ops = []
         wiregrid_ops = []
+        noobs_ops = []
         post_session_ops = []
 
         if hwp_cfg is None:
@@ -460,6 +463,16 @@ class SATPolicy(tel.TelPolicy):
                 {
                     'name': 'sat.wiregrid',
                     'sched_mode': SchedMode.Wiregrid
+                },
+            ]
+        #if noobs_cal:
+        if True:
+            noobs_ops = [
+                { 
+                    'name': 'sat.ufm_relock',
+                    'sched_mode': SchedMode.NoObs,
+                    'relock_cadence': self.relock_cadence,
+                    'commands': cmds_uxm_relock
                 },
             ]
 
@@ -854,7 +867,10 @@ class SATPolicy(tel.TelPolicy):
 
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
-        cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+        #cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+        cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb' and b.name != 'NO OBSERVATIONS', seq))
+        noobs_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb' and b.name == 'NO OBSERVATIONS', seq))
+        noobs_blocks = [iblock.replace(subtype = 'noobs') for iblock in noobs_blocks]
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
 
         for i, wiregrid_block in enumerate(wiregrid_blocks):
@@ -863,6 +879,7 @@ class SATPolicy(tel.TelPolicy):
                 wiregrid_blocks[i] = None
 
         cal_blocks += wiregrid_blocks
+        cal_blocks += noobs_blocks
 
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
 
@@ -890,6 +907,7 @@ class SATPolicy(tel.TelPolicy):
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
         wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        noobs_in = [op for op in self.operations if op['sched_mode'] == SchedMode.NoObs]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -918,6 +936,15 @@ class SATPolicy(tel.TelPolicy):
                     'in': wiregrid_in,
                     'post': [],
                     'priority': -1
+                }
+            elif block.subtype == 'noobs':
+                return {
+                    'name': block.name,
+                    'block': block,
+                    'pre': [],
+                    'in': _in,
+                    'post': [],
+                    'priority': 20
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")

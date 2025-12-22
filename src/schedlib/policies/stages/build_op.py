@@ -848,16 +848,20 @@ class BuildOpSimple:
             logger.info(f"--> skipping block {block.name} because it's already past")
             return state, []
 
-        shift = 10
-        safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
-        while safet <= state.curr_time:
-            state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
+        if block.name != 'NO OBSERVATIONS':
+            shift = 10
             safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
+            while safet <= state.curr_time:
+                state = state.replace(curr_time=state.curr_time + dt.timedelta(seconds=shift))
+                safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
 
-        # for how long is this block sun-safe
-        _, sun_safe, _ = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, block.t1,
-                                       self.plan_moves['sun_policy'], block0=block, return_all=True)
-        final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe['sun_time'])
+            # for how long is this block sun-safe
+            _, sun_safe, _ = get_traj_ok_time_socs(block.az, block.az, block.alt, block.alt, block.t1,
+                                        self.plan_moves['sun_policy'], block0=block, return_all=True)
+            final_safet = u.ct2dt(u.dt2ct(block.t1) + sun_safe['sun_time'])
+        else:
+            logger.info('NO OBSERVATION block, skip sun-safe check')
+            final_safet = u.ct2dt(u.dt2ct(block.t1) + dt.timedelta(days=10).total_seconds())
 
         initial_state = state
 
