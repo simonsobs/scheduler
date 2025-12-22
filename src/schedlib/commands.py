@@ -54,7 +54,7 @@ class State:
     az_accel_now: Optional[float] = None
     el_freq_now: Optional[float] = None
     el_mode_now: Optional[str] = None
-    turnaround_method_now: Optional[float] = None
+    turnaround_method_now: Optional[str] = None
     prev_state: Optional["State"] = field(default=None, repr=False)
 
     def clear_history(self):
