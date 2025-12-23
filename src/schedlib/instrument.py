@@ -39,6 +39,43 @@ class WiregridTarget:
     t1: dt.datetime
 
 @dataclass(frozen=True)
+class NoObsBlock(core.NamedBlock):
+    name: str
+    t0: dt.datetime
+    t1: dt.datetime
+    az: float        # deg
+    alt: float       # deg
+    throw: float = 0
+    az_drift: float = 0. # deg / s
+    az_speed: Optional[float] = None,
+    az_accel: Optional[float] = None,
+    az_offset: float = 0.0 # deg
+    alt_offset: float = 0.0 # deg
+    boresight_angle: Optional[float] = None,
+    hwp_dir: Optional[bool] = None
+    el_freq: float = 0.
+    el_mode: str = ''
+    tag: str = ""
+    subtype: str = ""
+    priority: float = 20
+    scan_type: int = 1 # scan type (1, 2, or 3)
+
+    def get_az_alt(self, time_step=1, ctimes=None):
+        t0, t1 = u.dt2ct(self.t0), u.dt2ct(self.t1)
+
+        # allow passing in a list of ctimes
+        if ctimes is not None:
+            t = ctimes
+        else:
+            t = np.arange(t0, t1+time_step, time_step)  # inclusive
+
+        return t, t*0+self.az, t*0+self.alt
+
+    def replace(self, **kwargs) -> "NoObsBlock":
+        return super().replace(**kwargs)
+
+
+@dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
     """
     Dataclass representing a scan block.
@@ -262,6 +299,8 @@ class StareBlock(ScanBlock):
 
         return t, t*0+self.az, t*0+self.alt
 
+
+    
 # dummy type variable for readability
 Spec = TypeVar('Spec')
 SpecsTree = Dict[str, Union[Spec, "SpecsTree"]]
@@ -493,6 +532,16 @@ def parse_sequence_from_toast_sat(ifile):
                 priority=row['priority'],
                 tag=_escape_string(row['uid'].strip()),
                 hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+            )
+            blocks.append(block)
+        else: # For NO OBSERVATION Block
+            block = NoObsBlock(
+                name=_escape_string(row['patch'].strip()),
+                t0=u.str2datetime(row['start_utc']),
+                t1=u.str2datetime(row['stop_utc']),
+                az=row['az_min'],
+                alt=row['el'],
+                subtype = 'noobs'
             )
             blocks.append(block)
     return blocks

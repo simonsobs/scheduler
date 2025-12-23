@@ -111,7 +111,7 @@ class SchedMode(tel.SchedMode):
     """
     PreWiregrid = 'pre_wiregrid'
     Wiregrid = 'wiregrid'
-
+    NoObs = 'noobs'
 
 # ----------------------------------------------------
 #                  SAT Operations
@@ -148,8 +148,8 @@ def wrap_up(state, block):
     return tel.wrap_up(state, block)
 
 @cmd.operation(name='sat.ufm_relock', return_duration=True)
-def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
-    return tel.ufm_relock(state, commands, relock_cadence)
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour, run_relock_noobs=False, relock_cadence_noobs=4*u.hour):
+    return tel.ufm_relock(state, commands, relock_cadence, run_relock_noobs, relock_cadence_noobs)
 
 @cmd.operation(name='sat.hwp_spin_up', return_duration=True)
 def hwp_spin_up(state, block, disable_hwp=False, brake_hwp=True):
@@ -287,6 +287,8 @@ class SATPolicy(tel.TelPolicy):
     wiregrid_az: float = 180.0 # deg
     wiregrid_el: float = 50.0 # deg
     ignore_wafers: list[str] = None
+    run_relock_noobs: bool = False
+    relock_cadence_noobs: float = 4*u.hour
 
     def __post_init__(self):
         self.blocks = self.make_blocks('sat-cmb')
@@ -357,6 +359,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_ops = []
         cal_ops = []
         wiregrid_ops = []
+        noobs_ops = []
         post_session_ops = []
 
         if hwp_cfg is None:
@@ -462,6 +465,17 @@ class SATPolicy(tel.TelPolicy):
                     'sched_mode': SchedMode.Wiregrid
                 },
             ]
+        if self.run_relock_noobs:
+            noobs_ops += [
+                { 
+                    'name': 'sat.ufm_relock',
+                    'sched_mode': SchedMode.NoObs,
+                    'relock_cadence': self.relock_cadence,
+                    'commands': cmds_uxm_relock,
+                    'run_relock_noobs': self.run_relock_noobs,
+                    'relock_cadence_noobs': self.relock_cadence_noobs
+                },
+            ]
 
         if self.home_at_end:
             post_session_ops += [
@@ -477,8 +491,7 @@ class SATPolicy(tel.TelPolicy):
                 'sched_mode': SchedMode.PostSession
             },
         ]
-
-        return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
+        return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops + noobs_ops
 
     def init_state(self, t0: dt.datetime) -> State:
         """
@@ -759,7 +772,19 @@ class SATPolicy(tel.TelPolicy):
                 blocks['baseline']
             )
 
-        blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
+        # trim noobs for calibration
+        if any(x is not None for x in blocks['baseline']['noobs']) and any(x is not None for x in blocks['calibration']):
+            block_noobs_new = []
+            for block_noobs in blocks['baseline']['noobs']:
+                for block_cal in blocks['calibration']:
+                    print(block_cal)
+                    if block_noobs.t0 <= block_cal.t1 and block_noobs.t0 >= block_cal.t0:
+                        print('replace time')
+                        block_noobs = block_noobs.replace(t0 = block_cal.t1)
+                block_noobs_new.append(block_noobs)
+            blocks['baseline']['noobs'] = block_noobs_new
+
+        blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'] + blocks['baseline']['noobs'], flatten=True)
 
         # add scan type
         blocks = core.seq_map(
@@ -855,6 +880,7 @@ class SATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+        noobs_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'noobs', seq))
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
 
         for i, wiregrid_block in enumerate(wiregrid_blocks):
@@ -865,6 +891,7 @@ class SATPolicy(tel.TelPolicy):
         cal_blocks += wiregrid_blocks
 
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
+        seq = core.seq_sort(core.seq_merge(seq, noobs_blocks, flatten=True))
 
         # divide cmb blocks
         if self.max_cmb_scan_duration is not None:
@@ -890,6 +917,7 @@ class SATPolicy(tel.TelPolicy):
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
         wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
         wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        noobs_in = [op for op in self.operations if op['sched_mode'] == SchedMode.NoObs]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -919,6 +947,15 @@ class SATPolicy(tel.TelPolicy):
                     'post': [],
                     'priority': -1
                 }
+            elif block.subtype == 'noobs':
+                return {
+                    'name': block.name,
+                    'block': block,
+                    'pre': [],
+                    'in': noobs_in,
+                    'post': [],
+                    'priority': 20
+                }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
 
@@ -946,7 +983,7 @@ class SATPolicy(tel.TelPolicy):
                 alt_start = self.elevation_override if self.elevation_override is not None else 60.0
                 # add a buffer to start and end to be safe
                 if len(seq) > 0:
-                    t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)
+                    t_start = seq[0]['block'].t1 - dt.timedelta(seconds=300)
                 else:
                     t_start = t0 - dt.timedelta(seconds=3600)
                 t_end = t1 + dt.timedelta(seconds=3600)
