@@ -644,16 +644,15 @@ class TelPolicy:
         from schedlib.instrument import NoObsBlock, ScanBlock
         cmb_blocks = []
         noobs_blocks = []
-        for iblock in blocks['baseline']['cmb']:
-            if isinstance(iblock, ScanBlock):
-                cmb_blocks.append(iblock)
-            elif isinstance(iblock, NoObsBlock):
-                noobs_blocks.append(iblock)
+        for block in blocks['baseline']['cmb']:
+            if isinstance(block, ScanBlock):
+                cmb_blocks.append(block)
+            elif isinstance(block, NoObsBlock):
+                noobs_blocks.append(block)
             else:
-                raise ValueError(f'Error, {type(iblock)} type is only ScanBlock or NoObsBlock')
-        if noobs_blocks:
-            blocks['baseline']['cmb'] = cmb_blocks
-            blocks['baseline']['noobs'] = noobs_blocks    
+                raise ValueError(f'Error, {type(block)} type is only ScanBlock or NoObsBlock')
+        blocks['baseline']['cmb'] = cmb_blocks
+        blocks['baseline']['noobs'] = noobs_blocks
 
         # set the seed for shuffling blocks
         self.rng = np.random.default_rng(int(t0.timestamp()))

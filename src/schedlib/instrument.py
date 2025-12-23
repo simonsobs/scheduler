@@ -57,33 +57,10 @@ class NoObsBlock(core.NamedBlock):
     el_mode: str = ''
     tag: str = ""
     subtype: str = ""
-    priority: float = 0
+    priority: float = 20
     scan_type: int = 1 # scan type (1, 2, or 3)
 
     def get_az_alt(self, time_step=1, ctimes=None):
-        """
-        Calculate the azimuth and altitude for the scan block.
-
-        Parameters
-        ----------
-        time_step : float, optional
-            The time step between each calculated azimuth and altitude.
-            Default is 1.
-        ctimes : iterable, optional
-            A list of times to calculate the azimuth and altitude for.
-            Default is None, in which case the times are calculated
-            automatically. Otherwise time_step is ignored.
-
-        Returns
-        -------
-        t : numpy.ndarray
-            A 1D array of times.
-        az : numpy.ndarray
-            A 1D array of azimuths.
-        alt : numpy.ndarray
-            A 1D array of altitudes.
-
-        """
         t0, t1 = u.dt2ct(self.t0), u.dt2ct(self.t1)
 
         # allow passing in a list of ctimes
@@ -93,6 +70,10 @@ class NoObsBlock(core.NamedBlock):
             t = np.arange(t0, t1+time_step, time_step)  # inclusive
 
         return t, t*0+self.az, t*0+self.alt
+
+    def replace(self, **kwargs) -> "NoObsBlock":
+        return super().replace(**kwargs)
+
 
 @dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
@@ -318,6 +299,8 @@ class StareBlock(ScanBlock):
 
         return t, t*0+self.az, t*0+self.alt
 
+
+    
 # dummy type variable for readability
 Spec = TypeVar('Spec')
 SpecsTree = Dict[str, Union[Spec, "SpecsTree"]]
@@ -558,6 +541,7 @@ def parse_sequence_from_toast_sat(ifile):
                 t1=u.str2datetime(row['stop_utc']),
                 az=row['az_min'],
                 alt=row['el'],
+                subtype = 'noobs'
             )
             blocks.append(block)
     return blocks

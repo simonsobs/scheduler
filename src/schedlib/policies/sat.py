@@ -765,14 +765,6 @@ class SATPolicy(tel.TelPolicy):
             blocks['baseline']['cmb']
         )
 
-        blocks['baseline']['noobs'] = core.seq_map(
-            lambda block: block.replace(
-                subtype="noobs",
-                tag=f"{block.tag}"
-            ),
-            blocks['baseline']['noobs']
-        )
-
         # add scan tag if supplied
         if self.scan_tag is not None:
             blocks['baseline'] = core.seq_map(
@@ -780,7 +772,19 @@ class SATPolicy(tel.TelPolicy):
                 blocks['baseline']
             )
 
-        blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['baseline']['noobs'] + blocks['calibration'], flatten=True)
+        # trim noobs for calibration
+        if any(x is not None for x in blocks['baseline']['noobs']) and any(x is not None for x in blocks['calibration']):
+            block_noobs_new = []
+            for block_noobs in blocks['baseline']['noobs']:
+                for block_cal in blocks['calibration']:
+                    print(block_cal)
+                    if block_noobs.t0 <= block_cal.t1 and block_noobs.t0 >= block_cal.t0:
+                        print('replace time')
+                        block_noobs = block_noobs.replace(t0 = block_cal.t1)
+                block_noobs_new.append(block_noobs)
+            blocks['baseline']['noobs'] = block_noobs_new
+
+        blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'] + blocks['baseline']['noobs'], flatten=True)
 
         # add scan type
         blocks = core.seq_map(
