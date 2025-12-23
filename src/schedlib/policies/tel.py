@@ -139,7 +139,7 @@ def wrap_up(state, block):
         "acu.stop_and_clear()"
     ]
 
-def ufm_relock(state, commands=None, relock_cadence=24*u.hour, relock_cadence_sunbreak=12*u.hour):
+def ufm_relock(state, commands=None, relock_cadence=24*u.hour, run_relock_noobs=False, relock_cadence_noobs=None):
 
     doit = False
     if state.last_ufm_relock is None:
@@ -149,9 +149,9 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour, relock_cadence_su
             doit = True
     if not doit and not state.has_active_channels:
         doit = True
-    if not doit and relock_cadence_sunbreak is not None:
-        if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence_sunbreak:
-            if state.is_sun_break:
+    if not doit and relock_cadence_noobs is not None:
+        if (state.curr_time - state.last_ufm_relock).total_seconds() > relock_cadence_noobs:
+            if run_relock_noobs:
                 doit = True
 
     if doit:
@@ -632,13 +632,28 @@ class TelPolicy:
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
-
+        
         # ok to drop Nones
         blocks = tu.tree_map(
             lambda x: [x_ for x_ in x if x_ is not None],
             blocks,
             is_leaf=lambda x: isinstance(x, list)
         )
+
+        # separete NoObsBlock if there is
+        from schedlib.instrument import NoObsBlock, ScanBlock
+        cmb_blocks = []
+        noobs_blocks = []
+        for iblock in blocks['baseline']['cmb']:
+            if isinstance(iblock, ScanBlock):
+                cmb_blocks.append(iblock)
+            elif isinstance(iblock, NoObsBlock):
+                noobs_blocks.append(iblock)
+            else:
+                raise ValueError(f'Error, {type(iblock)} type is only ScanBlock or NoObsBlock')
+        if noobs_blocks:
+            blocks['baseline']['cmb'] = cmb_blocks
+            blocks['baseline']['noobs'] = noobs_blocks    
 
         # set the seed for shuffling blocks
         self.rng = np.random.default_rng(int(t0.timestamp()))

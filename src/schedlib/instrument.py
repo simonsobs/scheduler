@@ -39,6 +39,28 @@ class WiregridTarget:
     t1: dt.datetime
 
 @dataclass(frozen=True)
+class NoObsBlock(core.NamedBlock):
+    name: str
+    t0: dt.datetime
+    t1: dt.datetime
+    az: float        # deg
+    alt: float       # deg
+    throw: float = 0
+    az_drift: float = 0. # deg / s
+    az_speed: Optional[float] = None,
+    az_accel: Optional[float] = None,
+    az_offset: float = 0.0 # deg
+    alt_offset: float = 0.0 # deg
+    boresight_angle: Optional[float] = None,
+    hwp_dir: Optional[bool] = None
+    el_freq: float = 0.
+    el_mode: str = ''
+    tag: str = ""
+    subtype: str = ""
+    priority: float = 0
+    scan_type: int = 1 # scan type (1, 2, or 3)
+
+@dataclass(frozen=True)
 class ScanBlock(core.NamedBlock):
     """
     Dataclass representing a scan block.
@@ -479,8 +501,7 @@ def parse_sequence_from_toast_sat(ifile):
     df = pd.read_csv(ifile, skiprows=i, delimiter="|", names=columns, comment='#')
     blocks = []
     for _, row in df.iterrows():
-        #if _escape_string(row['type'].strip()) != "None":
-        if True: # to capture NO OBSERVATION BLOCK
+        if _escape_string(row['type'].strip()) != "None":
             block = ScanBlock(
                 name=_escape_string(row['patch'].strip()),
                 t0=u.str2datetime(row['start_utc']),
@@ -494,6 +515,15 @@ def parse_sequence_from_toast_sat(ifile):
                 priority=row['priority'],
                 tag=_escape_string(row['uid'].strip()),
                 hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+            )
+            blocks.append(block)
+        else: # For NO OBSERVATION Block
+            block = NoObsBlock(
+                name=_escape_string(row['patch'].strip()),
+                t0=u.str2datetime(row['start_utc']),
+                t1=u.str2datetime(row['stop_utc']),
+                az=row['az_min'],
+                alt=row['el'],
             )
             blocks.append(block)
     return blocks
