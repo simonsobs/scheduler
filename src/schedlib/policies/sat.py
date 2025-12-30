@@ -596,13 +596,27 @@ class SATPolicy(tel.TelPolicy):
                 if source not in blocks['calibration']:
                     blocks['calibration'][source] = src.source_gen_seq(source, t0, t1)
             elif isinstance(cal_target, WiregridTarget):
+
+                # find nearest cmb block either before or after the cal target
+                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
+
+                if candidates:
+                    block = max(candidates, key=lambda x: x.t0)
+                else:
+                    candidates = [block for block in blocks['baseline']['cmb'] if block.t0 > cal_target.t0]
+                    if candidates:
+                        block = min(candidates, key=lambda x: x.t0)
+                    else:
+                        raise ValueError("Cannot find nearby CMB block")
+
                 wiregrid_candidates.append(
                     StareBlock(
                         name=cal_target.name,
                         t0=cal_target.t0,
                         t1=cal_target.t1,
                         az=self.wiregrid_az,
-                        alt=self.wiregrid_el,
+                        alt=self.wiregrid_el if self.elevation_override is None else self.elevation_override,
+                        boresight_angle=block.boresight_angle,
                         tag='',
                         subtype='wiregrid',
                         hwp_dir=self.hwp_override if self.hwp_override is not None else None
