@@ -9,7 +9,7 @@ from importlib.metadata import version
 
 from .. import core, source as src, utils as u, rules as ru
 from .. import commands as cmd, instrument as inst
-from .stages import get_build_stage
+from .stages import get_build_stage, build_op
 from ..instrument import CalTarget
 
 
@@ -628,7 +628,7 @@ class TelPolicy:
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
-
+        
         # ok to drop Nones
         blocks = tu.tree_map(
             lambda x: [x_ for x_ in x if x_ is not None],
@@ -636,11 +636,24 @@ class TelPolicy:
             is_leaf=lambda x: isinstance(x, list)
         )
 
+        # separete NoObsBlock if there is
+        cmb_blocks = []
+        noobs_blocks = []
+        for block in blocks['baseline']['cmb']:
+            if block.subtype == 'noobs':
+                alt_start = self.elevation_override if self.elevation_override is not None else 60.0
+                block = block.replace(alt = build_op.get_parking(block.t0, block.t1, alt_start, self.stages['build_op']['plan_moves']['sun_policy'])[1])
+                noobs_blocks.append(block)
+            else:
+                cmb_blocks.append(block)
+        blocks['baseline']['cmb'] = cmb_blocks
+        blocks['baseline']['noobs'] = noobs_blocks
+
         # set the seed for shuffling blocks
         self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
-
+    
     def make_source_scans(self, target, blocks, sun_rule):
         # digest array_query: it could be a fnmatch pattern matching the path
         # in the geometry dict, or it could be looked up from a predefined

@@ -262,6 +262,11 @@ class StareBlock(ScanBlock):
 
         return t, t*0+self.az, t*0+self.alt
 
+@dataclass(frozen=True)
+class NoObsBlock(StareBlock):
+    subtype: str = "noobs"
+    priority: float = 20
+    
 # dummy type variable for readability
 Spec = TypeVar('Spec')
 SpecsTree = Dict[str, Union[Spec, "SpecsTree"]]
@@ -493,6 +498,17 @@ def parse_sequence_from_toast_sat(ifile):
                 priority=row['priority'],
                 tag=_escape_string(row['uid'].strip()),
                 hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None
+            )
+            blocks.append(block)
+        else: # For NO OBSERVATION Block
+            block = NoObsBlock(
+                name=_escape_string(row['patch'].strip()),
+                t0=u.str2datetime(row['start_utc']),
+                t1=u.str2datetime(row['stop_utc']),
+                az=row['az_min'],
+                alt=row['el'],
+                subtype='noobs',
+                priority=20
             )
             blocks.append(block)
     return blocks
