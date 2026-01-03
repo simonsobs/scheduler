@@ -628,7 +628,7 @@ class TelPolicy:
 
         # trim to given time range
         blocks = core.seq_trim(blocks, t0, t1)
-        
+
         # ok to drop Nones
         blocks = tu.tree_map(
             lambda x: [x_ for x_ in x if x_ is not None],
@@ -641,7 +641,7 @@ class TelPolicy:
         noobs_blocks = []
         for block in blocks['baseline']['cmb']:
             if block.subtype == 'noobs':
-                alt_start = self.elevation_override if self.elevation_override is not None else 60.0
+                alt_start = self.elevation_override if self.elevation_override is not None else min(60.0, self.stages['build_op']['plan_moves']['el_limits'][1])
                 block = block.replace(alt = build_op.get_parking(block.t0, block.t1, alt_start, self.stages['build_op']['plan_moves']['sun_policy'])[1])
                 noobs_blocks.append(block)
             else:
@@ -653,7 +653,7 @@ class TelPolicy:
         self.rng = np.random.default_rng(int(t0.timestamp()))
 
         return blocks
-    
+
     def make_source_scans(self, target, blocks, sun_rule):
         # digest array_query: it could be a fnmatch pattern matching the path
         # in the geometry dict, or it could be looked up from a predefined
