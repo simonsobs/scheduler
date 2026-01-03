@@ -105,13 +105,18 @@ class SchedMode(tel.SchedMode):
     PreWiregrid : str
         'pre_wiregrid'; scheduling mode for wiregrid operations
         that occur before the main wiregrid block.
-    Wiregrid : str
-        'wiregrid'; scheduling mode for wiregrid observations
+    InWiregrid : str
+        'in_wiregrid'; scheduling mode for wiregrid observations
         between block.t0 and block.t1.
+    InNoObs : str
+        'in_noobs'; scheduling mode for operation that can be run
+        within NO OBSERVATION block between block.t0 and block.t1.
     """
     PreWiregrid = 'pre_wiregrid'
-    Wiregrid = 'wiregrid'
-
+    InWiregrid = 'in_wiregrid'
+    PreNoObs = 'pre_noobs'
+    InNoObs = 'in_noobs'
+    PostNoObs = 'post_noobs'
 
 # ----------------------------------------------------
 #                  SAT Operations
@@ -267,6 +272,22 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake
 
     return state, duration, cmd
 
+@cmd.operation(name="sun_break", return_duration=True)
+def sun_break(state, block, loc="start"):
+    cmds = []
+    if block.subtype == "noobs":
+        if loc=="start":
+            cmd = "####################### Starting Sunbreak #######################"
+        elif loc=="end":
+            cmd = "####################### Sunbreak Over #######################"
+        cmds += [
+            "",
+            cmd,
+            "",
+        ]
+
+    return state, 0, cmds
+
 
 # ----------------------------------------------------
 #                  Base SAT Policy
@@ -287,6 +308,8 @@ class SATPolicy(tel.TelPolicy):
     wiregrid_az: float = 180.0 # deg
     wiregrid_el: float = 50.0 # deg
     ignore_wafers: list[str] = None
+    run_noobs: bool = False
+    relock_cadence_noobs: float = 4*u.hour
 
     def __post_init__(self):
         self.blocks = self.make_blocks('sat-cmb')
@@ -357,6 +380,7 @@ class SATPolicy(tel.TelPolicy):
         cmb_ops = []
         cal_ops = []
         wiregrid_ops = []
+        noobs_ops = []
         post_session_ops = []
 
         if hwp_cfg is None:
@@ -459,16 +483,36 @@ class SATPolicy(tel.TelPolicy):
             wiregrid_ops += [
                 {
                     'name': 'sat.wiregrid',
-                    'sched_mode': SchedMode.Wiregrid
+                    'sched_mode': SchedMode.InWiregrid
+                },
+            ]
+        if self.run_noobs:
+            noobs_ops += [
+                {
+                    'name': 'sun_break',
+                    'sched_mode':  SchedMode.PreNoObs,
+                    'loc': 'start',
+                },
+                {
+                    'name': 'sat.ufm_relock',
+                    'sched_mode': SchedMode.InNoObs,
+                    'relock_cadence': self.relock_cadence_noobs,
+                    'commands': cmds_uxm_relock,
+                },
+                {
+                    'name': 'sun_break',
+                    'sched_mode':  SchedMode.PostNoObs,
+                    'loc': 'end',
                 },
             ]
 
         if self.home_at_end:
             post_session_ops += [
-                {'name': 'sat.hwp_spin_down',
-                'sched_mode': SchedMode.PostSession,
-                'disable_hwp': self.disable_hwp,
-                'brake_hwp': self.brake_hwp
+                {
+                    'name': 'sat.hwp_spin_down',
+                    'sched_mode': SchedMode.PostSession,
+                    'disable_hwp': self.disable_hwp,
+                    'brake_hwp': self.brake_hwp
                 },
         ]
         post_session_ops += [
@@ -477,8 +521,7 @@ class SATPolicy(tel.TelPolicy):
                 'sched_mode': SchedMode.PostSession
             },
         ]
-
-        return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops
+        return pre_session_ops + cal_ops + cmb_ops + post_session_ops + wiregrid_ops + noobs_ops
 
     def init_state(self, t0: dt.datetime) -> State:
         """
@@ -773,7 +816,13 @@ class SATPolicy(tel.TelPolicy):
                 blocks['baseline']
             )
 
-        blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'], flatten=True)
+        # trim noobs for calibration
+        if any(x is not None for x in blocks['baseline']['noobs']) and any(x is not None for x in blocks['calibration']):
+            block_noobs = [b for b in blocks['baseline']['noobs'] if b is not None]
+            cal_blocks = [b for b in blocks['calibration'] if b is not None]
+            blocks['baseline']['noobs'] = core.seq_remove_overlap(block_noobs, cal_blocks)
+
+        blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'] + blocks['baseline']['noobs'], flatten=True)
 
         # add scan type
         blocks = core.seq_map(
@@ -869,6 +918,7 @@ class SATPolicy(tel.TelPolicy):
         # first resolve overlapping between cal and cmb
         cal_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cal', seq))
         cmb_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'cmb', seq))
+        noobs_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'noobs', seq))
         wiregrid_blocks = core.seq_flatten(core.seq_filter(lambda b: b.subtype == 'wiregrid', seq))
 
         for i, wiregrid_block in enumerate(wiregrid_blocks):
@@ -879,6 +929,7 @@ class SATPolicy(tel.TelPolicy):
         cal_blocks += wiregrid_blocks
 
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
+        seq = core.seq_sort(core.seq_merge(seq, noobs_blocks, flatten=True))
 
         # divide cmb blocks
         if self.max_cmb_scan_duration is not None:
@@ -903,7 +954,10 @@ class SATPolicy(tel.TelPolicy):
         pre_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PreSession]
         pos_sess = [op for op in self.operations if op['sched_mode'] == SchedMode.PostSession]
         wiregrid_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreWiregrid]
-        wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.Wiregrid]
+        wiregrid_in = [op for op in self.operations if op['sched_mode'] == SchedMode.InWiregrid]
+        noobs_pre = [op for op in self.operations if op['sched_mode'] == SchedMode.PreNoObs]
+        noobs_in = [op for op in self.operations if op['sched_mode'] == SchedMode.InNoObs]
+        noobs_post = [op for op in self.operations if op['sched_mode'] == SchedMode.PostNoObs]
 
         def map_block(block):
             if block.subtype == 'cal':
@@ -932,6 +986,15 @@ class SATPolicy(tel.TelPolicy):
                     'in': wiregrid_in,
                     'post': [],
                     'priority': -1
+                }
+            elif block.subtype == 'noobs':
+                return {
+                    'name': block.name,
+                    'block': block,
+                    'pre': noobs_pre,
+                    'in': noobs_in,
+                    'post': noobs_post,
+                    'priority': 20
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
