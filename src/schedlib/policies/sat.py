@@ -820,7 +820,7 @@ class SATPolicy(tel.TelPolicy):
         if any(x is not None for x in blocks['baseline']['noobs']) and any(x is not None for x in blocks['calibration']):
             block_noobs = [b for b in blocks['baseline']['noobs'] if b is not None]
             cal_blocks = [b for b in blocks['calibration'] if b is not None]
-            blocks['baseline']['noobs'] = core.seq_remove_overlap(block_noobs, cal_blocks)
+            blocks['baseline']['noobs'] = core.seq_remove_overlap(block_noobs, cal_blocks, flatten=True)
 
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'] + blocks['baseline']['noobs'], flatten=True)
 
@@ -1020,7 +1020,7 @@ class SATPolicy(tel.TelPolicy):
                 alt_stow = self.stow_position['el_stow']
             else:
                 az_start = 180.0
-                alt_start = self.elevation_override if self.elevation_override is not None else 60.0
+                alt_start = self.elevation_override if self.elevation_override is not None else min(60.0, self.stages['build_op']['plan_moves']['el_limits'][1])
                 # add a buffer to start and end to be safe
                 if len(seq) > 0:
                     t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)

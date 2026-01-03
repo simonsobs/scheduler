@@ -781,7 +781,7 @@ class LATPolicy(tel.TelPolicy):
                 alt_stow = self.stow_position['el_stow']
             else:
                 az_start = 180
-                alt_start = self.elevation_override if self.elevation_override is not None else 60.0
+                alt_start = self.elevation_override if self.elevation_override is not None else min(60.0, self.stages['build_op']['plan_moves']['el_limits'][1])
                 # add a buffer to start and end to be safe
                 if len(seq) > 0:
                     t_start = seq[-1]['block'].t1 - dt.timedelta(seconds=300)
