@@ -495,7 +495,7 @@ class SATPolicy(tel.TelPolicy):
                 },
                 {
                     'name': 'sat.ufm_relock',
-                    'sched_mode': SchedMode.InNoObs,
+                    'sched_mode': SchedMode.PreNoObs,
                     'relock_cadence': self.relock_cadence_noobs,
                     'commands': cmds_uxm_relock,
                 },
@@ -989,9 +989,10 @@ class SATPolicy(tel.TelPolicy):
                     'name': block.name,
                     'block': block,
                     'pre': noobs_pre,
-                    'in': noobs_in,
+                    'in': [],
                     'post': noobs_post,
-                    'priority': 20
+                    'priority': 20,
+                    'pinned': True
                 }
             else:
                 raise ValueError(f"unexpected block subtype: {block.subtype}")
