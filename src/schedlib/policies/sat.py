@@ -816,12 +816,6 @@ class SATPolicy(tel.TelPolicy):
                 blocks['baseline']
             )
 
-        # trim noobs for calibration
-        if any(x is not None for x in blocks['baseline']['noobs']) and any(x is not None for x in blocks['calibration']):
-            block_noobs = [b for b in blocks['baseline']['noobs'] if b is not None]
-            cal_blocks = [b for b in blocks['calibration'] if b is not None]
-            blocks['baseline']['noobs'] = core.seq_remove_overlap(block_noobs, cal_blocks, flatten=True)
-
         blocks = core.seq_sort(blocks['baseline']['cmb'] + blocks['calibration'] + blocks['baseline']['noobs'], flatten=True)
 
         # add scan type
@@ -927,6 +921,9 @@ class SATPolicy(tel.TelPolicy):
                 wiregrid_blocks[i] = None
 
         cal_blocks += wiregrid_blocks
+
+        # remove overlap of noobs blocks with cal and wiregrid blocks
+        noobs_blocks = core.seq_remove_overlap(noobs_blocks, cal_blocks, flatten=True)
 
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
         seq = core.seq_sort(core.seq_merge(seq, noobs_blocks, flatten=True))
