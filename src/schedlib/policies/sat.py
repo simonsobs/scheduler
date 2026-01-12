@@ -495,7 +495,7 @@ class SATPolicy(tel.TelPolicy):
                 },
                 {
                     'name': 'sat.ufm_relock',
-                    'sched_mode': SchedMode.InNoObs,
+                    'sched_mode': SchedMode.PreNoObs,
                     'relock_cadence': self.relock_cadence_noobs,
                     'commands': cmds_uxm_relock,
                 },
