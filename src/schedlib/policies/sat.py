@@ -991,7 +991,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': noobs_pre,
                     'in': [],
                     'post': noobs_post,
-                    'priority': 20,
+                    'priority': 0,
                     'pinned': True
                 }
             else:
