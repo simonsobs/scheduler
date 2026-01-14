@@ -266,7 +266,7 @@ class StareBlock(ScanBlock):
 class NoObsBlock(StareBlock):
     subtype: str = "noobs"
     priority: float = 20
-    
+
 # dummy type variable for readability
 Spec = TypeVar('Spec')
 SpecsTree = Dict[str, Union[Spec, "SpecsTree"]]
@@ -639,7 +639,6 @@ def parse_sequence_from_toast_lat(ifile):
             throw=np.abs(row['az_max'] - row['az_min']),
             az_speed=row['rate'],
             az_accel=row['accel'],
-            turnaround_method="standard" if scan_type == 1 else "standard_gen",
             el_amp=row['el_amp'],
             el_freq=row['el_freq'],
             priority=1,
