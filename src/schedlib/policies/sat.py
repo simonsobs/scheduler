@@ -606,10 +606,12 @@ class SATPolicy(tel.TelPolicy):
                 else:
                     raise ValueError("Cannot find nearby CMB block")
 
-            if cal_target.boresight_rot is None:
-                candidates = [block for block in blocks['baseline']['cmb'] if block.t0 < cal_target.t0]
-
             # overrides
+            if self.boresight_override is not None:
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
+            elif cal_target.boresight_rot is None:
+                cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_rot)
+
             if self.az_branch_override is not None:
                 cal_targets[i] = replace(cal_targets[i], az_branch=self.az_branch_override)
 
