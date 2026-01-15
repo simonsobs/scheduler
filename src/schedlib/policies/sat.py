@@ -609,7 +609,7 @@ class SATPolicy(tel.TelPolicy):
             # overrides
             if self.boresight_override is not None:
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=self.boresight_override)
-            elif cal_target.boresight_rot is None:
+            elif cal_targets[i].boresight_rot is None:
                 cal_targets[i] = replace(cal_targets[i], boresight_rot=block.boresight_angle)
 
             if self.az_branch_override is not None:
