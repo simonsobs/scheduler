@@ -906,6 +906,26 @@ class SATPolicy(tel.TelPolicy):
         if state is None:
             state = self.init_state(t0)
 
+        # check initial state
+        assert state.el_now >= self.stages['build_op']['plan_moves']['el_limits'][0], "current elevation too low"
+        assert state.el_now <= self.stages['build_op']['plan_moves']['el_limits'][1], "current elevation too high"
+        assert state.az_now >= self.stages['build_op']['plan_moves']['az_limits'][0], "current azimuth too small"
+        assert state.az_now <= self.stages['build_op']['plan_moves']['az_limits'][1], "current azimuth too large"
+
+        # check if initial position is sun-safe
+        state_check = get_parking(
+            t0=t0,
+            t1=t0 + dt.timedelta(seconds=300),
+            alt0=state.el_now,
+            sun_policy=self.stages['build_op']['plan_moves']['sun_policy'],
+            az_parking=state.az_now,
+            alt_parking=state.el_now,
+            block0=None,
+            sungod=None
+        )
+
+        assert state_check is not None, f"starting position at ({state.az_now},{state.el_now}) is not sun-safe"
+
         # load building stage
         build_op = get_build_stage('build_op', {'policy_config': self, **self.stages.get('build_op', {})})
 
