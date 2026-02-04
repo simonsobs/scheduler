@@ -213,7 +213,12 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo
     duration = 0
 
     if apply_boresight_rot and (
-            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+            (state.boresight_rot_now is None or
+            not np.isclose(
+                    state.boresight_rot_now,
+                    block.boresight_angle,
+                    atol=1)
+            )
         ):
         if state.hwp_spinning:
             state = state.replace(hwp_spinning=False)
@@ -553,7 +558,7 @@ class SATPolicy(tel.TelPolicy):
             curr_time=t0,
             az_now=180.0,
             el_now=40.0,
-            boresight_rot_now=0.0,
+            boresight_rot_now=0,
             hwp_spinning=False,
         )
 
