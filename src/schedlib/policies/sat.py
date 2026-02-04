@@ -558,7 +558,7 @@ class SATPolicy(tel.TelPolicy):
             curr_time=t0,
             az_now=180.0,
             el_now=40.0,
-            boresight_rot_now=0,
+            boresight_rot_now=0.0,
             hwp_spinning=False,
         )
 
