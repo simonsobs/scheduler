@@ -415,7 +415,7 @@ class TelPolicy:
     az_offset: float = 0.0 # deg
     el_offset: float = 0.0 # deg
     xi_offset: float = 0.0 # deg
-    eta_offset: float = 0.0 #deg
+    eta_offset: float = 0.0 # deg
     az_motion_override: bool = False
     elevation_override: bool = False
     el_mode_override: str = ''
