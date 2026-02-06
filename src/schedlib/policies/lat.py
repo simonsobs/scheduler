@@ -159,7 +159,7 @@ def stimulator(state):
 
 @cmd.operation(name='lat.setup_corotator', return_duration=True)
 def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second,
-                    corotator_offset=0., corotator_bound=45):
+                    corotator_offset=0., corotator_bounds=[-45, 45]):
     commands = []
     duration = 0
 
@@ -167,8 +167,10 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
             state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        assert np.abs(block.corotator_angle) <= corotator_bound, (
-            f"corotator angle {block.corotator_angle} not within bounds of [{-corotator_bound}, {corotator_bound}])")
+        assert np.abs(np.max(corotator_bounds)) <= 45, f"corotator bounds {corotator_bounds} is above hardware limit"
+
+        assert (block.corotator_angle >= corotator_bounds[0] and block.corotator_angle <= corotator_bounds[1]), (
+            f"corotator angle {block.corotator_angle} not within bounds of [{corotator_bounds[0]}, {corotator_bounds[1]}])")
 
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
@@ -215,7 +217,7 @@ class LATPolicy(tel.TelPolicy):
     elevations_under_90: bool = False
     apply_corotator_rot: bool = True
     corotator_offset: float = 0.0
-    corotator_bound: float = 45.0
+    corotator_bounds: list = field(default_factory=lambda: [-45.0, 45.0])
     el_freq: float = 0.0
     run_stimulator: bool = False
     open_shutter: bool = False
@@ -343,7 +345,7 @@ class LATPolicy(tel.TelPolicy):
                     'apply_corotator_rot': self.apply_corotator_rot,
                     'cryo_stabilization_time': self.cryo_stabilization_time,
                     'corotator_offset': self.corotator_offset,
-                    'corotator_bound': self.corotator_bound,
+                    'corotator_bounds': self.corotator_bounds,
                 },
                 {
                     'name': 'lat.det_setup',
