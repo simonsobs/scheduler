@@ -123,7 +123,7 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state):
+def preamble(state, assert_cmds=None):
     base = tel.preamble()
     append = [
         "################### Basic Checks ###################",
@@ -142,6 +142,11 @@ def preamble(state):
         append += [
             f"assert hwp_state['gripper']['grip_state'] == 'ungripped', 'HWP gripper check failed'",
         ]
+    if assert_cmds is not None:
+        append += [
+            "################### Custom Checks #################",
+        ]
+        append += assert_cmds
     append += [
         "################### Checks  Over ###################",
         "",
@@ -381,7 +386,7 @@ class SATPolicy(tel.TelPolicy):
             },
         }
 
-    def make_operations(self, hwp_cfg=None, cmds_uxm_relock=None, cmds_det_setup=None):
+    def make_operations(self, hwp_cfg=None, cmds_uxm_relock=None, cmds_det_setup=None, assert_cmds=None):
         cmb_ops = []
         cal_ops = []
         wiregrid_ops = []
@@ -400,6 +405,7 @@ class SATPolicy(tel.TelPolicy):
             {
                 'name': 'sat.preamble',
                 'sched_mode': SchedMode.PreSession,
+                'assert_cmds': assert_cmds,
             },
             {
                 'name': 'start_time',
