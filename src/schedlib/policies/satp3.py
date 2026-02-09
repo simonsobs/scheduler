@@ -38,13 +38,13 @@ class SATP3Policy(SATPolicy):
             "",
         ]
 
-        assert_cmds = [
+        cmds_assert = [
             "assert OCSClient('power-iboot-smurf-1').acq().session['data']['outletStatus_0']['status'] == 1, 'Readout fan shutter/vent is not open'",
         ]
 
         self.blocks = self.make_blocks('sat-cmb')
         self.geometries = self.make_geometry()
-        self.operations = self.make_operations(cmds_uxm_relock=cmds_uxm_relock, cmds_det_setup=cmds_det_setup, assert_cmds=assert_cmds)
+        self.operations = self.make_operations(cmds_uxm_relock=cmds_uxm_relock, cmds_det_setup=cmds_det_setup, cmds_assert=cmds_assert)
 
         if self.elevation_override is not None:
             self.stages["build_op"]["plan_moves"]["el_limits"] = 2*[self.elevation_override]
