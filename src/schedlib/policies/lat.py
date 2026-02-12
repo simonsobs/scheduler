@@ -49,7 +49,7 @@ def corotator_to_boresight(el: float, corotator: float) -> float:
     Calculates the boresight angle (-roll) from the corotator angle.
     When the corotator is locked, The corotator angle is determined from
     the function ``el_to_locked_corotator``, otherwise it can be any value
-    between -45 and 45 degrees.
+    between bounds (hardware min and max are -45 and 45 degrees).
 
     Parameters
     ----------
@@ -158,7 +158,8 @@ def stimulator(state):
     return state, STIMULATOR_DURATION, cmd
 
 @cmd.operation(name='lat.setup_corotator', return_duration=True)
-def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second, corotator_offset=0.):
+def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second,
+                    corotator_offset=0., corotator_bounds=[-45, 45]):
     commands = []
     duration = 0
 
@@ -166,7 +167,10 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
             state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        assert np.abs(block.corotator_angle) <= 45, f"corotator angle {block.corotator_angle} not within [-45, 45] range"
+        assert np.abs(np.max(corotator_bounds)) <= 45, f"corotator bounds {corotator_bounds} is above hardware limit"
+
+        assert (block.corotator_angle >= corotator_bounds[0] and block.corotator_angle <= corotator_bounds[1]), (
+            f"corotator angle {block.corotator_angle} not within bounds of [{corotator_bounds[0]}, {corotator_bounds[1]}])")
 
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
@@ -213,6 +217,7 @@ class LATPolicy(tel.TelPolicy):
     elevations_under_90: bool = False
     apply_corotator_rot: bool = True
     corotator_offset: float = 0.0
+    corotator_bounds: list = field(default_factory=lambda: [-45.0, 45.0])
     el_freq: float = 0.0
     run_stimulator: bool = False
     open_shutter: bool = False
@@ -361,6 +366,7 @@ class LATPolicy(tel.TelPolicy):
                     'apply_corotator_rot': self.apply_corotator_rot,
                     'cryo_stabilization_time': self.cryo_stabilization_time,
                     'corotator_offset': self.corotator_offset,
+                    'corotator_bounds': self.corotator_bounds,
                 },
                 {
                     'name': 'lat.det_setup',
