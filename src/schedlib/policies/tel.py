@@ -412,11 +412,11 @@ class TelPolicy:
     scan_tag: str = None
     az_speed: float = 0.5 # deg / s
     az_accel: float = 1.0 # deg / s^2
-    az_speed_on_mount: bool = False
     az_offset: float = 0.0 # deg
     el_offset: float = 0.0 # deg
     xi_offset: float = 0.0 # deg
     eta_offset: float = 0.0 # deg
+    az_speed_on_mount: bool = False
     az_motion_override: bool = False
     elevation_override: bool = False
     el_mode_override: str = ''

@@ -175,10 +175,10 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
         commands += [
-            f"# Set corotator angle to {block.corotator_angle + corotator_offset} degrees",
-            f"run.acu.set_boresight(target={block.corotator_angle + corotator_offset})",
+            f"# Set corotator angle to {np.round(block.corotator_angle, 3) + corotator_offset} degrees",
+            f"run.acu.set_boresight(target={np.round(block.corotator_angle, 3) + corotator_offset})",
         ]
-        state = state.replace(corotator_now=block.corotator_angle)
+        state = state.replace(corotator_now=np.round(block.corotator_angle, 3))
         duration += COROTATOR_DURATION
 
         if cryo_stabilization_time > 0:
