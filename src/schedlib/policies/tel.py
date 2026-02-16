@@ -654,6 +654,27 @@ class TelPolicy:
 
         return blocks
 
+    def check_state(self, state):
+        # check initial state
+        assert state.el_now >= self.stages['build_op']['plan_moves']['el_limits'][0], "current elevation too low"
+        assert state.el_now <= self.stages['build_op']['plan_moves']['el_limits'][1], "current elevation too high"
+        assert state.az_now >= self.stages['build_op']['plan_moves']['az_limits'][0], "current azimuth too small"
+        assert state.az_now <= self.stages['build_op']['plan_moves']['az_limits'][1], "current azimuth too large"
+
+        # check if initial position is sun-safe
+        state_check = build_op.get_parking(
+            t0=t0,
+            t1=t0 + dt.timedelta(seconds=300),
+            alt0=state.el_now,
+            sun_policy=self.stages['build_op']['plan_moves']['sun_policy'],
+            az_parking=state.az_now,
+            alt_parking=state.el_now,
+            block0=None,
+            sungod=None
+        )
+
+        assert state_check is not None, f"starting position at ({state.az_now},{state.el_now}) is not sun-safe"
+
     def make_source_scans(self, target, blocks, sun_rule):
         # digest array_query: it could be a fnmatch pattern matching the path
         # in the geometry dict, or it could be looked up from a predefined
