@@ -123,7 +123,7 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state):
+def preamble(state, cmds_assert=None):
     base = tel.preamble()
     append = [
         "################### Basic Checks ###################",
@@ -142,6 +142,11 @@ def preamble(state):
         append += [
             f"assert hwp_state['gripper']['grip_state'] == 'ungripped', 'HWP gripper check failed'",
         ]
+    if cmds_assert is not None:
+        append += [
+            "################### Custom Checks #################",
+        ]
+        append += cmds_assert
     append += [
         "################### Checks  Over ###################",
         "",
@@ -213,7 +218,12 @@ def setup_boresight(state, block, apply_boresight_rot=True, brake_hwp=True, cryo
     duration = 0
 
     if apply_boresight_rot and (
-            state.boresight_rot_now is None or state.boresight_rot_now != block.boresight_angle
+            (state.boresight_rot_now is None or
+            not np.isclose(
+                    state.boresight_rot_now,
+                    block.boresight_angle,
+                    atol=1)
+            )
         ):
         if state.hwp_spinning:
             state = state.replace(hwp_spinning=False)
@@ -376,7 +386,7 @@ class SATPolicy(tel.TelPolicy):
             },
         }
 
-    def make_operations(self, hwp_cfg=None, cmds_uxm_relock=None, cmds_det_setup=None):
+    def make_operations(self, hwp_cfg=None, cmds_uxm_relock=None, cmds_det_setup=None, cmds_assert=None):
         cmb_ops = []
         cal_ops = []
         wiregrid_ops = []
@@ -395,6 +405,7 @@ class SATPolicy(tel.TelPolicy):
             {
                 'name': 'sat.preamble',
                 'sched_mode': SchedMode.PreSession,
+                'cmds_assert': cmds_assert,
             },
             {
                 'name': 'start_time',

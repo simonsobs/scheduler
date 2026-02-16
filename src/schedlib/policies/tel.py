@@ -415,7 +415,8 @@ class TelPolicy:
     az_offset: float = 0.0 # deg
     el_offset: float = 0.0 # deg
     xi_offset: float = 0.0 # deg
-    eta_offset: float = 0.0 #deg
+    eta_offset: float = 0.0 # deg
+    az_speed_on_mount: bool = False
     az_motion_override: bool = False
     elevation_override: bool = False
     el_mode_override: str = ''
@@ -455,7 +456,7 @@ class TelPolicy:
         if self.az_motion_override:
             blocks = core.seq_map(
                 lambda b: b.replace(
-                    az_speed=self.az_speed
+                    az_speed=self.az_speed if not self.az_speed_on_mount else round(self.az_speed/np.cos(np.radians(b.alt if b.alt <= 90 else 180 - b.alt)),2)
                 ), blocks
             )
             blocks = core.seq_map(

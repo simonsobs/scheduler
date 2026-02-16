@@ -49,7 +49,7 @@ def corotator_to_boresight(el: float, corotator: float) -> float:
     Calculates the boresight angle (-roll) from the corotator angle.
     When the corotator is locked, The corotator angle is determined from
     the function ``el_to_locked_corotator``, otherwise it can be any value
-    between -45 and 45 degrees.
+    between bounds (hardware min and max are -45 and 45 degrees).
 
     Parameters
     ----------
@@ -158,7 +158,8 @@ def stimulator(state):
     return state, STIMULATOR_DURATION, cmd
 
 @cmd.operation(name='lat.setup_corotator', return_duration=True)
-def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second, corotator_offset=0.):
+def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_time=180*u.second,
+                    corotator_offset=0., corotator_bounds=[-45, 45]):
     commands = []
     duration = 0
 
@@ -166,15 +167,18 @@ def setup_corotator(state, block, apply_corotator_rot=True, cryo_stabilization_t
             state.corotator_now is None or state.corotator_now != block.corotator_angle
         ):
 
-        assert np.abs(block.corotator_angle) <= 45, f"corotator angle {block.corotator_angle} not within [-45, 45] range"
+        assert np.abs(np.max(corotator_bounds)) <= 45, f"corotator bounds {corotator_bounds} is above hardware limit"
+
+        assert (block.corotator_angle >= corotator_bounds[0] and block.corotator_angle <= corotator_bounds[1]), (
+            f"corotator angle {block.corotator_angle} not within bounds of [{corotator_bounds[0]}, {corotator_bounds[1]}])")
 
         ## the ACU command is the one place where boresight=corotator
         ## everywhere else (particularly for math) corotator != boresight
         commands += [
-            f"# Set corotator angle to {block.corotator_angle + corotator_offset} degrees",
-            f"run.acu.set_boresight(target={block.corotator_angle + corotator_offset})",
+            f"# Set corotator angle to {np.round(block.corotator_angle, 3) + corotator_offset} degrees",
+            f"run.acu.set_boresight(target={np.round(block.corotator_angle, 3) + corotator_offset})",
         ]
-        state = state.replace(corotator_now=block.corotator_angle)
+        state = state.replace(corotator_now=np.round(block.corotator_angle, 3))
         duration += COROTATOR_DURATION
 
         if cryo_stabilization_time > 0:
@@ -212,7 +216,9 @@ class LATPolicy(tel.TelPolicy):
     corotator_override: float = None
     elevations_under_90: bool = False
     apply_corotator_rot: bool = True
+    radius: float = 0.3
     corotator_offset: float = 0.0
+    corotator_bounds: list = field(default_factory=lambda: [-45.0, 45.0])
     el_freq: float = 0.0
     run_stimulator: bool = False
     open_shutter: bool = False
@@ -268,27 +274,47 @@ class LATPolicy(tel.TelPolicy):
         return super().apply_overrides(blocks)
 
     def make_geometry(self):
-        logger.info(f"making geometry with xi offset={self.xi_offset}, eta offset={self.eta_offset}")
-        radius = 0.3
+        logger.info(f"making geometry with xi offset={self.xi_offset}, eta offset={self.eta_offset}, radius={self.radius}")
         return {
-            "c1_ws0": {"center": [-0.3710+self.xi_offset, 0.0000+self.eta_offset], "radius": radius,},
-            "c1_ws1": {"center": [ 0.1815+self.xi_offset, 0.3211+self.eta_offset], "radius": radius,},
-            "c1_ws2": {"center": [ 0.1815+self.xi_offset, -0.3211+self.eta_offset], "radius": radius,},
-            "i1_ws0": {"center": [-1.9112+self.xi_offset, -0.9052+self.eta_offset], "radius": radius,},
-            "i1_ws1": {"center": [-1.3584+self.xi_offset, -0.5704+self.eta_offset], "radius": radius,},
-            "i1_ws2": {"center": [-1.3587+self.xi_offset, -1.2133+self.eta_offset], "radius": radius,},
-            "i3_ws0": {"center": [ 1.1865+self.xi_offset, -0.8919+self.eta_offset], "radius": radius,},
-            "i3_ws1": {"center": [ 1.7326+self.xi_offset, -0.5705+self.eta_offset], "radius": radius,},
-            "i3_ws2": {"center": [ 1.7333+self.xi_offset, -1.2135+self.eta_offset], "radius": radius,},
-            "i4_ws0": {"center": [ 1.1732+self.xi_offset, 0.9052+self.eta_offset], "radius": radius,},
-            "i4_ws1": {"center": [ 1.7332+self.xi_offset, 1.2135+self.eta_offset], "radius": radius,},
-            "i4_ws2": {"center": [ 1.7326+self.xi_offset, 0.5705+self.eta_offset], "radius": radius,},
-            "i5_ws0": {"center": [-0.3655+self.xi_offset, 1.7833+self.eta_offset], "radius": radius,},
-            "i5_ws1": {"center": [ 0.1879+self.xi_offset, 2.1045+self.eta_offset], "radius": radius,},
-            "i5_ws2": {"center": [ 0.1867+self.xi_offset, 1.4620+self.eta_offset], "radius": radius,},
-            "i6_ws0": {"center": [-1.9082+self.xi_offset, 0.8920+self.eta_offset], "radius": radius,},
-            "i6_ws1": {"center": [-1.3577+self.xi_offset, 1.2133+self.eta_offset], "radius": radius,},
-            "i6_ws2": {"center": [-1.3584+self.xi_offset, 0.5854+self.eta_offset], "radius": radius,},
+            "c1_ws0": {"center": [-0.3710+self.xi_offset, 0.0000+self.eta_offset], "radius": self.radius,}, # uhf
+            "c1_ws1": {"center": [ 0.1815+self.xi_offset, 0.3211+self.eta_offset], "radius": self.radius,}, # uhf
+            "c1_ws2": {"center": [ 0.1815+self.xi_offset, -0.3211+self.eta_offset], "radius": self.radius,}, # uhf
+            "i1_ws0": {"center": [-1.9112+self.xi_offset, -0.9052+self.eta_offset], "radius": self.radius,}, # mf
+            "i1_ws1": {"center": [-1.3584+self.xi_offset, -0.5704+self.eta_offset], "radius": self.radius,}, # mf
+            "i1_ws2": {"center": [-1.3587+self.xi_offset, -1.2133+self.eta_offset], "radius": self.radius,}, # mf
+            "i2_ws0": {"center": [-0.36415+self.xi_offset, -1.78324+self.eta_offset], "radius": self.radius,}, # uhf
+            "i2_ws1": {"center": [0.18876+self.xi_offset, -1.46305+self.eta_offset], "radius": self.radius,}, # uhf
+            "i2_ws2": {"center": [0.19272+self.xi_offset, -2.10348+self.eta_offset], "radius": self.radius,}, # uhf
+            "i3_ws0": {"center": [ 1.1865+self.xi_offset, -0.8919+self.eta_offset], "radius": self.radius,}, # mf
+            "i3_ws1": {"center": [ 1.7326+self.xi_offset, -0.5705+self.eta_offset], "radius": self.radius,}, # mf
+            "i3_ws2": {"center": [ 1.7333+self.xi_offset, -1.2135+self.eta_offset], "radius": self.radius,}, # mf
+            "i4_ws0": {"center": [ 1.1732+self.xi_offset, 0.9052+self.eta_offset], "radius": self.radius,}, # mf
+            "i4_ws1": {"center": [ 1.7332+self.xi_offset, 1.2135+self.eta_offset], "radius": self.radius,}, # mf
+            "i4_ws2": {"center": [ 1.7326+self.xi_offset, 0.5705+self.eta_offset], "radius": self.radius,}, # mf
+            "i5_ws0": {"center": [-0.3655+self.xi_offset, 1.7833+self.eta_offset], "radius": self.radius,}, # uhf
+            "i5_ws1": {"center": [ 0.1879+self.xi_offset, 2.1045+self.eta_offset], "radius": self.radius,}, # uhf
+            "i5_ws2": {"center": [ 0.1867+self.xi_offset, 1.4620+self.eta_offset], "radius": self.radius,}, # uhf
+            "i6_ws0": {"center": [-1.9082+self.xi_offset, 0.8920+self.eta_offset], "radius": self.radius,}, # mf
+            "i6_ws1": {"center": [-1.3577+self.xi_offset, 1.2133+self.eta_offset], "radius": self.radius,}, # mf
+            "i6_ws2": {"center": [-1.3584+self.xi_offset, 0.5854+self.eta_offset], "radius": self.radius,}, # mf
+            "o1_ws0": {"center": [-1.89594+self.xi_offset, -2.67462+self.eta_offset], "radius": self.radius,}, # uhf
+            "o1_ws1": {"center": [-1.34547+self.xi_offset, -2.35298+self.eta_offset], "radius": self.radius,}, # uhf
+            "o1_ws2": {"center": [-1.33923+self.xi_offset, -2.99545+self.eta_offset], "radius": self.radius,}, # uhf
+            "o2_ws0": {"center": [1.18755+self.xi_offset, -2.67467+self.eta_offset], "radius": self.radius,}, # mf
+            "o2_ws1": {"center": [1.74466+self.xi_offset, -2.35369+self.eta_offset], "radius": self.radius,}, # mf
+            "o2_ws2": {"center": [1.75046+self.xi_offset, -2.99649+self.eta_offset], "radius": self.radius,}, # mf
+            "o3_ws0": {"center": [2.73022+self.xi_offset, 2e-05+self.eta_offset], "radius": self.radius,}, # mf
+            "o3_ws1": {"center": [3.2929+self.xi_offset, 0.32195+self.eta_offset], "radius": self.radius,}, # mf
+            "o3_ws2": {"center": [3.2929+self.xi_offset, -0.32193+self.eta_offset], "radius": self.radius,}, # mf
+            "o4_ws0": {"center": [1.18755+self.xi_offset, 2.6747+self.eta_offset], "radius": self.radius,}, # mf
+            "o4_ws1": {"center": [1.75045+self.xi_offset, 2.99652+self.eta_offset], "radius": self.radius,}, # mf
+            "o4_ws2": {"center": [1.74467+self.xi_offset, 2.35372+self.eta_offset], "radius": self.radius,}, # mf
+            "o5_ws0": {"center": [-1.89594+self.xi_offset, 2.67466+self.eta_offset], "radius": self.radius,}, # mf
+            "o5_ws1": {"center": [-1.33923+self.xi_offset, 2.99547+self.eta_offset], "radius": self.radius,}, # mf
+            "o5_ws2": {"center": [-1.34546+self.xi_offset, 2.353+self.eta_offset], "radius": self.radius,}, # mf
+            "o6_ws0": {"center": [-3.43694+self.xi_offset, 2e-05+self.eta_offset], "radius": self.radius,}, # lf
+            "o6_ws1": {"center": [-2.88688+self.xi_offset, 0.32179+self.eta_offset], "radius": self.radius,}, # lf
+            "o6_ws2": {"center": [-2.88688+self.xi_offset, -0.32176+self.eta_offset], "radius": self.radius,}, # lf
         }
 
     def make_operations(self):
@@ -340,6 +366,7 @@ class LATPolicy(tel.TelPolicy):
                     'apply_corotator_rot': self.apply_corotator_rot,
                     'cryo_stabilization_time': self.cryo_stabilization_time,
                     'corotator_offset': self.corotator_offset,
+                    'corotator_bounds': self.corotator_bounds,
                 },
                 {
                     'name': 'lat.det_setup',
@@ -829,13 +856,22 @@ class LATPolicy(tel.TelPolicy):
         source_direction=None
     ):
         array_focus = {
-            'c1': 'c1_ws0,c1_ws1,c1_ws2',
-            'i1': 'i1_ws0,i1_ws1,i1_ws2',
-            'i3': 'i3_ws0,i3_ws1,i3_ws2',
-            'i4': 'i4_ws0,i4_ws1,i4_ws2',
-            'i5': 'i5_ws0,i5_ws1,i5_ws2',
-            'i6': 'i6_ws0,i6_ws1,i6_ws2',
+            'c1': 'c1_ws0,c1_ws1,c1_ws2', # uhf
+            'i1': 'i1_ws0,i1_ws1,i1_ws2', # mf
+            'i2': 'i2_ws0,i2_ws1,i2_ws2', # uhf
+            'i3': 'i3_ws0,i3_ws1,i3_ws2', # mf
+            'i4': 'i4_ws0,i4_ws1,i4_ws2', # mf
+            'i5': 'i5_ws0,i5_ws1,i5_ws2', # uhf
+            'i6': 'i6_ws0,i6_ws1,i6_ws2', # mf
+            'o1': 'o1_ws0,o1_ws1,o1_ws2', # uhf
+            'o2': 'o2_ws0,o2_ws1,o2_ws2', # mf
+            'o3': 'o3_ws0,o3_ws1,o3_ws2', # mf
+            'o4': 'o4_ws0,o4_ws1,o4_ws2', # mf
+            'o5': 'o5_ws0,o5_ws1,o5_ws2', # mf
+            'o6': 'o6_ws0,o6_ws1,o6_ws2', # lf
         }
+
+        array_focus['all'] = ','.join([v for k, v in array_focus.items()])
 
         elevation = float(elevation)
         if corotator is None:
