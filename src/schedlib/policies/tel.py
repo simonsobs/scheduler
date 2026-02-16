@@ -655,7 +655,7 @@ class TelPolicy:
 
         return blocks
 
-    def check_state(self, state):
+    def check_state(self, t0, state):
         # check initial state
         assert state.el_now >= self.stages['build_op']['plan_moves']['el_limits'][0], "current elevation too low"
         assert state.el_now <= self.stages['build_op']['plan_moves']['el_limits'][1], "current elevation too high"

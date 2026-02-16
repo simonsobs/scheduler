@@ -737,7 +737,7 @@ class LATPolicy(tel.TelPolicy):
         if state is None:
             state = self.init_state(t0)
 
-        self.check_state(state)
+        self.check_state(t0, state)
 
         # load building stage
         build_op = get_build_stage('build_op', {'policy_config': self, **self.stages.get('build_op', {})})
