@@ -431,6 +431,7 @@ class TelPolicy:
     cryo_stabilization_time: float = 0 * u.second
     home_at_end: bool = False
     stow_position: Dict[str, Any] = field(default_factory=dict)
+    turnaround_method: Dict[str, Any] = field(default_factory=dict)
     rng: np.random.Generator = field(init=False, default=None)
 
     def construct_seq(self, loader_cfg, t0, t1):
@@ -475,13 +476,17 @@ class TelPolicy:
                     alt=self.elevation_override
                 ), blocks
             )
-
         if self.el_mode_override is not None:
             blocks = core.seq_map(
                 lambda b: b.replace(
                     el_mode=self.el_mode_override
                 ), blocks
             )
+        blocks = core.seq_map(
+            lambda b: b.replace(
+                turnaround_method=self.turnaround_method['cmb'][f"type{str(b.scan_type)}"]
+            ), blocks
+        )
         return blocks
 
     def make_blocks(self, cmb_plan_type):

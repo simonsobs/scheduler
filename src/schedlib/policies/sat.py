@@ -784,6 +784,8 @@ class SATPolicy(tel.TelPolicy):
                     el_mode=self.el_mode_override
                 )
 
+            # add turnaround method
+            cal_block = cal_block.replace(turnaround_method=self.turnaround_method['cal'])
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
