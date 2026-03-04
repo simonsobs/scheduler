@@ -3,6 +3,8 @@
 import numpy as np
 import argparse
 import datetime
+import os
+import yaml
 
 ## going to require the actual agent code here
 import socs.agents.acu.avoidance as avoidance
@@ -296,9 +298,14 @@ class SunCrawler:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('platform')
+    parser.add_argument('platform_cfg')
     parser.add_argument('sched_path')
 
     args = parser.parse_args()
-    sc = SunCrawler(args.platform, args.sched_path)
+
+    with open(args.platform_cfg) as f:
+        f = os.path.expandvars(f.read())
+    platform_cfgs = yaml.safe_load(f)["config"]["rules"]["sun-avoidance"]
+
+    sc = SunCrawler(configs=platform_cfgs, path=args.sched_path)
     sc.step_thru_schedule()
