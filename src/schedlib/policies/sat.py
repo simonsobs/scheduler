@@ -640,10 +640,16 @@ class SATPolicy(tel.TelPolicy):
         # get wiregrid plan
         if self.wiregrid_plan is not None and not self.disable_hwp:
             wiregrid_candidates = inst.parse_wiregrid_targets_from_file(self.wiregrid_plan)
+
+            max_wg_t1 = np.max([wiregrid_candidate.t1 for wiregrid_candidate in wiregrid_candidates])
+            if max_wg_t1 < t0:
+                raise RuntimeError("Wiregrid ref plan ends before t0")
+
             wiregrid_candidates[:] = [
                 wg for wg in wiregrid_candidates
                 if wg.t0 >= t0 and wg.t1 <= t1
             ]
+
             self.cal_targets += wiregrid_candidates
 
         wiregrid_candidates = []
