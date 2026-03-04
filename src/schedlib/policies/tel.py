@@ -1,5 +1,6 @@
 import numpy as np
 import datetime as dt
+import os
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
 from typing import List, Union, Optional, Dict, Any, Tuple
@@ -117,9 +118,15 @@ class SchedMode:
 # Note that we are not registering here
 # These are helper functions for the LAT and SAT to use in there operations
 
-def preamble():
+def versions(cmb_plan, cal_plan):
     return [
         f"# schedlib version: {version('schedlib')}",
+        f"# cmb plan: {os.path.basename(cmb_plan) if cmb_plan is not None else None}",
+        f"# cal plan: {os.path.basename(cal_plan) if cal_plan is not None else None}",
+    ]
+
+def preamble():
+    return [
         "from nextline import disable_trace",
         "import time",
         "",

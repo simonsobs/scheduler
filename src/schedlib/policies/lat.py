@@ -106,8 +106,9 @@ class State(tel.State):
 # ----------------------------------------------------
 
 @cmd.operation(name="lat.preamble", return_duration=True)
-def preamble(state, open_shutter=False):
-    cmd = tel.preamble()
+def preamble(state, open_shutter=False, cmb_plan=None, cal_plan=None):
+    cmd = tel.versions(cmb_plan, cal_plan)
+    cmd += tel.preamble()
     cmd += ["acu.clear_faults()"]
     cmd += [
         "################### Basic Checks ###################",
@@ -325,7 +326,9 @@ class LATPolicy(tel.TelPolicy):
             {
                 'name': 'lat.preamble',
                 'sched_mode': SchedMode.PreSession,
-                'open_shutter': self.open_shutter
+                'open_shutter': self.open_shutter,
+                'cmb_plan': self.cmb_plan,
+                'cal_plan': self.cal_plan,
             },
             {
                 'name': 'start_time',

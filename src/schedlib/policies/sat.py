@@ -123,8 +123,10 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state, cmds_assert=None):
-    base = tel.preamble()
+def preamble(state, cmds_assert=None, cal_plan=None, cmb_plan=None, wiregrid_plan=None):
+    base = tel.versions(cmb_plan, cal_plan)
+    base += [f"# wiregrid plan: {os.path.basename(wiregrid_plan) if wiregrid_plan is not None else None}"]
+    base += tel.preamble()
     append = [
         "################### Basic Checks ###################",
         "acu_data = acu.monitor.status().session['data']",
@@ -406,6 +408,9 @@ class SATPolicy(tel.TelPolicy):
                 'name': 'sat.preamble',
                 'sched_mode': SchedMode.PreSession,
                 'cmds_assert': cmds_assert,
+                'cmb_plan': self.cmb_plan,
+                'cal_plan': self.cal_plan,
+                'wiregrid_plan': self.wiregrid_plan,
             },
             {
                 'name': 'start_time',
