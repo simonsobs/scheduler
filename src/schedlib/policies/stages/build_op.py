@@ -848,6 +848,12 @@ class BuildOpSimple:
             logger.info(f"--> skipping block {block.name} because it's already past")
             return state, []
 
+        if block.t1 > constraint.t1:
+            block = block.trim_right_to(constraint.t1)
+
+        if block is None:
+            return state, []
+
         shift = 10
         safet = get_traj_ok_time(block.az, block.az, block.alt, block.alt, state.curr_time, self.plan_moves['sun_policy'])
         while safet <= state.curr_time:
