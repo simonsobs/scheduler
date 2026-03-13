@@ -495,6 +495,7 @@ class BuildOpSimple:
     max_reject: int = 3
     min_duration: float = 1 * u.minute
     min_cmb_duration: float = 10 * u.minute
+    min_cal_duration: float = 1 * u.minute
     plan_moves: Dict[str, Any] = field(default_factory=dict)
     simplify_moves: Dict[str, Any] = field(default_factory=dict)
 
@@ -702,6 +703,7 @@ class BuildOpSimple:
         seq_out = []
         min_dur_filter = ru.MinDuration(self.min_duration)
         min_cmb_dur_filter = ru.MinDuration(self.min_cmb_duration)
+        min_cal_dur_filter = ru.MinDuration(self.min_cal_duration)
         for b in seq:
             if b.get('pinned', False):
                 seq_out += [b]
@@ -718,6 +720,12 @@ class BuildOpSimple:
                             seq_out.append(b)
                         else:
                             logger.info(f"--> dropping {b['name']} due to min cmb duration requirement")
+                    elif b['block'].subtype == 'cal':
+                        if min_cal_dur_filter(matched[0]) == matched[0]:
+                            b = b | {'block': matched[0]}
+                            seq_out.append(b)
+                        else:
+                            logger.info(f"--> dropping {b['name']} due to min cal duration requirement")
                     else:
                         b = b | {'block': matched[0]}
                         seq_out.append(b)
