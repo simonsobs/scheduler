@@ -723,6 +723,12 @@ class TelPolicy:
             state = self.init_state(t0)
         build_sched = get_build_stage('build_sched', {'policy_config': self, **self.stages.get('build_sched', {})})
         commands = build_sched.apply(irs, t0, t1, state)
+        commands_filtered = [commands[0]]
+        commands_to_filter = ["wait_until"]
+        for i in range(len(commands)):
+            if (commands[i-1] != commands[i]) or (not np.any([f in commands[i] for f in commands_to_filter])):
+                commands_filtered.append(commands[i])
+        commands = commands_filtered
         return '\n'.join(commands)
 
     def build_schedule(self, t0: dt.datetime, t1: dt.datetime, state: State=None):
