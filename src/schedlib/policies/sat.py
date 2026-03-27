@@ -123,10 +123,11 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state, cmds_assert=None):
+def preamble(state, platform, cmds_assert=None):
     base = tel.preamble()
     append = [
         "################### Basic Checks ###################",
+        f"assert socket.gethostname() == 'daq-{platform}', 'platform check failed'",
         "acu_data = acu.monitor.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
         "",
@@ -405,6 +406,7 @@ class SATPolicy(tel.TelPolicy):
             {
                 'name': 'sat.preamble',
                 'sched_mode': SchedMode.PreSession,
+                'platform': self.platform,
                 'cmds_assert': cmds_assert,
             },
             {
