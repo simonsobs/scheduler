@@ -123,11 +123,13 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state, cmds_assert=None):
+def preamble(state, platform, sun_policy, cmds_assert=None):
     base = tel.preamble()
     append = [
         "################### Basic Checks ###################",
+        f"assert socket.gethostname() == 'daq-{platform}', 'platform check failed'",
         "acu_data = acu.monitor.status().session['data']",
+        "sun_data = acu.monitor_sun.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
         "",
         f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}, 'Elevation check failed'",
@@ -142,6 +144,9 @@ def preamble(state, cmds_assert=None):
         append += [
             f"assert hwp_state['gripper']['grip_state'] == 'ungripped', 'HWP gripper check failed'",
         ]
+    append += [
+        f"assert sun_data['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
+    ]
     if cmds_assert is not None:
         append += [
             "################### Custom Checks #################",
@@ -408,6 +413,8 @@ class SATPolicy(tel.TelPolicy):
             {
                 'name': 'sat.preamble',
                 'sched_mode': SchedMode.PreSession,
+                'platform': self.platform,
+                'sun_policy': self.stages['build_op']['plan_moves']['sun_policy'],
                 'cmds_assert': cmds_assert,
             },
             {

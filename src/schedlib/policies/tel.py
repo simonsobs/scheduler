@@ -122,6 +122,7 @@ def preamble():
         f"# schedlib version: {version('schedlib')}",
         "from nextline import disable_trace",
         "import time",
+        "import socket",
         "",
         "with disable_trace():",
         "    import numpy as np",
