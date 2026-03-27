@@ -35,6 +35,8 @@ class CalTarget:
 @dataclass(frozen=True)
 class WiregridTarget:
     name: str
+    az: float # deg
+    alt: float # deg
     t0: dt.datetime
     t1: dt.datetime
 
@@ -572,7 +574,7 @@ def parse_cal_targets_from_toast_sat(ifile):
     return cal_targets
 
 def parse_wiregrid_targets_from_file(ifile):
-    columns = ["start_utc", "stop_utc", "type", "uid",
+    columns = ["start_utc", "stop_utc", "az", "el", "type", "uid",
         "remark"
     ]
     # count the number of lines to skip
@@ -589,6 +591,8 @@ def parse_wiregrid_targets_from_file(ifile):
         name = _escape_string(row['remark'].strip()).lower()
         wiregrid_target = WiregridTarget(
             name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
+            az= row['az'],
+            alt=row['el'],
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
         )
