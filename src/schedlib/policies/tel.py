@@ -726,7 +726,7 @@ class TelPolicy:
         commands = build_sched.apply(irs, t0, t1, state)
         commands_filtered = [commands[0]]
         commands_to_filter = ["wait_until"]
-        for i in range(len(commands)):
+        for i in range(1, len(commands)):
             if (commands[i-1] != commands[i]) or (not np.any([f in commands[i] for f in commands_to_filter])):
                 commands_filtered.append(commands[i])
         commands = commands_filtered
