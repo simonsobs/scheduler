@@ -507,6 +507,8 @@ def parse_sequence_from_toast_sat(ifile):
                 t1=u.str2datetime(row['stop_utc']),
                 az=row['az_min'],
                 alt=row['el'],
+                boresight_angle=row['rotation'],
+                hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None,
                 subtype='noobs',
                 priority=20
             )
