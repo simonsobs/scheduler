@@ -127,7 +127,7 @@ def preamble(state, platform, sun_policy, cmds_assert=None):
     base = tel.preamble()
     append = [
         "################### Basic Checks ###################",
-        f"assert socket.gethostname() == 'daq-{platform}', 'platform check failed'",
+        f"assert socket.gethostname() == 'daq-{platform}-sequencer', 'platform check failed'",
         "acu_data = acu.monitor.status().session['data']",
         "sun_data = acu.monitor_sun.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
@@ -145,7 +145,7 @@ def preamble(state, platform, sun_policy, cmds_assert=None):
             f"assert hwp_state['gripper']['grip_state'] == 'ungripped', 'HWP gripper check failed'",
         ]
     append += [
-        f"assert sun_data['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
+        f"assert sun_data['policy']['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
     ]
     if cmds_assert is not None:
         append += [
