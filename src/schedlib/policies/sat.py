@@ -324,6 +324,7 @@ class SATPolicy(tel.TelPolicy):
     det_setup_duration: float = 20.0*u.minute
     wiregrid_az: float = 180.0 # deg
     wiregrid_el: float = 50.0 # deg
+    wiregrid_override: bool = False
     ignore_wafers: list[str] = None
     run_noobs: bool = False
     relock_cadence_noobs: float = 4*u.hour
@@ -672,13 +673,16 @@ class SATPolicy(tel.TelPolicy):
                     else:
                         raise ValueError("Cannot find nearby CMB block")
 
+                wiregrid_az = cal_target.az if self.wiregrid_override == False else self.wiregrid_az
+                wiregrid_el = cal_target.alt if self.wiregrid_override == False else self.wiregrid_el
+
                 wiregrid_candidates.append(
                     StareBlock(
                         name=cal_target.name,
                         t0=cal_target.t0,
                         t1=cal_target.t1,
-                        az=self.wiregrid_az,
-                        alt=self.wiregrid_el if self.elevation_override is None else self.elevation_override,
+                        az=wiregrid_az,
+                        alt=wiregrid_el if self.elevation_override is None else self.elevation_override,
                         boresight_angle=block.boresight_angle,
                         tag='',
                         subtype='wiregrid',
