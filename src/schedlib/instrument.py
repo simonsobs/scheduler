@@ -35,6 +35,8 @@ class CalTarget:
 @dataclass(frozen=True)
 class WiregridTarget:
     name: str
+    az: float # deg
+    alt: float # deg
     t0: dt.datetime
     t1: dt.datetime
 
@@ -266,7 +268,7 @@ class StareBlock(ScanBlock):
 class NoObsBlock(StareBlock):
     subtype: str = "noobs"
     priority: float = 20
-    
+
 # dummy type variable for readability
 Spec = TypeVar('Spec')
 SpecsTree = Dict[str, Union[Spec, "SpecsTree"]]
@@ -507,6 +509,8 @@ def parse_sequence_from_toast_sat(ifile):
                 t1=u.str2datetime(row['stop_utc']),
                 az=row['az_min'],
                 alt=row['el'],
+                boresight_angle=row['rotation'],
+                hwp_dir=(row['hwp_dir'] == 1) if 'hwp_dir' in row else None,
                 subtype='noobs',
                 priority=20
             )
@@ -572,7 +576,7 @@ def parse_cal_targets_from_toast_sat(ifile):
     return cal_targets
 
 def parse_wiregrid_targets_from_file(ifile):
-    columns = ["start_utc", "stop_utc", "type", "uid",
+    columns = ["start_utc", "stop_utc", "az", "el", "type", "uid",
         "remark"
     ]
     # count the number of lines to skip
@@ -589,6 +593,8 @@ def parse_wiregrid_targets_from_file(ifile):
         name = _escape_string(row['remark'].strip()).lower()
         wiregrid_target = WiregridTarget(
             name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
+            az= row['az'],
+            alt=row['el'],
             t0=u.str2datetime(row['start_utc']),
             t1=u.str2datetime(row['stop_utc']),
         )
@@ -610,45 +616,85 @@ def parse_sequence_from_toast_lat(ifile):
 
     """
 
-    columns = [
-        "start_utc", "stop_utc", "target", "direction",
-        "type", "rate", "accel", "el_amp", "el_freq", "el",
-        "az_min", "az_max", "uid"
-    ]
-    # count the number of lines to skip
-    with open(ifile) as f:
-        for i, l in enumerate(f):
-            if l.startswith('#'):
-                continue
-            else:
-                break
+    try:
+        columns = [
+            "start_utc", "stop_utc", "target", "direction",
+            "type", "rate", "accel", "el_amp", "el_freq", "el",
+            "az_min", "az_max", "uid"
+        ]
+
+        # count the number of lines to skip
+        with open(ifile) as f:
+            for i, l in enumerate(f):
+                if l.startswith('#'):
+                    continue
+                else:
+                    break
+
+            for j, line in enumerate(f):
+                if j < i:
+                    continue
+                if line.strip() == '':
+                    continue  # skip blank lines
+                fields = [x.strip() for x in line.split('|')]
+                if len(fields) != len(columns):
+                    raise ValueError(
+                        f"Line {j+1} has {len(fields)} columns, expected {len(columns)}:\n{line}"
+                    )
+
+    except ValueError:
+        columns = [
+            "start_utc", "stop_utc", "target", "direction",
+            "el", "az_min", "az_max", "uid"
+        ]
+
     df = pd.read_csv(
         ifile, skiprows=i, delimiter="|",
         names=columns, comment='#'
     )
     blocks = []
     for _, row in df.iterrows():
-        scan_type = int(re.search(r'\d+', row["type"]).group())
-        block = ScanBlock(
-            name=_escape_string(row['target'].strip()),
-            t0=u.str2datetime(row['start_utc']),
-            t1=u.str2datetime(row['stop_utc']),
-            alt=row['el'],
-            corotator_angle=row['el']-60,
-            az=row['az_min'],
-            throw=np.abs(row['az_max'] - row['az_min']),
-            az_speed=row['rate'],
-            az_accel=row['accel'],
-            turnaround_method="standard" if scan_type == 1 else "standard_gen",
-            el_amp=row['el_amp'],
-            el_freq=row['el_freq'],
-            priority=1,
-            scan_type=scan_type,
-            tag=_escape_string(
-                str(row['target']).strip()+","+
-                "uid-"+str(int(row['uid'])).strip()
-            ),
-        )
+        if len(columns) == 13:
+            scan_type = int(re.search(r'\d+', row["type"]).group())
+            block = ScanBlock(
+                name=_escape_string(row['target'].strip()),
+                t0=u.str2datetime(row['start_utc']),
+                t1=u.str2datetime(row['stop_utc']),
+                alt=row['el'],
+                corotator_angle=row['el']-60,
+                az=row['az_min'],
+                throw=np.abs(row['az_max'] - row['az_min']),
+                az_speed=row['rate'],
+                az_accel=row['accel'],
+                turnaround_method="standard" if scan_type == 1 else "standard_gen",
+                el_amp=row['el_amp'],
+                el_freq=row['el_freq'],
+                priority=1,
+                scan_type=scan_type,
+                tag=_escape_string(
+                    str(row['target']).strip()+","+
+                    "uid-"+str(int(row['uid'])).strip()
+                ),
+            )
+
+        else:
+            scan_type = 1
+            block = ScanBlock(
+                name=_escape_string(row['target'].strip()),
+                t0=u.str2datetime(row['start_utc']),
+                t1=u.str2datetime(row['stop_utc']),
+                alt=row['el'],
+                corotator_angle=row['el']-60,
+                az=row['az_min'],
+                throw=np.abs(row['az_max'] - row['az_min']),
+                turnaround_method="standard" if scan_type == 1 else "standard_gen",
+                priority=1,
+                scan_type=scan_type,
+                tag=_escape_string(
+                    str(row['target']).strip()+","+
+                    "uid-"+str(int(row['uid'])).strip()
+                ),
+            )
         blocks.append(block)
     return blocks
 
