@@ -1,5 +1,6 @@
 import numpy as np
 import datetime as dt
+import os
 from dataclasses import dataclass, field, replace
 from dataclasses_json import dataclass_json
 from typing import List, Union, Optional, Dict, Any, Tuple
@@ -123,7 +124,7 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state, sun_policy, cmds_assert=None, cal_plan=None, cmb_plan=None, wiregrid_plan=None):
+def preamble(state, platform, sun_policy, cmds_assert=None, cal_plan=None, cmb_plan=None, wiregrid_plan=None):
     base = tel.versions(cmb_plan, cal_plan)
     base += [f"# wiregrid plan: {os.path.basename(wiregrid_plan) if wiregrid_plan is not None else None}"]
     base += tel.preamble()
