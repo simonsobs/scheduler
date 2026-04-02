@@ -106,15 +106,19 @@ class State(tel.State):
 # ----------------------------------------------------
 
 @cmd.operation(name="lat.preamble", return_duration=True)
-def preamble(state, open_shutter=False):
-    cmd = tel.preamble()
+def preamble(state, sun_policy, open_shutter=False, cmb_plan=None, cal_plan=None):
+    cmd = tel.versions(cmb_plan, cal_plan)
+    cmd += tel.preamble()
     cmd += ["acu.clear_faults()"]
     cmd += [
         "################### Basic Checks ###################",
+        f"assert socket.gethostname() == 'daq-lat-sequencer', 'platform check failed'",
         "acu_data = acu.monitor.status().session['data']",
+        "sun_data = acu.monitor_sun.status().session['data']",
         "",
         f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}, 'Elevation check failed'",
         f"assert np.round(acu_data['Status3rdAxis']['Co-Rotator current position'], 1) == {state.corotator_now}, 'Corotator angle check failed'",
+        f"assert sun_data['policy']['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
         "################### Checks  Over ###################",
         "",
         ]
@@ -325,7 +329,10 @@ class LATPolicy(tel.TelPolicy):
             {
                 'name': 'lat.preamble',
                 'sched_mode': SchedMode.PreSession,
-                'open_shutter': self.open_shutter
+                'sun_policy': self.stages['build_op']['plan_moves']['sun_policy'],
+                'open_shutter': self.open_shutter,
+                'cmb_plan': self.cmb_plan,
+                'cal_plan': self.cal_plan,
             },
             {
                 'name': 'start_time',
@@ -492,6 +499,11 @@ class LATPolicy(tel.TelPolicy):
         # get cal targets
         if self.cal_plan is not None:
             cal_targets = inst.parse_cal_targets_from_toast_lat(self.cal_plan)
+
+            max_cal_target_t1 = np.max([cal_target.t1 for cal_target in cal_targets])
+            if max_cal_target_t1 < t0:
+                raise RuntimeError("Calibration ref plan ends before t0")
+
             # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
         else:
@@ -617,6 +629,8 @@ class LATPolicy(tel.TelPolicy):
                     el_mode=self.el_mode_override
                 )
 
+            # add turnaround method
+            cal_block = cal_block.replace(turnaround_method=self.turnaround_method['cal'])
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks
