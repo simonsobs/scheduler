@@ -129,6 +129,7 @@ def preamble():
     return [
         "from nextline import disable_trace",
         "import time",
+        "import socket",
         "",
         "with disable_trace():",
         "    import numpy as np",
@@ -438,6 +439,7 @@ class TelPolicy:
     cryo_stabilization_time: float = 0 * u.second
     home_at_end: bool = False
     stow_position: Dict[str, Any] = field(default_factory=dict)
+    turnaround_method: Dict[str, Any] = field(default_factory=dict)
     rng: np.random.Generator = field(init=False, default=None)
 
     def construct_seq(self, loader_cfg, t0, t1):
@@ -482,13 +484,17 @@ class TelPolicy:
                     alt=self.elevation_override
                 ), blocks
             )
-
         if self.el_mode_override is not None:
             blocks = core.seq_map(
                 lambda b: b.replace(
                     el_mode=self.el_mode_override
                 ), blocks
             )
+        blocks = core.seq_map(
+            lambda b: b.replace(
+                turnaround_method=self.turnaround_method['cmb'][f"type{str(b.scan_type)}"]
+            ), blocks
+        )
         return blocks
 
     def make_blocks(self, cmb_plan_type):
@@ -725,6 +731,12 @@ class TelPolicy:
             state = self.init_state(t0)
         build_sched = get_build_stage('build_sched', {'policy_config': self, **self.stages.get('build_sched', {})})
         commands = build_sched.apply(irs, t0, t1, state)
+        commands_filtered = [commands[0]]
+        commands_to_filter = ["wait_until"]
+        for i in range(1, len(commands)):
+            if (commands[i-1] != commands[i]) or (not np.any([f in commands[i] for f in commands_to_filter])):
+                commands_filtered.append(commands[i])
+        commands = commands_filtered
         return '\n'.join(commands)
 
     def build_schedule(self, t0: dt.datetime, t1: dt.datetime, state: State=None):

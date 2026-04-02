@@ -123,13 +123,15 @@ class SchedMode(tel.SchedMode):
 # ----------------------------------------------------
 
 @cmd.operation(name="sat.preamble", return_duration=True)
-def preamble(state, cmds_assert=None, cal_plan=None, cmb_plan=None, wiregrid_plan=None):
+def preamble(state, sun_policy, cmds_assert=None, cal_plan=None, cmb_plan=None, wiregrid_plan=None):
     base = tel.versions(cmb_plan, cal_plan)
     base += [f"# wiregrid plan: {os.path.basename(wiregrid_plan) if wiregrid_plan is not None else None}"]
     base += tel.preamble()
     append = [
         "################### Basic Checks ###################",
+        f"assert socket.gethostname() == 'daq-{platform}-sequencer', 'platform check failed'",
         "acu_data = acu.monitor.status().session['data']",
+        "sun_data = acu.monitor_sun.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
         "",
         f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}, 'Elevation check failed'",
@@ -144,6 +146,9 @@ def preamble(state, cmds_assert=None, cal_plan=None, cmb_plan=None, wiregrid_pla
         append += [
             f"assert hwp_state['gripper']['grip_state'] == 'ungripped', 'HWP gripper check failed'",
         ]
+    append += [
+        f"assert sun_data['policy']['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
+    ]
     if cmds_assert is not None:
         append += [
             "################### Custom Checks #################",
@@ -253,7 +258,8 @@ def wiregrid(state, block, min_wiregrid_el=49.9):
 
     if block.name == 'wiregrid_gain':
         return state, block.duration.total_seconds(), [
-            "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)"
+            "run.wiregrid.calibrate(continuous=False, elevation_check=True, boresight_check=False, temperature_check=False)",
+            f"run.wait_until('{block.t1.isoformat(timespec='seconds')}')",
         ]
     elif block.name == 'wiregrid_time_const':
         # wiregrid time constant measurement reverses the hwp direction
@@ -263,7 +269,8 @@ def wiregrid(state, block, min_wiregrid_el=49.9):
         return state, block.duration.total_seconds(), [
             "run.wiregrid.time_constant(num_repeats=1)",
             f"# hwp direction reversed, now spinning " + direction,
-            ]
+            f"run.wait_until('{block.t1.isoformat(timespec='seconds')}')",
+        ]
 
 @cmd.operation(name="move_to", return_duration=True)
 def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake_hwp=True, force=False):
@@ -319,6 +326,7 @@ class SATPolicy(tel.TelPolicy):
     det_setup_duration: float = 20.0*u.minute
     wiregrid_az: float = 180.0 # deg
     wiregrid_el: float = 50.0 # deg
+    wiregrid_override: bool = False
     ignore_wafers: list[str] = None
     run_noobs: bool = False
     relock_cadence_noobs: float = 4*u.hour
@@ -407,6 +415,8 @@ class SATPolicy(tel.TelPolicy):
             {
                 'name': 'sat.preamble',
                 'sched_mode': SchedMode.PreSession,
+                'platform': self.platform,
+                'sun_policy': self.stages['build_op']['plan_moves']['sun_policy'],
                 'cmds_assert': cmds_assert,
                 'cmb_plan': self.cmb_plan,
                 'cal_plan': self.cal_plan,
@@ -594,6 +604,11 @@ class SATPolicy(tel.TelPolicy):
         # get cal targets
         if self.cal_plan is not None:
             cal_targets = inst.parse_cal_targets_from_toast_sat(self.cal_plan)
+
+            max_cal_target_t1 = np.max([cal_target.t1 for cal_target in cal_targets])
+            if max_cal_target_t1 < t0:
+                raise RuntimeError("Calibration ref plan ends before t0")
+
             # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
         else:
@@ -640,10 +655,16 @@ class SATPolicy(tel.TelPolicy):
         # get wiregrid plan
         if self.wiregrid_plan is not None and not self.disable_hwp:
             wiregrid_candidates = inst.parse_wiregrid_targets_from_file(self.wiregrid_plan)
+
+            max_wg_t1 = np.max([wiregrid_candidate.t1 for wiregrid_candidate in wiregrid_candidates])
+            if max_wg_t1 < t0:
+                raise RuntimeError("Wiregrid ref plan ends before t0")
+
             wiregrid_candidates[:] = [
                 wg for wg in wiregrid_candidates
                 if wg.t0 >= t0 and wg.t1 <= t1
             ]
+
             self.cal_targets += wiregrid_candidates
 
         wiregrid_candidates = []
@@ -668,13 +689,16 @@ class SATPolicy(tel.TelPolicy):
                     else:
                         raise ValueError("Cannot find nearby CMB block")
 
+                wiregrid_az = cal_target.az if self.wiregrid_override == False else self.wiregrid_az
+                wiregrid_el = cal_target.alt if self.wiregrid_override == False else self.wiregrid_el
+
                 wiregrid_candidates.append(
                     StareBlock(
                         name=cal_target.name,
                         t0=cal_target.t0,
                         t1=cal_target.t1,
-                        az=self.wiregrid_az,
-                        alt=self.wiregrid_el if self.elevation_override is None else self.elevation_override,
+                        az=wiregrid_az,
+                        alt=wiregrid_el if self.elevation_override is None else self.elevation_override,
                         boresight_angle=block.boresight_angle,
                         tag='',
                         subtype='wiregrid',
@@ -789,6 +813,8 @@ class SATPolicy(tel.TelPolicy):
                     el_mode=self.el_mode_override
                 )
 
+            # add turnaround method
+            cal_block = cal_block.replace(turnaround_method=self.turnaround_method['cal'])
             cal_blocks.append(cal_block)
 
         blocks['calibration'] = cal_blocks + blocks['calibration']['wiregrid']
@@ -989,7 +1015,7 @@ class SATPolicy(tel.TelPolicy):
                     'pre': cmb_pre,
                     'in': cmb_in,
                     'post': cmb_post,
-                    'priority': block.priority
+                    'priority': 0, #block.priority
                 }
             elif block.subtype == 'wiregrid':
                 return {
