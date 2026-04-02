@@ -599,6 +599,11 @@ class SATPolicy(tel.TelPolicy):
         # get cal targets
         if self.cal_plan is not None:
             cal_targets = inst.parse_cal_targets_from_toast_sat(self.cal_plan)
+
+            max_cal_target_t1 = np.max([cal_target.t1 for cal_target in cal_targets])
+            if max_cal_target_t1 < t0:
+                raise RuntimeError("Calibration ref plan ends before t0")
+
             # keep all cal targets within range (don't restrict cal_target.t1 to t1 so we can keep partial scans)
             cal_targets[:] = [cal_target for cal_target in cal_targets if cal_target.t0 >= t0 and cal_target.t0 < t1]
         else:
@@ -645,10 +650,16 @@ class SATPolicy(tel.TelPolicy):
         # get wiregrid plan
         if self.wiregrid_plan is not None and not self.disable_hwp:
             wiregrid_candidates = inst.parse_wiregrid_targets_from_file(self.wiregrid_plan)
+
+            max_wg_t1 = np.max([wiregrid_candidate.t1 for wiregrid_candidate in wiregrid_candidates])
+            if max_wg_t1 < t0:
+                raise RuntimeError("Wiregrid ref plan ends before t0")
+
             wiregrid_candidates[:] = [
                 wg for wg in wiregrid_candidates
                 if wg.t0 >= t0 and wg.t1 <= t1
             ]
+
             self.cal_targets += wiregrid_candidates
 
         wiregrid_candidates = []
