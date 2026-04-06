@@ -670,9 +670,9 @@ class TelPolicy:
 
     def check_state(self, t0, state):
         # check initial state
-        assert np.floor(state.el_now) >= self.stages['build_op']['plan_moves']['el_limits'][0], "current elevation too low"
+        assert np.ceil(state.el_now) >= self.stages['build_op']['plan_moves']['el_limits'][0], "current elevation too low"
         assert np.floor(state.el_now) <= self.stages['build_op']['plan_moves']['el_limits'][1], "current elevation too high"
-        assert np.floor(state.az_now) >= self.stages['build_op']['plan_moves']['az_limits'][0], "current azimuth too small"
+        assert np.ceil(state.az_now) >= self.stages['build_op']['plan_moves']['az_limits'][0], "current azimuth too small"
         assert np.floor(state.az_now) <= self.stages['build_op']['plan_moves']['az_limits'][1], "current azimuth too large"
 
         # check if initial position is sun-safe
