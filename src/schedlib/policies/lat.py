@@ -280,45 +280,45 @@ class LATPolicy(tel.TelPolicy):
     def make_geometry(self):
         logger.info(f"making geometry with xi offset={self.xi_offset}, eta offset={self.eta_offset}, radius={self.radius}")
         return {
-            "c1_ws0": {"center": [-0.3710+self.xi_offset, 0.0000+self.eta_offset], "radius": self.radius,}, # uhf
-            "c1_ws1": {"center": [ 0.1815+self.xi_offset, 0.3211+self.eta_offset], "radius": self.radius,}, # uhf
-            "c1_ws2": {"center": [ 0.1815+self.xi_offset, -0.3211+self.eta_offset], "radius": self.radius,}, # uhf
-            "i1_ws0": {"center": [-1.9112+self.xi_offset, -0.9052+self.eta_offset], "radius": self.radius,}, # mf
-            "i1_ws1": {"center": [-1.3584+self.xi_offset, -0.5704+self.eta_offset], "radius": self.radius,}, # mf
-            "i1_ws2": {"center": [-1.3587+self.xi_offset, -1.2133+self.eta_offset], "radius": self.radius,}, # mf
-            "i2_ws0": {"center": [-0.36415+self.xi_offset, -1.78324+self.eta_offset], "radius": self.radius,}, # uhf
-            "i2_ws1": {"center": [0.18876+self.xi_offset, -1.46305+self.eta_offset], "radius": self.radius,}, # uhf
-            "i2_ws2": {"center": [0.19272+self.xi_offset, -2.10348+self.eta_offset], "radius": self.radius,}, # uhf
-            "i3_ws0": {"center": [ 1.1865+self.xi_offset, -0.8919+self.eta_offset], "radius": self.radius,}, # mf
-            "i3_ws1": {"center": [ 1.7326+self.xi_offset, -0.5705+self.eta_offset], "radius": self.radius,}, # mf
-            "i3_ws2": {"center": [ 1.7333+self.xi_offset, -1.2135+self.eta_offset], "radius": self.radius,}, # mf
-            "i4_ws0": {"center": [ 1.1732+self.xi_offset, 0.9052+self.eta_offset], "radius": self.radius,}, # mf
-            "i4_ws1": {"center": [ 1.7332+self.xi_offset, 1.2135+self.eta_offset], "radius": self.radius,}, # mf
-            "i4_ws2": {"center": [ 1.7326+self.xi_offset, 0.5705+self.eta_offset], "radius": self.radius,}, # mf
-            "i5_ws0": {"center": [-0.3655+self.xi_offset, 1.7833+self.eta_offset], "radius": self.radius,}, # uhf
-            "i5_ws1": {"center": [ 0.1879+self.xi_offset, 2.1045+self.eta_offset], "radius": self.radius,}, # uhf
-            "i5_ws2": {"center": [ 0.1867+self.xi_offset, 1.4620+self.eta_offset], "radius": self.radius,}, # uhf
-            "i6_ws0": {"center": [-1.9082+self.xi_offset, 0.8920+self.eta_offset], "radius": self.radius,}, # mf
-            "i6_ws1": {"center": [-1.3577+self.xi_offset, 1.2133+self.eta_offset], "radius": self.radius,}, # mf
-            "i6_ws2": {"center": [-1.3584+self.xi_offset, 0.5854+self.eta_offset], "radius": self.radius,}, # mf
-            "o1_ws0": {"center": [-1.89594+self.xi_offset, -2.67462+self.eta_offset], "radius": self.radius,}, # uhf
-            "o1_ws1": {"center": [-1.34547+self.xi_offset, -2.35298+self.eta_offset], "radius": self.radius,}, # uhf
-            "o1_ws2": {"center": [-1.33923+self.xi_offset, -2.99545+self.eta_offset], "radius": self.radius,}, # uhf
-            "o2_ws0": {"center": [1.18755+self.xi_offset, -2.67467+self.eta_offset], "radius": self.radius,}, # mf
-            "o2_ws1": {"center": [1.74466+self.xi_offset, -2.35369+self.eta_offset], "radius": self.radius,}, # mf
-            "o2_ws2": {"center": [1.75046+self.xi_offset, -2.99649+self.eta_offset], "radius": self.radius,}, # mf
-            "o3_ws0": {"center": [2.73022+self.xi_offset, 2e-05+self.eta_offset], "radius": self.radius,}, # mf
-            "o3_ws1": {"center": [3.2929+self.xi_offset, 0.32195+self.eta_offset], "radius": self.radius,}, # mf
-            "o3_ws2": {"center": [3.2929+self.xi_offset, -0.32193+self.eta_offset], "radius": self.radius,}, # mf
-            "o4_ws0": {"center": [1.18755+self.xi_offset, 2.6747+self.eta_offset], "radius": self.radius,}, # mf
-            "o4_ws1": {"center": [1.75045+self.xi_offset, 2.99652+self.eta_offset], "radius": self.radius,}, # mf
-            "o4_ws2": {"center": [1.74467+self.xi_offset, 2.35372+self.eta_offset], "radius": self.radius,}, # mf
-            "o5_ws0": {"center": [-1.89594+self.xi_offset, 2.67466+self.eta_offset], "radius": self.radius,}, # mf
-            "o5_ws1": {"center": [-1.33923+self.xi_offset, 2.99547+self.eta_offset], "radius": self.radius,}, # mf
-            "o5_ws2": {"center": [-1.34546+self.xi_offset, 2.353+self.eta_offset], "radius": self.radius,}, # mf
-            "o6_ws0": {"center": [-3.43694+self.xi_offset, 2e-05+self.eta_offset], "radius": self.radius,}, # lf
-            "o6_ws1": {"center": [-2.88688+self.xi_offset, 0.32179+self.eta_offset], "radius": self.radius,}, # lf
-            "o6_ws2": {"center": [-2.88688+self.xi_offset, -0.32176+self.eta_offset], "radius": self.radius,}, # lf
+            "c1_ws0": {"center" :[-0.35482+self.xi_offset, 0.00030+self.eta_offset], "radius": self.radius,},
+            "c1_ws1": {"center" :[0.18189+self.xi_offset, 0.31422+self.eta_offset], "radius": self.radius,},
+            "c1_ws2": {"center" :[0.18154+self.xi_offset, -0.31440+self.eta_offset], "radius": self.radius,},
+            "i1_ws0": {"center" :[-1.89184+self.xi_offset, -0.89721+self.eta_offset], "radius": self.radius,},
+            "i1_ws1": {"center" :[-1.36256+self.xi_offset, -0.58415+self.eta_offset], "radius": self.radius,},
+            "i1_ws2": {"center" :[-1.36105+self.xi_offset, -1.19977+self.eta_offset], "radius": self.radius,},
+            "i2_ws0": {"center" :[-0.34967+self.xi_offset, -1.78296+self.eta_offset], "radius": self.radius,},
+            "i2_ws1": {"center" :[0.18181+self.xi_offset, -1.47574+self.eta_offset], "radius": self.radius,},
+            "i2_ws2": {"center" :[0.18514+self.xi_offset, -2.09109+self.eta_offset], "radius": self.radius,},
+            "i3_ws0": {"center" :[1.19728+self.xi_offset, -0.89516+self.eta_offset], "radius": self.radius,},
+            "i3_ws1": {"center" :[1.72837+self.xi_offset, -0.58429+self.eta_offset], "radius": self.radius,},
+            "i3_ws2": {"center" :[1.72974+self.xi_offset, -1.20018+self.eta_offset], "radius": self.radius,},
+            "i4_ws0": {"center" :[1.19294+self.xi_offset, 0.89227+self.eta_offset], "radius": self.radius,},
+            "i4_ws1": {"center" :[1.73022+self.xi_offset, 1.19992+self.eta_offset], "radius": self.radius,},
+            "i4_ws2": {"center" :[1.72789+self.xi_offset, 0.58403+self.eta_offset], "radius": self.radius,},
+            "i5_ws0": {"center" :[-0.34967+self.xi_offset, 1.78352+self.eta_offset], "radius": self.radius,},
+            "i5_ws1": {"center" :[0.18557+self.xi_offset, 2.09084+self.eta_offset], "radius": self.radius,},
+            "i5_ws2": {"center" :[0.18138+self.xi_offset, 1.47549+self.eta_offset], "radius": self.radius,},
+            "i6_ws0": {"center" :[-1.89178+self.xi_offset, 0.89226+self.eta_offset], "radius": self.radius,},
+            "i6_ws1": {"center" :[-1.36056+self.xi_offset, 1.19951+self.eta_offset], "radius": self.radius,},
+            "i6_ws2": {"center" :[-1.36304+self.xi_offset, 0.58389+self.eta_offset], "radius": self.radius,},
+            "o1_ws0": {"center" :[-1.34682+self.xi_offset, -2.98309+self.eta_offset], "radius": self.radius,},
+            "o1_ws1": {"center" :[-1.88150+self.xi_offset, -2.67437+self.eta_offset], "radius": self.radius,},
+            "o1_ws2": {"center" :[-1.35234+self.xi_offset, -2.36572+self.eta_offset], "radius": self.radius,},
+            "o2_ws0": {"center" :[1.91944+self.xi_offset, -2.67570+self.eta_offset], "radius": self.radius,},
+            "o2_ws1": {"center" :[1.38402+self.xi_offset, -2.98321+self.eta_offset], "radius": self.radius,},
+            "o2_ws2": {"center" :[1.37901+self.xi_offset, -2.36601+self.eta_offset], "radius": self.radius,},
+            "o3_ws0": {"center" :[3.28581+self.xi_offset, 0.30920+self.eta_offset], "radius": self.radius,},
+            "o3_ws1": {"center" :[3.28532+self.xi_offset, -0.30949+self.eta_offset], "radius": self.radius,},
+            "o3_ws2": {"center" :[2.74487+self.xi_offset, 0.00028+self.eta_offset], "radius": self.radius,},
+            "o4_ws0": {"center" :[1.38451+self.xi_offset, 2.98350+self.eta_offset], "radius": self.radius,},
+            "o4_ws1": {"center" :[1.91945+self.xi_offset, 2.67513+self.eta_offset], "radius": self.radius,},
+            "o4_ws2": {"center" :[1.37852+self.xi_offset, 2.36630+self.eta_offset], "radius": self.radius,},
+            "o5_ws0": {"center" :[-1.88151+self.xi_offset, 2.67493+self.eta_offset], "radius": self.radius,},
+            "o5_ws1": {"center" :[-1.34633+self.xi_offset, 2.98280+self.eta_offset], "radius": self.radius,},
+            "o5_ws2": {"center" :[-1.35283+self.xi_offset, 2.36544+self.eta_offset], "radius": self.radius,},
+            "o6_ws1": {"center": [-2.88688+self.xi_offset, 0.32179+self.eta_offset], "radius": self.radius,},
+            "o6_ws2": {"center": [-2.88688+self.xi_offset, -0.32176+self.eta_offset], "radius": self.radius,},
+            "o6_ws0": {"center": [-3.43694+self.xi_offset, 2e-05+self.eta_offset], "radius": self.radius,},
         }
 
     def make_operations(self):
