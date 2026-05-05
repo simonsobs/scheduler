@@ -18,7 +18,7 @@ class SATP2Policy(SATPolicy):
                 "    run.initialize()",
                 "run.smurf.iv_curve(concurrent=True, ",
                 "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
-                "run.smurf.bias_dets(rfrac=(0.4, 0.6), concurrent=True)",
+                "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
                 "time.sleep(180)",
                 "run.smurf.bias_step(concurrent=True)",
                 "run.smurf.take_noise(concurrent=True, tag='bias_check')",
