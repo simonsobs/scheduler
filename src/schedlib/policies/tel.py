@@ -163,6 +163,8 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
             commands = [
                 "",
                 "####################### Relock #######################",
+                "with disable_trace():",
+                "    run.initialize()",
                 "run.smurf.zero_biases()",
                 "time.sleep(120)",
                 "run.smurf.uxm_relock(concurrent=True)",
