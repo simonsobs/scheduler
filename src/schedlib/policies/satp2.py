@@ -11,24 +11,9 @@ class SATP2Policy(SATPolicy):
     platform: str = "satp2"
 
     def __post_init__(self):
-        cmds_det_setup = [
-                "",
-                "################### Detector Setup######################",
-                "with disable_trace():",
-                "    run.initialize()",
-                "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
-                "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
-                "time.sleep(180)",
-                "run.smurf.bias_step(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
-                "#################### Detector Setup Over ####################",
-                "",
-            ]
-
         self.blocks = self.make_blocks('sat-cmb')
         self.geometries = self.make_geometry()
-        self.operations = self.make_operations(cmds_uxm_relock=None, cmds_det_setup=cmds_det_setup, cmds_assert=None)
+        self.operations = self.make_operations(cmds_uxm_relock=None, cmds_det_setup=None, cmds_assert=None)
 
         if self.elevation_override is not None:
             self.stages["build_op"]["plan_moves"]["el_limits"] = 2*[self.elevation_override]
