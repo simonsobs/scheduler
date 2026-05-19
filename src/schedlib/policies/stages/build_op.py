@@ -385,7 +385,7 @@ def get_safe_gaps(block0, block1, sun_policy, el_limits, is_end=False, max_delay
                     IR(name='gap', subtype=IRMode.Gap, t0=t0_parking, t1=t1_parking,
                     az=az_parking, alt=alt_parking,
                     az_offset=block1.az_offset, alt_offset=block1.alt_offset),
-                    IR(name='gap', subtype=IRMode.Gap, t0=t1_parking, t1=block1.t0,
+                    IR(name='gap', subtype=IRMode.Gap, t0=t1_parking, t1=max(block1.t0, t1_parking),
                     az=block1.az, alt=block1.alt,
                     az_offset=block1.az_offset, alt_offset=block1.alt_offset),
                     ]
@@ -1090,13 +1090,25 @@ class PlanMoves:
             gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
                                  is_end=(i==(len(seq)-1)), max_delay=0, alt_step=self.alt_step, sungod=sungod)
             if gaps is None:
-                # repeat with 20 minute delay
+                # repeat with a 20 minute delay
                 gaps = get_safe_gaps(seq[i-1], seq[i], self.sun_policy, self.el_limits,
                                 is_end=(i==(len(seq)-1)), max_delay=1200, alt_step=self.alt_step, sungod=sungod)
             if gaps is None:
                 raise NoGapError(f"No sun-safe gap found between '{seq[i-1].block.name}' and '{seq[i].block.name}'", seq[i-1], seq[i])
             seq_.extend(gaps)
-            seq_.append(seq[i])
+            if len(gaps) == 3 and gaps[-1].t1 > seq[i].t0:
+                if seq[i].name == "pre_block":
+                    block = seq[i].shift(gaps[-1].t1 - seq[i].t0)
+                    seq[i] = seq[i].shift(gaps[-1].t1 - seq[i].t0)
+                else:
+                    raise ValueError(f"Gap should delay pre-block not {seq[i]}")
+            else:
+                block = seq[i]
+            if seq[i-1].t1 > seq[i].t0:
+                block = seq[i].trim_left_to(seq[i-1].t1)
+            else:
+                block = seq[i]
+            seq_.append(block)
 
         # find sun-safe parking if not stowing at end of schedule
         if seq[-1].block.name != 'post-session':
