@@ -1098,8 +1098,8 @@ class PlanMoves:
             seq_.extend(gaps)
             if len(gaps) == 3 and gaps[-1].t1 > seq[i].t0:
                 if seq[i].name == "pre_block":
-                    block = seq[i].shift(gaps[-1].t1 - seq[i].t0)
-                    seq[i] = seq[i].shift(gaps[-1].t1 - seq[i].t0)
+                    block  = seq[i].shift(gaps[-1].t1 - seq[i].t0)
+                    seq[i] = block
                 else:
                     raise ValueError(f"Gap should delay pre-block not {seq[i]}")
             else:
