@@ -1096,12 +1096,13 @@ class PlanMoves:
             if gaps is None:
                 raise NoGapError(f"No sun-safe gap found between '{seq[i-1].block.name}' and '{seq[i].block.name}'", seq[i-1], seq[i])
             seq_.extend(gaps)
+            # if the gap delays the next block
             if len(gaps) == 3 and gaps[-1].t1 > seq[i].t0:
-                if seq[i].name == "pre_block":
-                    block  = seq[i].shift(gaps[-1].t1 - seq[i].t0)
+                if seq[i].name in ["pre_block", "pre_block (into)"]:
+                    block = seq[i].shift(gaps[-1].t1 - seq[i].t0)
                     seq[i] = block
                 else:
-                    raise ValueError(f"Gap should delay pre-block not {seq[i]}")
+                    raise ValueError(f"Gap should delay pre-block not {seq[i].name}")
             else:
                 block = seq[i]
             if seq[i-1].t1 > seq[i].t0:
