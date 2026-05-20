@@ -188,7 +188,8 @@ def det_setup(
         commands=None,
         apply_rot=True,
         iv_cadence=None,
-        det_setup_duration=20*u.minute
+        det_setup_duration=20*u.minute,
+        min_cmb_duration=10*u.minute,
     ):
     # when should det setup be done?
     # -> should always be done if the block is a cal block
@@ -213,7 +214,11 @@ def det_setup(
             )
         if iv_cadence is not None:
             time_since_last = (state.curr_time - state.last_iv).total_seconds()
-            doit = doit or (time_since_last > iv_cadence)
+            if not doit:
+                # if not running det_setup for any other reason than cadence, skip it if the scan is too short
+                doit = (time_since_last > iv_cadence) and (state.curr_time + dt.timedelta(seconds=det_setup_duration) <= (block.t1 - dt.timedelta(seconds=min_cmb_duration)))
+            else:
+                doit = doit or (time_since_last > iv_cadence)
 
     if doit:
         if commands is None:

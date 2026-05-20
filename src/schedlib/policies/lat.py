@@ -220,7 +220,7 @@ class LATPolicy(tel.TelPolicy):
     corotator_override: float = None
     elevations_under_90: bool = False
     apply_corotator_rot: bool = True
-    radius: float = 0.3
+    radius: float = 1.0
     corotator_offset: float = 0.0
     corotator_bounds: list = field(default_factory=lambda: [-45.0, 45.0])
     el_freq: float = 0.0
@@ -885,8 +885,6 @@ class LATPolicy(tel.TelPolicy):
             'o6': 'o6_ws0,o6_ws1,o6_ws2', # lf
         }
 
-        array_focus['all'] = ','.join([v for k, v in array_focus.items()])
-
         elevation = float(elevation)
         if corotator is None:
             corotator = el_to_locked_corotator(elevation)
@@ -894,13 +892,15 @@ class LATPolicy(tel.TelPolicy):
 
         focus = focus.lower()
 
-        focus_str = None
         if focus == 'all':
             focus_str = ','.join( [v for k,v in array_focus.items()] )
+            focus_tag = focus
         elif focus in array_focus.keys():
             focus_str = array_focus[focus]
+            focus_tag = focu_str
         else:
             focus_str = focus
+            focus_tag = focus
 
         sources = src.get_source_list()
         assert source in sources, f"source should be one of {sources.keys()}"
@@ -914,7 +914,7 @@ class LATPolicy(tel.TelPolicy):
                 array_query=focus_str,
                 el_bore=elevation,
                 boresight_rot=boresight,
-                tag=focus_str,
+                tag=focus_tag,
                 allow_partial=allow_partial,
                 drift=drift,
                 az_branch=az_branch,
