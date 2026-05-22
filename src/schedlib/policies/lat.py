@@ -137,6 +137,7 @@ def wrap_up(state, block, close_shutter=False):
 
 @cmd.operation(name='lat.ufm_relock', return_duration=True)
 def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
+    assert state.el_now > 0, "Elevation too low for relock"
     return tel.ufm_relock(state, commands, relock_cadence)
 
 # per block operation: block will be passed in as parameter
