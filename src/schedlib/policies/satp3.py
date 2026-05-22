@@ -18,6 +18,8 @@ class SATP3Policy(SATPolicy):
         cmds_uxm_relock = [
             "",
             "####################### Relock #######################",
+            "with disable_trace():",
+            "    run.initialize()",
             "run.smurf.zero_biases()",
             "time.sleep(120)",
             "run.smurf.uxm_relock(concurrent=True)",
