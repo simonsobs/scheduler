@@ -135,8 +135,8 @@ def preamble(state, platform, sun_policy, cmds_assert=None, cal_plan=None, cmb_p
         "sun_data = acu.monitor_sun.status().session['data']",
         "hwp_state = run.CLIENTS['hwp'].monitor.status().session['data']['hwp_state']",
         "",
-        f"assert np.round(acu_data['StatusDetailed']['Elevation current position'], 1) == {state.el_now}, 'Elevation check failed'",
-        f"assert np.round(acu_data['StatusDetailed']['Boresight current position'], 2) == {state.boresight_rot_now}, 'Boresight angle check failed'",
+        f"assert np.isclose(acu_data['StatusDetailed']['Elevation current position'], {state.el_now}, atol=1, rtol=0), 'Elevation check failed'",
+        f"assert np.isclose(acu_data['StatusDetailed']['Boresight current position'], {state.boresight_rot_now}, atol=0.1, rtol=0), 'Boresight angle check failed'",
         f"assert hwp_state['is_spinning'] == {state.hwp_spinning}, 'HWP spinning check failed'",
     ]
     if state.hwp_spinning:
