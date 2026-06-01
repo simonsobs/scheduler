@@ -277,6 +277,7 @@ class LATPolicy(tel.TelPolicy):
 
         return super().apply_overrides(blocks)
 
+    @classmethod
     def make_geometry(self):
         logger.info(f"making geometry with xi offset={self.xi_offset}, eta offset={self.eta_offset}, radius={self.radius}")
         return {
