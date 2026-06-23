@@ -52,7 +52,8 @@ def get_site(site='lat') -> Location:
 FIXED_SOURCES = {
     'taua': (5.5755*np.pi/12., 22.0167*np.pi/180.),
     'rcw38': (8.98*np.pi/12., -47.5*np.pi/180.),
-    'galcenter': (17.7611*np.pi/12., -28.95*np.pi/180.)
+    'galcenter': (17.7611*np.pi/12., -28.95*np.pi/180.),
+    '3c279': (12.93643513*np.pi/12., -5.789313*np.pi/180.),
 }
 # source needs to be callable to avoid side effects
 EPHEM_SOURCES = {
@@ -83,7 +84,7 @@ def add_fixed_source(name, ra, dec, ra_units='deg'):
         return
     if name in FIXED_SOURCES:
         logging.warning(
-            f"name {name} already registered at {FIXED_SOURCES[name]}. " 
+            f"name {name} already registered at {FIXED_SOURCES[name]}. "
              "Not Adding"
         )
         return
@@ -425,7 +426,7 @@ def source_gen_seq(source: str, t0: dt.datetime, t1: dt.datetime) -> core.Blocks
 
 def block_get_matching_src_block(block: core.Block, source: str) -> SourceBlock:
     """
-    Get the corresponding block for a source with the same time bounds. It is 
+    Get the corresponding block for a source with the same time bounds. It is
     primarily used for source avoidance calculation.
 
     Parameters
