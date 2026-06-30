@@ -232,9 +232,24 @@ class LATPolicy(tel.TelPolicy):
     remove_cal_targets: Optional[Tuple] = ()
 
     def __post_init__(self):
+        cmds_det_setup = [
+                "",
+                "################### Detector Setup######################",
+                "with disable_trace():",
+                "    run.initialize()",
+                "run.smurf.iv_curve(concurrent=True, ",
+                "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
+                "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
+                "time.sleep(180)",
+                "run.smurf.bias_step(concurrent=True)",
+                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
+                "#################### Detector Setup Over ####################",
+                "",
+            ]
+
         self.blocks = self.make_blocks('lat-cmb')
         self.geometries = self.make_geometry()
-        self.operations = self.make_operations()
+        self.operations = self.make_operations(cmds_uxm_relock=None, cmds_det_setup=cmds_det_setup)
 
     def apply_overrides(self, blocks):
 
@@ -322,7 +337,7 @@ class LATPolicy(tel.TelPolicy):
             "o6_ws0": {"center": [-3.43694+self.xi_offset, 2e-05+self.eta_offset], "radius": self.radius,},
         }
 
-    def make_operations(self):
+    def make_operations(self, cmds_uxm_relock=None, cmds_det_setup=None):
         cal_ops = []
         cmb_ops = []
         post_session_ops = []
@@ -359,7 +374,8 @@ class LATPolicy(tel.TelPolicy):
                     {
                         'name': 'lat.ufm_relock',
                         'sched_mode': sched_mode,
-                        'relock_cadence': self.relock_cadence
+                        'relock_cadence': self.relock_cadence,
+                        'commands': cmds_uxm_relock,
                     }
                 ]
 
@@ -382,6 +398,7 @@ class LATPolicy(tel.TelPolicy):
                     'apply_corotator_rot': self.apply_corotator_rot,
                     'iv_cadence': self.iv_cadence,
                     'det_setup_duration': self.det_setup_duration,
+                    'commands': cmds_det_setup,
                 }
             ]
 
