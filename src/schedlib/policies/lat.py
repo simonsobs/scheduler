@@ -238,7 +238,7 @@ class LATPolicy(tel.TelPolicy):
                 "with disable_trace():",
                 "    run.initialize()",
                 "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
+                "    iv_kwargs={'run_serially': False})",
                 "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
                 "time.sleep(180)",
                 "run.smurf.bias_step(concurrent=True)",
