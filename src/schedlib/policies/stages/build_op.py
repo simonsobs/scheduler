@@ -509,7 +509,9 @@ class BuildOpSimple:
             combined_duration = (current.duration + previous.duration).total_seconds()
             max_combined_duration = (max_dt + min_dt).total_seconds()
             # if blocks were split from same block and are close in time
-            if current.tag == previous.tag and time_gap <= min_dt.total_seconds():
+            current_uid = current.tag.split(",")[1].split("-")[:-2]
+            previous_uid = previous.tag.split(",")[1].split("-")[:-2]
+            if current_uid == previous_uid and time_gap <= min_dt.total_seconds():
                 # don't merge blocks that are longer than the max length
                 if combined_duration <= max_combined_duration:
                     seq[i-1] = previous.extend_right(current.duration)
@@ -529,6 +531,7 @@ class BuildOpSimple:
         # giving up
         n_reject = 0
         reject_list = []
+
         while True:
             if len(reject_list) > 0:
                 reject_block = reject_list.pop(0)
@@ -548,22 +551,6 @@ class BuildOpSimple:
                     break
                 seq_ = seq_new
 
-                cmb_blocks = self.merge_adjacent_blocks([s['block'] for s in seq_ if s['block'].subtype == 'cmb'],
-                             dt.timedelta(seconds=self.policy_config.max_cmb_scan_duration))
-
-                seq_temp = []
-                cmb_index = 0
-                for s in seq_:
-                    if s['block'].subtype == 'cmb':
-                        if cmb_blocks[cmb_index] is not None:
-                            s = s.copy()
-                            s['block'] = cmb_blocks[cmb_index]
-                            seq_temp.append(s)
-                        cmb_index += 1
-                    else:
-                        seq_temp.append(s)
-
-                seq_ = seq_temp
             else:
                 logger.warning(f"round_trip: ir did not converge after {self.max_pass} passes, proceeding anyway")
 
@@ -666,6 +653,7 @@ class BuildOpSimple:
                     pre_ops=b['pre'], post_ops=b['post'], in_ops=b['in'],
                     causal=not(b['priority'] == priority)
                 )
+
                 if len(ir) == 0:
                     logger.info(f"--> block {b['block']} has nothing that can be planned, skipping...")
                     continue
@@ -695,6 +683,24 @@ class BuildOpSimple:
             core.seq_map(lambda b: b.block if b.subtype == IRMode.InBlock else None, ir),
             flatten=True
         )
+
+        trimmed_blocks_ = trimmed_blocks
+        cmb_blocks = self.merge_adjacent_blocks([b for b in trimmed_blocks_ if b.subtype == 'cmb'],
+                             dt.timedelta(seconds=self.policy_config.max_cmb_scan_duration))
+
+        trimmed_blocks_temp = []
+        cmb_index = 0
+        for b in trimmed_blocks_:
+            if b.subtype == 'cmb':
+                if cmb_blocks[cmb_index] is not None:
+                    b = cmb_blocks[cmb_index]
+                    trimmed_blocks_temp.append(b)
+                cmb_index += 1
+            else:
+                trimmed_blocks_temp.append(b)
+
+        trimmed_blocks = trimmed_blocks_temp
+
         # match input blocks with trimmed blocks: since we are trimming the blocks
         # each block in ir should match one or none of the trimmed blocks.
         # this assumes no splitting is done in lowering process, which can be supported
@@ -878,7 +884,6 @@ class BuildOpSimple:
         logger.debug(f"--> planning pre-block operations")
 
         state, pre_dur, _ = self._apply_ops(state, pre_ops, block=block)
-
         logger.debug(f"---> pre-block ops duration: {pre_dur} seconds")
         logger.debug(f"---> pre-block curr state: {u.pformat(state)}")
 

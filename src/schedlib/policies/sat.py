@@ -976,7 +976,6 @@ class SATPolicy(tel.TelPolicy):
 
         # remove overlap of noobs blocks with cal and wiregrid blocks
         noobs_blocks = core.seq_remove_overlap(noobs_blocks, cal_blocks, flatten=True)
-
         seq = core.seq_sort(core.seq_merge(cmb_blocks, cal_blocks, flatten=True))
         seq = core.seq_sort(core.seq_merge(seq, noobs_blocks, flatten=True))
 
