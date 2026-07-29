@@ -716,13 +716,10 @@ def parse_cal_targets_from_toast_lat(ifile):
         target_fields = _escape_string(row['target'].strip()).lower().split(';')
 
         tubes = re.findall(r'[a-zA-Z]\d+', target_fields[1])
-        suffix_map = {
-            0: ['ws1', 'ws2', 'ws0'],
-            1: ['ws0', 'ws1', 'ws2']
-        }
+        wafers = [f"ws{i}" for i in range(3)]
 
         # Generate the full labels in order
-        array_query = ",".join(f"{tube}_{suffix}" for i, tube in enumerate(tubes) for suffix in suffix_map[i])
+        array_query = ",".join(f"{tube}_{wafer}" for i, tube in enumerate(tubes) for wafer in wafers)
 
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
