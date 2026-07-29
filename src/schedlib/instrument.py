@@ -719,7 +719,7 @@ def parse_cal_targets_from_toast_lat(ifile):
         wafers = [f"ws{i}" for i in range(3)]
 
         # Generate the full labels in order
-        array_query = ",".join(f"{tube}_{wafer}" for i, tube in enumerate(tubes) for wafer in wafers)
+        array_query = ",".join(f"{tube}_{wafer}" for tube in tubes for wafer in wafers)
 
         cal_target = CalTarget(
             t0=u.str2datetime(row['start_utc']),
