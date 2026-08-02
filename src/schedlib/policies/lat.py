@@ -117,7 +117,11 @@ def preamble(state, sun_policy, open_shutter=False, cmb_plan=None, cal_plan=None
         "sun_data = acu.monitor_sun.status().session['data']",
         "",
         f"pysmurfs = run.CLIENTS['smurf']",
-        f"streaming_smurfs = [smurf for smurf in pysmurfs if smurf.check_state.status().session['data']['open_g3stream']]",
+        "streaming_smurfs = [\n"
+        "    smurf for smurf in pysmurfs\n"
+        "    if 'open_g3stream' in smurf.check_state.status().session['data'].keys()\n"
+        "    and smurf.check_state.status().session['data']['open_g3stream']\n"
+        "]",
         "assert not streaming_smurfs, f\"{streaming_smurfs} are streaming\"",
         "",
         f"assert np.isclose(acu_data['StatusDetailed']['Elevation current position'], {state.el_now}, atol=1, rtol=0), 'Elevation check failed'",
