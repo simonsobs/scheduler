@@ -150,8 +150,16 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_corotator_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
-    return tel.det_setup(state, block, commands, apply_corotator_rot, iv_cadence, det_setup_duration)
+def det_setup(
+    state,
+    block,
+    commands=None,
+    apply_corotator_rot=True,
+    iv_cadence=None,
+    det_setup_duration=20*u.minute
+):
+    return tel.det_setup(state, block, commands, apply_corotator_rot,
+        iv_cadence, det_setup_duration)
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -236,7 +244,6 @@ class LATPolicy(tel.TelPolicy):
     run_stimulator: bool = False
     open_shutter: bool = False
     close_shutter: bool = False
-    det_setup_duration: float = 20.0*u.minute
     remove_cmb_targets: Optional[Tuple] = ()
     remove_cal_targets: Optional[Tuple] = ()
 
@@ -427,6 +434,14 @@ class LATPolicy(tel.TelPolicy):
                 },
             ]
         cmb_ops += [
+            {
+                'name': 'el_nod',
+                'el_nod_cadence': self.el_nod_cadence,
+                'el_nod_depth': self.el_nod_depth,
+                'el_nod_freq': self.el_nod_freq,
+                'el_nod_duration': self.el_nod_duration,
+                'sched_mode': SchedMode.PreObs
+            },
             {
                 'name': 'lat.cmb_scan',
                 'sched_mode': SchedMode.InObs

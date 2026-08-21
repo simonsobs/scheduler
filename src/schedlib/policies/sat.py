@@ -217,8 +217,16 @@ def hwp_spin_down(state, disable_hwp=False, brake_hwp=True):
         return state, HWP_SPIN_DOWN, cmd
 
 @cmd.operation(name='sat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup_duration)
+def det_setup(
+    state,
+    block,
+    commands=None,
+    apply_boresight_rot=True,
+    iv_cadence=None,
+    det_setup_duration=20*u.minute
+):
+    return tel.det_setup(state, block, commands, apply_boresight_rot,
+        iv_cadence, det_setup_duration)
 
 @cmd.operation(name='sat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -332,7 +340,6 @@ class SATPolicy(tel.TelPolicy):
     force_max_hwp_el: bool = True
     boresight_override: float = None
     apply_boresight_rot: bool = True
-    det_setup_duration: float = 20.0*u.minute
     wiregrid_az: float = 180.0 # deg
     wiregrid_el: float = 50.0 # deg
     wiregrid_override: bool = False
@@ -496,6 +503,14 @@ class SATPolicy(tel.TelPolicy):
                 'name': 'sat.bias_step',
                 'sched_mode': SchedMode.PreObs,
                 'bias_step_cadence': self.bias_step_cadence
+            },
+            {
+                'name': 'el_nod',
+                'el_nod_cadence': self.el_nod_cadence,
+                'el_nod_depth': self.el_nod_depth,
+                'e_nod_freq': self.el_nod_freq,
+                'el_nod_duration': self.el_nod_duration,
+                'sched_mode': SchedMode.PreObs
             },
             {
                 'name': 'sat.cmb_scan',

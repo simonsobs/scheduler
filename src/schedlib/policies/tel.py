@@ -51,6 +51,8 @@ class State(cmd.State):
         The boresight (deg) at which the iv curve step was taken, or None if no iv curve has been taken.
     last_iv_elevation: Optional[float]
         The elevation (deg) at which the last iv curve was taken, or None if no iv curve has been taken.
+    last_el_nod : Optional[datetime.datetime]
+        The last time an el nod was run, or None if no el nod has been run.
     is_det_setup : bool
         Whether the detectors have been set up or not.
     has_active_channels : Optional[bool]
@@ -64,6 +66,7 @@ class State(cmd.State):
     last_iv: Optional[dt.datetime] = None
     last_iv_boresight: Optional[float] = None
     last_iv_elevation: Optional[float] = None
+    last_el_nod: Optional[float] = None
     # relock sets to false, tracks if detectors are biased at all
     is_det_setup: bool = False
     has_active_channels: Optional[bool] = True
@@ -184,15 +187,53 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
     else:
         return state, 0, []
 
-def det_setup(
-        state,
-        block,
-        commands=None,
-        apply_rot=True,
-        iv_cadence=None,
-        det_setup_duration=20*u.minute,
-        min_cmb_duration=10*u.minute,
+@cmd.operation(name="el_nod", return_duration=True)
+def el_nod(
+    state,
+    block,
+    el_nod_cadence=None,
+    el_nod_depth=None,
+    el_nod_freq=None,
+    el_nod_duration=5*u.minute,
+):
+    if (
+        (block.subtype != 'cal')
+        and (el_nod_cadence is not None)
+        and (state.last_el_nod is None or (state.curr_time  - state.last_el_nod).total_seconds() > el_nod_cadence)
     ):
+        if el_nod_freq is None:
+            el_nod_freq = state.el_freq_now
+        num_nods = np.floor(el_nod_duration * el_nod_freq).astype(int)
+        cmds = [
+            "",
+            "# run el nod",
+            "run.sine_el_nod(",
+            f"    el_nod_depth={el_nod_depth},",
+            f"    el_freq={el_nod_freq},",
+            f"    num_nods={num_nods},",
+            ")",
+            ""
+        ]
+
+        state = state.replace(last_el_nod=state.curr_time)
+
+        return state, el_nod_duration, cmds
+    else:
+        return state, 0, []
+
+def det_setup(
+    state,
+    block,
+    commands=None,
+    apply_rot=True,
+    iv_cadence=None,
+    el_nod_cadence=None,
+    el_nod_depth=None,
+    el_nod_freq=None,
+    el_nod_duration=5*u.minute,
+    det_setup_duration=20*u.minute,
+    min_cmb_duration=10*u.minute,
+):
     # when should det setup be done?
     # -> should always be done if the block is a cal block
     # -> should always be done if elevation has changed
@@ -238,9 +279,10 @@ def det_setup(
                 "#################### Detector Setup Over ####################",
                 "",
             ]
+
         state = state.replace(
             is_det_setup=True,
-            last_iv = state.curr_time,
+            last_iv=state.curr_time,
             last_bias_step=state.curr_time,
             last_iv_elevation = block.alt,
             last_iv_boresight = block.boresight_angle,
@@ -250,6 +292,7 @@ def det_setup(
         return state, det_setup_duration, commands
     else:
         return state, 0, []
+
 
 def cmb_scan(state, block):
     if (
@@ -442,6 +485,11 @@ class TelPolicy:
     iv_cadence: float = 4 * u.hour
     bias_step_cadence: float = 0.5 * u.hour
     relock_cadence: float = 24 * u.hour
+    el_nod_cadence: float = None
+    el_nod_depth: float = 2.0 # deg
+    el_nod_freq: float = None # Hz
+    el_nod_duration: float = 5 * u.minute
+    det_setup_duration: float = 20.0*u.minute
     max_cmb_scan_duration: float = 1 * u.hour
     cryo_stabilization_time: float = 0 * u.second
     home_at_end: bool = False
