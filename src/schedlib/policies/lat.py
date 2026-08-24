@@ -241,7 +241,8 @@ class LATPolicy(tel.TelPolicy):
     remove_cal_targets: Optional[Tuple] = ()
 
     def __post_init__(self):
-        cmds_det_setup = [
+        if self.pysmurf_script is None:
+            cmds_det_setup = [
                 "",
                 "################### Detector Setup######################",
                 "with disable_trace():",
@@ -251,6 +252,23 @@ class LATPolicy(tel.TelPolicy):
                 "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
                 "time.sleep(180)",
                 "run.smurf.bias_step(concurrent=True)",
+                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
+                "#################### Detector Setup Over ####################",
+                "",
+            ]
+
+        else:
+            cmds_det_setup = [
+                "",
+                "################### Detector Setup######################",
+                "with disable_trace():",
+                "    run.initialize()",
+                "run.smurf.iv_curve(concurrent=True, ",
+                "    iv_kwargs={'run_serially': False})",
+                "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
+                "time.sleep(180)",
+                "for smurf in run.CLIENTS['smurf']:",
+                f"   smurf.run(script='{self.pysmurf_script}', args={self.pysmurf_script_args})",
                 "run.smurf.take_noise(concurrent=True, tag='bias_check')",
                 "#################### Detector Setup Over ####################",
                 "",

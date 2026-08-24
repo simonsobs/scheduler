@@ -447,6 +447,8 @@ class TelPolicy:
     home_at_end: bool = False
     stow_position: Dict[str, Any] = field(default_factory=dict)
     turnaround_method: Dict[str, Any] = field(default_factory=dict)
+    pysmurf_script: str = None
+    pysmurf_script_args: List[Any] = field(default_factory=list)
     rng: np.random.Generator = field(init=False, default=None)
 
     def construct_seq(self, loader_cfg, t0, t1):
