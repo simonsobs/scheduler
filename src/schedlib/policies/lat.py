@@ -268,7 +268,7 @@ class LATPolicy(tel.TelPolicy):
                 "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
                 "time.sleep(180)",
                 "for smurf in run.CLIENTS['smurf']:",
-                f"   smurf.run(script='{self.pysmurf_script}')",
+                f"   smurf.run(script='{self.pysmurf_script}', args={self.pysmurf_script_args})",
                 "run.smurf.take_noise(concurrent=True, tag='bias_check')",
                 "#################### Detector Setup Over ####################",
                 "",
