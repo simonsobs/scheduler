@@ -249,7 +249,7 @@ class LATPolicy(tel.TelPolicy):
                 "    run.initialize()",
                 "run.smurf.iv_curve(concurrent=True, ",
                 "    iv_kwargs={'run_serially': False})",
-                "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
+                "run.smurf.bias_dets(concurrent=True)",
                 "time.sleep(180)",
                 "run.smurf.bias_step(concurrent=True)",
                 "run.smurf.take_noise(concurrent=True, tag='bias_check')",
