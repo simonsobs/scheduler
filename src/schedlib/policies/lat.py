@@ -242,37 +242,31 @@ class LATPolicy(tel.TelPolicy):
 
     def __post_init__(self):
         if self.pysmurf_script is None:
-            cmds_det_setup = [
-                "",
-                "################### Detector Setup######################",
-                "with disable_trace():",
-                "    run.initialize()",
-                "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False})",
-                "run.smurf.bias_dets(concurrent=True)",
-                "time.sleep(180)",
+            bias_step_cmds = [
                 "run.smurf.bias_step(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
-                "#################### Detector Setup Over ####################",
-                "",
+            ]
+        else:
+            bias_step_cmds = [
+                "for smurf in run.CLIENTS['smurf']:",
+                f"    smurf.run.start(script='{self.pysmurf_script}', args={self.pysmurf_script_args})",
+                "for smurf in run.CLIENTS['smurf']:",
+                "    smurf.run.wait()",
             ]
 
-        else:
-            cmds_det_setup = [
-                "",
-                "################### Detector Setup######################",
-                "with disable_trace():",
-                "    run.initialize()",
-                "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False})",
-                "run.smurf.bias_dets(concurrent=True)",
-                "time.sleep(180)",
-                "for smurf in run.CLIENTS['smurf']:",
-                f"   smurf.run(script='{self.pysmurf_script}', args={self.pysmurf_script_args})",
-                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
-                "#################### Detector Setup Over ####################",
-                "",
-            ]
+        cmds_det_setup = [
+            "",
+            "################### Detector Setup ######################",
+            "with disable_trace():",
+            "    run.initialize()",
+            "run.smurf.iv_curve(concurrent=True, ",
+            "    iv_kwargs={'run_serially': False})",
+            "run.smurf.bias_dets(concurrent=True)",
+            "time.sleep(180)",
+            *bias_step_cmds,
+            "run.smurf.take_noise(concurrent=True, tag='bias_check')",
+            "#################### Detector Setup Over ####################",
+            "",
+        ]
 
         self.blocks = self.make_blocks('lat-cmb')
         self.geometries = self.make_geometry()
