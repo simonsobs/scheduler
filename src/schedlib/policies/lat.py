@@ -243,12 +243,10 @@ class LATPolicy(tel.TelPolicy):
     def __post_init__(self):
         if self.pysmurf_script is None:
             bias_step_cmds = [
-                "time.sleep(180)",
                 "run.smurf.bias_step(concurrent=True)",
             ]
         else:
             bias_step_cmds = [
-                "time.sleep(180)",
                 "for smurf in run.CLIENTS['smurf']:",
                 f"    smurf.run.start(script='{self.pysmurf_script}', args={self.pysmurf_script_args})",
                 "for smurf in run.CLIENTS['smurf']:",
@@ -263,6 +261,7 @@ class LATPolicy(tel.TelPolicy):
             "run.smurf.iv_curve(concurrent=True, ",
             "    iv_kwargs={'run_serially': False})",
             "run.smurf.bias_dets(concurrent=True)",
+            "time.sleep(180)",
             *bias_step_cmds,
             "run.smurf.take_noise(concurrent=True, tag='bias_check')",
             "#################### Detector Setup Over ####################",
