@@ -284,7 +284,7 @@ class SunCrawler:
         out = self.sungod.get_sun_pos(t=self.cur_time)
         logger.info(f'Sun position at failure time {out}')
         logger.error('Sun-safe motions not solved!')
-        t = datetime.datetime.utcfromtimestamp(self.cur_time)
+        t = datetime.datetime.fromtimestamp(self.cur_time, datetime.UTC)
         l = line.strip('\n')
         logger.error(
             f"Error on Line {self.cmd_n} \'{l}\' at time {t.isoformat()}"
