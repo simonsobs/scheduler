@@ -190,6 +190,8 @@ def det_setup(
         commands=None,
         apply_rot=True,
         iv_cadence=None,
+        iv_kwargs=None,
+        bias_step_kwargs=None,
         det_setup_duration=20*u.minute,
         min_cmb_duration=10*u.minute,
     ):
@@ -230,10 +232,11 @@ def det_setup(
                 "with disable_trace():",
                 "    run.initialize()",
                 "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False, 'cool_wait': 60*5})",
+                f"   iv_kwargs={iv_kwargs})",
                 "run.smurf.bias_dets(concurrent=True)",
                 "time.sleep(180)",
-                "run.smurf.bias_step(concurrent=True)",
+                "run.smurf.bias_step(concurrent=True,",
+                f"   bias_step_kwargs={bias_step_kwargs})",
                 "run.smurf.take_noise(concurrent=True, tag='bias_check')",
                 "#################### Detector Setup Over ####################",
                 "",
@@ -372,7 +375,7 @@ def source_scan(state, block):
     ])
     return state, block.duration.total_seconds(), commands
 
-def bias_step(state, block, bias_step_cadence=None):
+def bias_step(state, block, bias_step_cadence=None, bias_step_kwargs=None):
     # -> should be done at a regular interval if bias_step_cadence is not None
     doit = state.last_bias_step is None
     if not doit:
@@ -402,8 +405,11 @@ def bias_step(state, block, bias_step_cadence=None):
             last_bias_step_elevation = block.alt,
             last_bias_step_boresight = block.boresight_angle,
         )
-        return state, 60, ["run.smurf.bias_step(concurrent=True)",
-                        f"run.wait_until('{(state.curr_time + dt.timedelta(seconds=60)).isoformat(timespec='seconds')}')"]
+        return state, 60, [
+            "run.smurf.bias_step(concurrent=True,",
+            f"    bias_step_kwargs={bias_step_kwargs})",
+            f"run.wait_until('{(state.curr_time + dt.timedelta(seconds=60)).isoformat(timespec='seconds')}')",
+        ]
     else:
         return state, 0, []
 
@@ -440,7 +446,9 @@ class TelPolicy:
     drift_override: bool = True
     allow_az_maneuver: bool = True
     iv_cadence: float = 4 * u.hour
+    iv_kwargs: Dict[str, Any] = field(default_factory=dict)
     bias_step_cadence: float = 0.5 * u.hour
+    bias_step_kwargs: Dict[str, Any] = field(default_factory=dict)
     relock_cadence: float = 24 * u.hour
     max_cmb_scan_duration: float = 1 * u.hour
     cryo_stabilization_time: float = 0 * u.second

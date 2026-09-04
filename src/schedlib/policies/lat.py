@@ -150,8 +150,9 @@ def ufm_relock(state, commands=None, relock_cadence=24*u.hour):
 
 # per block operation: block will be passed in as parameter
 @cmd.operation(name='lat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_corotator_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
-    return tel.det_setup(state, block, commands, apply_corotator_rot, iv_cadence, det_setup_duration)
+def det_setup(state, block, commands=None, apply_corotator_rot=True, iv_cadence=None,
+              iv_kwargs=None, bias_step_kwargs=None, det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_corotator_rot, iv_cadence, iv_kwargs, bias_step_kwargs, det_setup_duration)
 
 @cmd.operation(name='lat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -243,7 +244,8 @@ class LATPolicy(tel.TelPolicy):
     def __post_init__(self):
         if self.pysmurf_script is None:
             bias_step_cmds = [
-                "run.smurf.bias_step(concurrent=True)",
+                "run.smurf.bias_step(concurrent=True,",
+                f"   bias_step_kwargs={self.bias_step_kwargs})",
             ]
         else:
             bias_step_cmds = [
@@ -258,8 +260,8 @@ class LATPolicy(tel.TelPolicy):
             "################### Detector Setup ######################",
             "with disable_trace():",
             "    run.initialize()",
-            "run.smurf.iv_curve(concurrent=True, ",
-            "    iv_kwargs={'run_serially': False})",
+            "run.smurf.iv_curve(concurrent=True,",
+            f"   iv_kwargs={self.iv_kwargs})",
             "run.smurf.bias_dets(concurrent=True)",
             "time.sleep(180)",
             *bias_step_cmds,
@@ -418,6 +420,8 @@ class LATPolicy(tel.TelPolicy):
                     'sched_mode': sched_mode,
                     'apply_corotator_rot': self.apply_corotator_rot,
                     'iv_cadence': self.iv_cadence,
+                    'iv_kwargs': self.iv_kwargs,
+                    'bias_step_kwargs': self.bias_step_kwargs,
                     'det_setup_duration': self.det_setup_duration,
                     'commands': cmds_det_setup,
                 }
