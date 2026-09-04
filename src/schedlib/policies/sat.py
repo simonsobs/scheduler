@@ -217,8 +217,10 @@ def hwp_spin_down(state, disable_hwp=False, brake_hwp=True):
         return state, HWP_SPIN_DOWN, cmd
 
 @cmd.operation(name='sat.det_setup', return_duration=True)
-def det_setup(state, block, commands=None, apply_boresight_rot=True, iv_cadence=None, det_setup_duration=20*u.minute):
-    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, det_setup_duration)
+def det_setup(state, block, commands=None, apply_boresight_rot=True,
+              iv_cadence=None, iv_kwargs=None, bias_step_kwargs=None,
+              det_setup_duration=20*u.minute):
+    return tel.det_setup(state, block, commands, apply_boresight_rot, iv_cadence, iv_kwargs, bias_step_kwargs, det_setup_duration)
 
 @cmd.operation(name='sat.cmb_scan', return_duration=True)
 def cmb_scan(state, block):
@@ -480,6 +482,8 @@ class SATPolicy(tel.TelPolicy):
                     'sched_mode': sched_mode,
                     'apply_boresight_rot': self.apply_boresight_rot,
                     'iv_cadence': self.iv_cadence,
+                    'iv_kwargs': self.iv_kwargs,
+                    'bias_step_kwargs': self.bias_step_kwargs,
                     'det_setup_duration': self.det_setup_duration,
                     'commands': cmds_det_setup,
                 },
