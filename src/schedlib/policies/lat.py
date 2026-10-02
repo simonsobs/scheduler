@@ -110,6 +110,7 @@ def preamble(state, sun_policy, open_shutter=False, cmb_plan=None, cal_plan=None
     cmd = tel.versions(cmb_plan, cal_plan)
     cmd += tel.preamble()
     cmd += ["acu.clear_faults()"]
+    cmd += ["acu.set_hvac(targets=['boosters', 'fans'], values='on')"]
     cmd += [
         "################### Basic Checks ###################",
         f"assert socket.gethostname() == 'daq-lat-sequencer', 'platform check failed'",
