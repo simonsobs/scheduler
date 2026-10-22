@@ -158,6 +158,10 @@ def preamble(state, platform, sun_policy, cmds_assert=None, cal_plan=None, cmb_p
     append += [
         f"assert sun_data['policy']['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
     ]
+    if wiregrid_plan is not None:
+        append += [
+            "assert OCSClient('wg-actuator').acq().session['data']['fields']['position'] == 'outside', 'wiregrid is not outside. try eject'",
+        ]
     if cmds_assert is not None:
         append += [
             "################### Custom Checks #################",
