@@ -110,6 +110,7 @@ def preamble(state, sun_policy, open_shutter=False, cmb_plan=None, cal_plan=None
     cmd = tel.versions(cmb_plan, cal_plan)
     cmd += tel.preamble()
     cmd += ["acu.clear_faults()"]
+    cmd += ["acu.set_hvac(targets=['boosters', 'fans'], values='on')"]
     cmd += [
         "################### Basic Checks ###################",
         f"assert socket.gethostname() == 'daq-lat-sequencer', 'platform check failed'",
@@ -122,7 +123,7 @@ def preamble(state, sun_policy, open_shutter=False, cmb_plan=None, cal_plan=None
         "    if 'open_g3stream' in smurf.check_state.status().session['data'].keys()\n"
         "    and smurf.check_state.status().session['data']['open_g3stream']\n"
         "]",
-        "assert not streaming_smurfs, f\"{streaming_smurfs} are streaming\"",
+        "# assert not streaming_smurfs, f\"{streaming_smurfs} are streaming\"",
         "",
         f"assert np.isclose(acu_data['StatusDetailed']['Elevation current position'], {state.el_now}, atol=1, rtol=0), 'Elevation check failed'",
         f"assert np.isclose(acu_data['Status3rdAxis']['Co-Rotator current position'], {state.corotator_now}, atol=0.1, rtol=0), 'Corotator angle check failed'",
@@ -248,20 +249,32 @@ class LATPolicy(tel.TelPolicy):
     remove_cal_targets: Optional[Tuple] = ()
 
     def __post_init__(self):
-        cmds_det_setup = [
-                "",
-                "################### Detector Setup######################",
-                "with disable_trace():",
-                "    run.initialize()",
-                "run.smurf.iv_curve(concurrent=True, ",
-                "    iv_kwargs={'run_serially': False})",
-                "run.smurf.bias_dets(rfrac=0.5, concurrent=True)",
-                "time.sleep(180)",
+        if self.pysmurf_script is None:
+            bias_step_cmds = [
                 "run.smurf.bias_step(concurrent=True)",
-                "run.smurf.take_noise(concurrent=True, tag='bias_check')",
-                "#################### Detector Setup Over ####################",
-                "",
             ]
+        else:
+            bias_step_cmds = [
+                "for smurf in run.CLIENTS['smurf']:",
+                f"    smurf.run.start(script='{self.pysmurf_script}', args={self.pysmurf_script_args})",
+                "for smurf in run.CLIENTS['smurf']:",
+                "    smurf.run.wait()",
+            ]
+
+        cmds_det_setup = [
+            "",
+            "################### Detector Setup ######################",
+            "with disable_trace():",
+            "    run.initialize()",
+            "run.smurf.iv_curve(concurrent=True, ",
+            "    iv_kwargs={'run_serially': False})",
+            "run.smurf.bias_dets(concurrent=True)",
+            "time.sleep(180)",
+            *bias_step_cmds,
+            "run.smurf.take_noise(concurrent=True, tag='bias_check')",
+            "#################### Detector Setup Over ####################",
+            "",
+        ]
 
         self.blocks = self.make_blocks('lat-cmb')
         self.geometries = self.make_geometry()

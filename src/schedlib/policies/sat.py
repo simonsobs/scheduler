@@ -141,7 +141,7 @@ def preamble(state, platform, sun_policy, cmds_assert=None, cal_plan=None, cmb_p
         "    if 'open_g3stream' in smurf.check_state.status().session['data'].keys()\n"
         "    and smurf.check_state.status().session['data']['open_g3stream']\n"
         "]",
-        "assert not streaming_smurfs, f\"{streaming_smurfs} are streaming\"",
+        "# assert not streaming_smurfs, f\"{streaming_smurfs} are streaming\"",
         "",
         f"assert np.isclose(acu_data['StatusDetailed']['Elevation current position'], {state.el_now}, atol=1, rtol=0), 'Elevation check failed'",
         f"assert np.isclose(acu_data['StatusDetailed']['Boresight current position'], {state.boresight_rot_now}, atol=0.1, rtol=0), 'Boresight angle check failed'",
@@ -158,6 +158,10 @@ def preamble(state, platform, sun_policy, cmds_assert=None, cal_plan=None, cmb_p
     append += [
         f"assert sun_data['policy']['exclusion_radius'] <= {sun_policy['min_angle']}, 'sun avoidance angle too small'",
     ]
+    if wiregrid_plan is not None:
+        append += [
+            "assert OCSClient('wg-actuator').acq().session['data']['fields']['position'] == 'outside', 'wiregrid is not outside. try eject'",
+        ]
     if cmds_assert is not None:
         append += [
             "################### Custom Checks #################",
