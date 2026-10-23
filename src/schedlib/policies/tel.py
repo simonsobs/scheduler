@@ -208,7 +208,7 @@ def el_nod(
             "",
             "# run el nod",
             "run.sine_el_nod(",
-            f"    el_nod_depth={el_nod_depth},",
+            f"    el_depth={el_nod_depth},",
             f"    el_freq={el_nod_freq},",
             f"    num_nods={num_nods},",
             ")",
