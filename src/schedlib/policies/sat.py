@@ -512,7 +512,7 @@ class SATPolicy(tel.TelPolicy):
                 'name': 'el_nod',
                 'el_nod_cadence': self.el_nod_cadence,
                 'el_nod_depth': self.el_nod_depth,
-                'e_nod_freq': self.el_nod_freq,
+                'el_nod_freq': self.el_nod_freq,
                 'el_nod_duration': self.el_nod_duration,
                 'sched_mode': SchedMode.PreObs
             },
