@@ -227,10 +227,6 @@ def det_setup(
     commands=None,
     apply_rot=True,
     iv_cadence=None,
-    el_nod_cadence=None,
-    el_nod_depth=None,
-    el_nod_freq=None,
-    el_nod_duration=5*u.minute,
     det_setup_duration=20*u.minute,
     min_cmb_duration=10*u.minute,
 ):
