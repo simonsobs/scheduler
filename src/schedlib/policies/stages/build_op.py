@@ -1022,6 +1022,7 @@ class BuildOpSimple:
                     op_cfgs[0]['brake_hwp'] = self.policy_config.brake_hwp
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
+                print(ir)
                 if ir.block.name in ['pre-session', 'post-session']:
                     state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt, block=ir.block)
                 else:
@@ -1030,14 +1031,16 @@ class BuildOpSimple:
                         wait_time = ir.t0
                         # add a tolerance for wait commands during scan pre-blocks
                         tolerance=dt.timedelta(seconds=1200)
-                    elif ir.subtype == IRMode.InBlock:
-                        wait_time = ir.block.t0
-                    else:
-                         wait_time = ir.block.t1
-                    op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': wait_time, 'tolerance': tolerance}]
-                    state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
+                    elif ir.subtype not in [IRMode.InBlock]:
+                        wait_time = ir.block.t1
+                    if ir.subtype not in [IRMode.InBlock]:
+                        op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Aux, 't1': wait_time, 'tolerance': tolerance}]
+                        state, _, op_blocks_wait = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
                     state, _, op_blocks_cmd = self._apply_ops(state, ir.operations, block=ir.block)
-                    op_blocks = op_blocks_wait + op_blocks_cmd
+                    if ir.subtype not in [IRMode.InBlock]:
+                        op_blocks = op_blocks_wait + op_blocks_cmd
+                    else:
+                        op_blocks = op_blocks_cmd
             elif ir.subtype == IRMode.Gap:
                 op_cfgs = [{'name': 'wait_until', 'sched_mode': IRMode.Gap, 't1': ir.t1}]
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
