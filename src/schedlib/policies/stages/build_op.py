@@ -1022,7 +1022,6 @@ class BuildOpSimple:
                     op_cfgs[0]['brake_hwp'] = self.policy_config.brake_hwp
                 state, _, op_blocks = self._apply_ops(state, op_cfgs, az=ir.az, alt=ir.alt)
             elif ir.subtype in [IRMode.PreBlock, IRMode.InBlock, IRMode.PostBlock]:
-                print(ir)
                 if ir.block.name in ['pre-session', 'post-session']:
                     state, _, op_blocks = self._apply_ops(state, ir.operations, az=ir.az, alt=ir.alt, block=ir.block)
                 else:
