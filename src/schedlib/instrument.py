@@ -458,7 +458,7 @@ def generate_cal_target_list(
         ))
     return cal_targets
 
-def parse_sequence_from_toast_sat(ifile):
+def parse_sequence_from_toast_sat(ifile, reverse_throw=False):
     """
     Parameters
     ----------
@@ -487,15 +487,19 @@ def parse_sequence_from_toast_sat(ifile):
     blocks = []
     for _, row in df.iterrows():
         if _escape_string(row['type'].strip()) != "None":
+            if reverse_throw:
+                throw = row['az_min'] - row['az_max']
+            else:
+                throw = row['az_max'] - row['az_min']
             block = ScanBlock(
                 name=_escape_string(row['patch'].strip()),
                 t0=u.str2datetime(row['start_utc']),
                 t1=u.str2datetime(row['stop_utc']),
                 alt=row['el'],
-                az=row['az_min'],
+                az=row['az_min'] if not reverse_throw else row['az_max'],
                 az_speed=row['speed'],
                 az_accel=row['accel'],
-                throw=np.abs(row['az_max'] - row['az_min']),
+                throw=throw,
                 boresight_angle=row['rotation'],
                 priority=row['priority'],
                 tag=_escape_string(row['uid'].strip()),
@@ -602,7 +606,7 @@ def parse_wiregrid_targets_from_file(ifile):
 
     return wiregrid_targets
 
-def parse_sequence_from_toast_lat(ifile):
+def parse_sequence_from_toast_lat(ifile, reverse_throw=False):
     """
     Parameters
     ----------
@@ -654,6 +658,10 @@ def parse_sequence_from_toast_lat(ifile):
     )
     blocks = []
     for _, row in df.iterrows():
+        if reverse_throw:
+                throw = row['az_min'] - row['az_max']
+        else:
+            throw = row['az_max'] - row['az_min']
         if len(columns) == 13:
             scan_type = int(re.search(r'\d+', row["type"]).group())
             block = ScanBlock(
@@ -662,8 +670,8 @@ def parse_sequence_from_toast_lat(ifile):
                 t1=u.str2datetime(row['stop_utc']),
                 alt=row['el'],
                 corotator_angle=row['el']-60,
-                az=row['az_min'],
-                throw=np.abs(row['az_max'] - row['az_min']),
+                az=row['az_min'] if not reverse_throw else row['az_max'],
+                throw=throw,
                 az_speed=row['rate'],
                 az_accel=row['accel'],
                 turnaround_method="standard" if scan_type == 1 else "standard_gen",
@@ -685,8 +693,8 @@ def parse_sequence_from_toast_lat(ifile):
                 t1=u.str2datetime(row['stop_utc']),
                 alt=row['el'],
                 corotator_angle=row['el']-60,
-                az=row['az_min'],
-                throw=np.abs(row['az_max'] - row['az_min']),
+                az=row['az_min'] if not reverse_throw else row['az_max'],
+                throw=throw,
                 turnaround_method="standard" if scan_type == 1 else "standard_gen",
                 priority=1,
                 scan_type=scan_type,
