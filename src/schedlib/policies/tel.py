@@ -204,13 +204,15 @@ def el_nod(
         if el_nod_freq is None:
             el_nod_freq = state.el_freq_now
         num_nods = np.floor(el_nod_duration * el_nod_freq).astype(int)
+        stop_time = state.curr_time + dt.timedelta(seconds=el_nod_duration)
         cmds = [
             "",
-            "# run el nod",
-            "run.sine_el_nod(",
+            "# run sine el nod",
+            "run.seq.sine_el_nod(",
             f"    el_depth={el_nod_depth},",
             f"    el_freq={el_nod_freq},",
             f"    num_nods={num_nods},",
+            f"    stop_time='{stop_time.isoformat(timespec='seconds')}',",
             ")",
             ""
         ]
