@@ -475,6 +475,7 @@ class TelPolicy:
     elevation_override: bool = False
     el_mode_override: str = ''
     az_branch_override: float = None
+    reverse_throw: float = False
     allow_partial_override: float = None
     drift_override: bool = True
     allow_az_maneuver: bool = True
@@ -501,12 +502,14 @@ class TelPolicy:
         elif loader_cfg['type'] == 'sat-cmb':
             blocks = inst.parse_sequence_from_toast_sat(
                 loader_cfg['file'],
+                reverse_throw=self.reverse_throw,
             )
             blocks = self.apply_overrides(blocks)
             return blocks
         elif loader_cfg['type'] == 'lat-cmb':
             blocks = inst.parse_sequence_from_toast_lat(
                 loader_cfg['file'],
+                reverse_throw=self.reverse_throw,
             )
             blocks = self.apply_overrides(blocks)
             return blocks
