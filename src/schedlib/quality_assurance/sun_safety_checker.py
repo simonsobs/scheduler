@@ -56,7 +56,7 @@ class SunCrawler:
         else:
             l = self.schedf.readline()
         self.cmd_n += 1
-        if len(l)>0 and l[0] == "#":
+        if len(l) > 0 and (l[0] == "#" and "scan duration" not in l):
             l = self._next_line()
         return l
 
@@ -84,12 +84,19 @@ class SunCrawler:
         return time
 
     def _scan_parse(self, b):
+        start = 0
         stop = 0.
+        duration = 0.
         width = 0.
         drift = 0.
         for l in b:
+            if '# scan duration' in l:
+                h, m, s = map(int, l.split("=")[1].strip().split(":"))
+                duration = datetime.timedelta(hours=h, minutes=m, seconds=s)
             if 'stop_time' in l:
                 stop = datetime.datetime.fromisoformat(l.split("stop_time='")[1].rstrip("', \n")).timestamp()
+                start = stop - duration.total_seconds()
+                self.cur_time = start
             if 'width' in l and 'drift' in l:
                 width = float(l.split(', ')[0].split('=')[1])
                 drift_str = l.split(', ')[1].split('=')[1].rstrip(', \n')
@@ -262,9 +269,12 @@ class SunCrawler:
                     self.next_az = 0.
                     self.next_az = az
 
-            if 'run.seq.scan' in l:
-                assert(l[-2:] == '(\n')
-                scan_flag = True
+            if "# scan duration" in l:
+                scan_flag=True
+
+            # if 'run.seq.scan' in l:
+            #     assert(l[-2:] == '(\n')
+            #     scan_flag = True
 
             if l.strip() == ')':
                 scan_flag = False
