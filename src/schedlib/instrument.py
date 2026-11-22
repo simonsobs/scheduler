@@ -4,6 +4,7 @@ import pandas as pd
 import re
 from typing import List, TypeVar, Union, Dict, Optional
 import numpy as np
+import datetime as dt
 from functools import reduce
 from dataclasses import dataclass
 from so3g.proj import quat
@@ -595,12 +596,14 @@ def parse_wiregrid_targets_from_file(ifile):
 
     for _, row in df.iterrows():
         name = _escape_string(row['remark'].strip()).lower()
+        duration = dt.timedelta(seconds=900) if 'gain' in name else dt.timedelta(seconds=2800)
         wiregrid_target = WiregridTarget(
             name='wiregrid_gain' if 'gain' in name else 'wiregrid_time_const',
             az= row['az'],
             alt=row['el'],
             t0=u.str2datetime(row['start_utc']),
-            t1=u.str2datetime(row['stop_utc']),
+            t1=u.str2datetime(row['start_utc']) + duration,
+            # t1=u.str2datetime(row['stop_utc']),
         )
         wiregrid_targets.append(wiregrid_target)
 

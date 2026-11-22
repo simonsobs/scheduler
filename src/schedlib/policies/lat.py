@@ -238,7 +238,7 @@ class LATPolicy(tel.TelPolicy):
     corotator_override: float = None
     elevations_under_90: bool = False
     apply_corotator_rot: bool = True
-    radius: float = 0.3
+    radius: float = 0.7
     corotator_offset: float = 0.0
     corotator_bounds: list = field(default_factory=lambda: [-45.0, 45.0])
     el_freq: float = 0.0

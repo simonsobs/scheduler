@@ -305,6 +305,7 @@ def move_to(state, az, el, az_offset=0, el_offset=0, min_el=48, max_el=60, brake
         state = state.replace(hwp_spinning=False)
         duration += HWP_SPIN_DOWN
         cmd += COMMANDS_HWP_BRAKE if brake_hwp else COMMANDS_HWP_STOP
+        cmd += [f"run.wait_until('{(state.curr_time + dt.timedelta(seconds=HWP_SPIN_DOWN)).isoformat(timespec='seconds')}')"]
     cmd += [
         f"run.acu.move_to(az={round(az + az_offset, 3)}, el={round(el + el_offset, 3)})",
     ]
